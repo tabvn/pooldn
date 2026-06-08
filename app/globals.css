@@ -1,26 +1,128 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * PoolDN design tokens — sourced from Figma file `3nV5z8JLbKU8qzifEERIQM`
+ * (see docs/figma-design-review.md). Dark-first; light mode is a stub.
+ * ────────────────────────────────────────────────────────────────────────── */
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Brand ramp — usable as Tailwind text-mist-400, bg-teal-900, etc. */
+  --color-mist-400: #9ca8ab;
+  --color-mist-800: #22292b;
+  --color-mist-900: #161b1d;
+  --color-mist-950: #090b0c;
+  --color-foreground-muted: #9ca8ab;
+  --color-lime: #d0f30d;
+  --color-teal-700: #00786f;
+  --color-teal-900: #0b4f4a;
+  --color-amber-600: #e17100;
+  --color-amber-950: #461901;
+  --color-purple-600: #9810fa;
+
+  --font-sans: var(--font-mona-sans), "Mona Sans", ui-sans-serif, system-ui,
+    sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Dark mode is the default. */
+:root {
+  --background: #090b0c; /* Mist-950 */
+  --foreground: #ffffff;
+
+  --card: #161b1d; /* Mist-900 */
+  --card-foreground: #ffffff;
+
+  --popover: #161b1d;
+  --popover-foreground: #ffffff;
+
+  --primary: #d0f30d; /* lime */
+  --primary-foreground: #090b0c;
+
+  --secondary: #22292b; /* Mist-800 */
+  --secondary-foreground: #ffffff;
+
+  --muted: #22292b;
+  --muted-foreground: #9ca8ab; /* Mist-400 */
+
+  --accent: #00786f; /* Teal-700 */
+  --accent-foreground: #ffffff;
+
+  --destructive: #e17100; /* Amber-600 — also acts as the standings red */
+  --destructive-foreground: #ffffff;
+
+  --success: #10b981;
+  --success-foreground: #04241c;
+
+  --warning: #f59e0b;
+  --warning-foreground: #1a0f00;
+
+  --info: #9810fa; /* Purple-600 */
+  --info-foreground: #ffffff;
+
+  --border: rgb(255 255 255 / 8%);
+  --input: rgb(255 255 255 / 12%);
+  --ring: #d0f30d;
+
+  --radius: 0.625rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+  html {
+    @apply font-sans;
+    /* Tell native form controls (date pickers, calendars, file inputs)
+     * to render in dark mode so they don't clash with the app theme. */
+    color-scheme: dark;
+  }
+  /* Style the native date input's calendar icon to match the lime accent. */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    filter: invert(0.85) sepia(1) saturate(8) hue-rotate(40deg);
+    opacity: 0.7;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
 }

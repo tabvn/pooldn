@@ -1,6 +1,9 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ──────────────────────────────────────────────────────────────────────────
+# PoolDN — .gitignore (Next.js + Prisma + Playwright)
+# See https://help.github.com/articles/ignoring-files/
+# ──────────────────────────────────────────────────────────────────────────
 
-# dependencies
+# ── Dependencies ───────────────────────────────────────────────────────────
 /node_modules
 /.pnp
 .pnp.*
@@ -9,33 +12,93 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+.pnpm-store/
 
-# testing
-/coverage
-
-# next.js
+# ── Next.js build output ──────────────────────────────────────────────────
 /.next/
 /out/
-
-# production
 /build
+.vercel
+.turbo
 
-# misc
-.DS_Store
-*.pem
+# ── Testing / coverage ─────────────────────────────────────────────────────
+/coverage
+/test-results
+/playwright-report
+/playwright/.cache
+/playwright/.auth
 
-# debug
+# ── Generated code (regenerate locally with `prisma generate` + codegen) ──
+/lib/generated/prisma
+/lib/generated/pothos-types.ts
+/lib/graphql/generated
+/lib/graphql/schema.graphql
+
+# ── Runtime / user-uploaded content (keep dirs via .gitkeep) ──────────────
+/public/uploads/avatar
+/public/uploads/team-logo
+/public/uploads/competition-banner
+/public/uploads/venue-image
+
+# ── Env files — commit only .env.example, never real secrets ──────────────
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+
+# ── TypeScript ────────────────────────────────────────────────────────────
+*.tsbuildinfo
+next-env.d.ts
+
+# ── Logs ──────────────────────────────────────────────────────────────────
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+logs/
 
-# env files (can opt-in for committing if needed)
-.env*
+# ── Local DB dumps / SQLite ──────────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+*.dump
 
-# vercel
-.vercel
+# ── IDE / editor ──────────────────────────────────────────────────────────
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.iml
+*.swp
+*.swo
+*~
+.#*
+\#*\#
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# ── OS junk ───────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── Certs / secrets ───────────────────────────────────────────────────────
+*.pem
+*.key
+*.crt
+*.p12
+
+# ── Tooling caches ────────────────────────────────────────────────────────
+.eslintcache
+.cache/
+.parcel-cache/
+
+# ── Local scratch ─────────────────────────────────────────────────────────
+/tmp
+*.local

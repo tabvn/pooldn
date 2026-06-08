@@ -1,0 +1,47 @@
+import { builder } from "../builder";
+
+builder.prismaObject("Team", {
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    name: t.exposeString("name"),
+    slug: t.exposeString("slug"),
+    logoUrl: t.exposeString("logoUrl", { nullable: true }),
+    description: t.exposeString("description", { nullable: true }),
+    captain: t.relation("captain"),
+    members: t.relation("members"),
+    isActive: t.exposeBoolean("isActive"),
+    createdAt: t.expose("createdAt", { type: "DateTime" }),
+    // Competitions this team has applied to (any status) — used by team-landing
+    // page to list "team's competitions".
+    applications: t.relation("applications", {
+      query: () => ({ orderBy: { submittedAt: "desc" } }),
+    }),
+    // Recent matches (both sides) — ordered by scheduledAt desc, capped to
+    // the latest entries via the team-landing query's slice.
+    homeMatches: t.relation("homeMatches", {
+      query: () => ({ orderBy: { scheduledAt: "desc" }, take: 10 }),
+    }),
+    awayMatches: t.relation("awayMatches", {
+      query: () => ({ orderBy: { scheduledAt: "desc" }, take: 10 }),
+    }),
+  }),
+});
+
+builder.prismaObject("TeamMember", {
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    team: t.relation("team"),
+    user: t.relation("user"),
+    joinedAt: t.expose("joinedAt", { type: "DateTime" }),
+    isActive: t.exposeBoolean("isActive"),
+  }),
+});
+
+export const CreateTeamInput = builder.inputType("CreateTeamInput", {
+  fields: (t) => ({
+    name: t.string({ required: true }),
+    slug: t.string({ required: true }),
+    logoUrl: t.string(),
+    description: t.string(),
+  }),
+});

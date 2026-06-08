@@ -1,0 +1,695 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+generator pothos {
+  provider     = "prisma-pothos-types"
+  clientOutput = "@/lib/generated/prisma/client"
+  output       = "../lib/generated/pothos-types.ts"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  SUPER_ADMIN
+  ORGANIZER
+  TEAM_CAPTAIN
+  PLAYER
+  VIEWER
+}
+
+enum CompetitionStatus {
+  DRAFT
+  OPEN_FOR_APPLICATIONS
+  APPLICATIONS_CLOSED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum CompetitionFormat {
+  ROUND_ROBIN
+  SINGLE_ELIMINATION
+  DOUBLE_ELIMINATION
+  SWISS
+}
+
+enum CompetitionType {
+  TEAMS
+  INDIVIDUAL
+}
+
+enum GameType {
+  EIGHT_BALL
+  NINE_BALL
+  TEN_BALL
+  STRAIGHT_POOL
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  WAITLISTED
+}
+
+enum MatchStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  POSTPONED
+}
+
+enum SchedulingType {
+  FIXED_DATE
+  FLEXIBLE
+  AUTO_GENERATED
+}
+
+enum NotificationType {
+  WELCOME
+  APPLICATION_SUBMITTED
+  APPLICATION_APPROVED
+  APPLICATION_REJECTED
+  APPLICATION_WAITLISTED
+  COMPETITION_STARTED
+  COMPETITION_COMPLETED
+  MATCH_SCHEDULED
+  MATCH_RESULT_RECORDED
+  ROSTER_INVITE
+}
+
+enum NotificationEntityType {
+  COMPETITION
+  APPLICATION
+  MATCH
+  TEAM
+  USER
+}
+
+enum FollowEntityType {
+  COMPETITION
+  TEAM
+}
+
+enum GameBlockType {
+  SINGLES
+  DOUBLES
+  SCOTCH_DOUBLES
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Identity
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  username      String   @unique
+  email         String   @unique
+  password      String
+  role          UserRole @default(PLAYER)
+  avatarUrl     String?
+  bio           String?
+  phone         String?
+  nationality   String?
+  cityId        String?
+  emailVerified Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  city                  City?              @relation(fields: [cityId], references: [id])
+  organizedCompetitions Competition[]      @relation("OrganizedBy")
+  captainedTeams        Team[]             @relation("CaptainedBy")
+  teamMemberships       TeamMember[]
+  applicationPlayers    ApplicationPlayer[]
+  matchParticipations   MatchParticipant[]
+  playerCompStats       PlayerCompStat[]
+  notifications         Notification[]
+  sessions              Session[]
+  posts                 CommunityPost[]
+  follows               Follow[]
+  rosterEntries         CompetitionRoster[]
+  scoreSubmissions      MatchScoreSubmission[] @relation("ScoreSubmittedBy")
+  scoreReviews          MatchScoreSubmission[] @relation("ScoreReviewedBy")
+  teamInvitationsReceived TeamInvitation[]      @relation("TeamInvitedUser")
+  teamInvitationsSent     TeamInvitation[]      @relation("TeamInvitedBy")
+  teamJoinRequests        TeamJoinRequest[]     @relation("JoinRequestUser")
+  teamJoinReviews         TeamJoinRequest[]     @relation("JoinRequestReviewer")
+  framesAsHomePlayer      MatchFrame[]          @relation("FrameHomePlayer")
+  framesAsAwayPlayer      MatchFrame[]          @relation("FrameAwayPlayer")
+
+  @@index([cityId])
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Geography
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Country {
+  id     String @id @default(cuid())
+  code   String @unique
+  name   String
+  cities City[]
+
+  @@map("countries")
+}
+
+model City {
+  id        String @id @default(cuid())
+  name      String
+  countryId String
+  country   Country @relation(fields: [countryId], references: [id])
+
+  users        User[]
+  venues       Venue[]
+  competitions Competition[]
+  posts        CommunityPost[]
+
+  @@unique([countryId, name])
+  @@index([countryId])
+  @@map("cities")
+}
+
+model Venue {
+  id         String   @id @default(cuid())
+  name       String
+  slug       String   @unique
+  address    String
+  cityId     String
+  city       City     @relation(fields: [cityId], references: [id])
+  phone      String?
+  email      String?
+  website    String?
+  imageUrl   String?
+  tableCount Int?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  matches Match[]
+
+  @@index([cityId])
+  @@index([isActive])
+  @@map("venues")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Teams
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  logoUrl     String?
+  description String?
+  captainId   String
+  captain     User     @relation("CaptainedBy", fields: [captainId], references: [id])
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members       TeamMember[]
+  applications  CompetitionApplication[]
+  homeMatches   Match[]                  @relation("HomeTeam")
+  awayMatches   Match[]                  @relation("AwayTeam")
+  standings     Standing[]
+  rosterEntries CompetitionRoster[]
+  scoreSubmissions MatchScoreSubmission[] @relation("ScoreForTeam")
+  invitations   TeamInvitation[]
+  joinRequests  TeamJoinRequest[]
+
+  @@index([captainId])
+  @@index([isActive])
+  @@map("teams")
+}
+
+enum TeamInviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+  EXPIRED
+}
+
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model TeamInvitation {
+  id            String           @id @default(cuid())
+  teamId        String
+  team          Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  invitedUserId String?
+  invitedUser   User?            @relation("TeamInvitedUser", fields: [invitedUserId], references: [id], onDelete: SetNull)
+  email         String?
+  invitedById   String
+  invitedBy     User             @relation("TeamInvitedBy", fields: [invitedById], references: [id])
+  status        TeamInviteStatus @default(PENDING)
+  token         String           @unique @default(cuid())
+  message       String?
+  createdAt     DateTime         @default(now())
+  respondedAt   DateTime?
+
+  @@index([teamId])
+  @@index([invitedUserId])
+  @@index([status])
+  @@map("team_invitations")
+}
+
+model TeamJoinRequest {
+  id           String            @id @default(cuid())
+  teamId       String
+  team         Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User              @relation("JoinRequestUser", fields: [userId], references: [id], onDelete: Cascade)
+  status       JoinRequestStatus @default(PENDING)
+  message      String?
+  createdAt    DateTime          @default(now())
+  reviewedById String?
+  reviewedBy   User?             @relation("JoinRequestReviewer", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@index([status])
+  @@map("team_join_requests")
+}
+
+model TeamMember {
+  id       String   @id @default(cuid())
+  teamId   String
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  joinedAt DateTime @default(now())
+  isActive Boolean  @default(true)
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Competitions
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Competition {
+  id                  String            @id @default(cuid())
+  slug                String            @unique
+  name                String
+  description         String?
+  bannerUrl           String?
+  organizerId         String
+  organizer           User              @relation("OrganizedBy", fields: [organizerId], references: [id])
+  cityId              String?
+  city                City?             @relation(fields: [cityId], references: [id])
+  status              CompetitionStatus @default(DRAFT)
+  type                CompetitionType   @default(TEAMS)
+  format              CompetitionFormat @default(ROUND_ROBIN)
+  gameType            GameType          @default(EIGHT_BALL)
+  maxTeams            Int?
+  minTeams            Int               @default(2)
+  maxPlayersPerTeam   Int?
+  minPlayersPerTeam   Int               @default(1)
+  raceToFrames        Int               @default(5)
+  framesPerMatchday   Int?
+  applicationDeadline DateTime?
+  startDate           DateTime?
+  endDate             DateTime?
+  schedulingType      SchedulingType    @default(FLEXIBLE)
+  prizePool           Decimal?          @db.Decimal(18, 2)
+  currency            String            @default("VND")
+  prizeDistribution   Json?
+  pointsWin           Int               @default(3)
+  pointsDraw          Int               @default(1)
+  pointsLoss          Int               @default(0)
+  isPublic            Boolean           @default(true)
+  rulesUrl            String?
+  // Rules
+  breakAndRunRule     Boolean           @default(false)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  applications CompetitionApplication[]
+  matchdays    Matchday[]
+  standings    Standing[]
+  playerStats  PlayerCompStat[]
+  blocks       MatchFormatBlock[]
+  rosters      CompetitionRoster[]
+
+  @@index([organizerId])
+  @@index([cityId])
+  @@index([status])
+  @@index([status, startDate])
+  @@index([isPublic])
+  @@map("competitions")
+}
+
+model CompetitionRoster {
+  id            String      @id @default(cuid())
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  teamId        String
+  team          Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  // A given user can only be rostered on ONE team per competition.
+  @@unique([competitionId, userId])
+  @@index([competitionId, teamId])
+  @@map("competition_rosters")
+}
+
+model MatchFormatBlock {
+  id             String        @id @default(cuid())
+  competitionId  String
+  competition    Competition   @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  order          Int
+  type           GameBlockType
+  games          Int           @default(1)
+  raceTo         Int?
+  // Break between this block and the next one, in minutes.
+  breakAfterMin  Int?
+  createdAt      DateTime      @default(now())
+
+  @@unique([competitionId, order])
+  @@index([competitionId])
+  @@map("match_format_blocks")
+}
+
+model CompetitionApplication {
+  id            String            @id @default(cuid())
+  competitionId String
+  competition   Competition       @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  teamId        String
+  team          Team              @relation(fields: [teamId], references: [id])
+  status        ApplicationStatus @default(PENDING)
+  message       String?
+  reviewNote    String?
+  reviewedAt    DateTime?
+  submittedAt   DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  applicationPlayers ApplicationPlayer[]
+
+  @@unique([competitionId, teamId])
+  @@index([teamId])
+  @@index([status])
+  @@map("competition_applications")
+}
+
+model ApplicationPlayer {
+  id            String                 @id @default(cuid())
+  applicationId String
+  application   CompetitionApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User                   @relation(fields: [userId], references: [id])
+  name          String
+  role          String?
+  createdAt     DateTime               @default(now())
+
+  @@unique([applicationId, userId])
+  @@index([userId])
+  @@map("application_players")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Schedule + Matches
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Matchday {
+  id            String      @id @default(cuid())
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  number        Int
+  label         String?
+  scheduledDate DateTime?
+  startTime     String?
+  endTime       String?
+  isGenerated   Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  matches Match[]
+
+  @@unique([competitionId, number])
+  @@index([scheduledDate])
+  @@map("matchdays")
+}
+
+model Match {
+  id          String      @id @default(cuid())
+  matchdayId  String
+  matchday    Matchday    @relation(fields: [matchdayId], references: [id], onDelete: Cascade)
+  venueId     String?
+  venue       Venue?      @relation(fields: [venueId], references: [id])
+  homeTeamId  String?
+  homeTeam    Team?       @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeamId  String?
+  awayTeam    Team?       @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  status      MatchStatus @default(SCHEDULED)
+  scheduledAt DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+  homeScore   Int?
+  awayScore   Int?
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Round-14 — match-flow lineup gating.
+  // Each side submits its lineup; the opponent's lineup stays hidden until
+  // BOTH lineupSubmitted* timestamps are filled (lock).
+  homeLineupSubmittedById String?
+  homeLineupSubmittedAt   DateTime?
+  awayLineupSubmittedById String?
+  awayLineupSubmittedAt   DateTime?
+
+  frames       MatchFrame[]
+  participants MatchParticipant[]
+  scoreSubmissions MatchScoreSubmission[]
+
+  @@index([matchdayId])
+  @@index([venueId])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("matches")
+}
+
+model MatchFrame {
+  id            String         @id @default(cuid())
+  matchId       String
+  match         Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  frameNumber   Int
+  // Frame TYPE comes from the competition's MatchFormatBlock at scaffold
+  // time (Round-14). Nullable for legacy frames recorded before scaffolding.
+  blockType     GameBlockType?
+  homeWon       Boolean?
+  homePlayer    String?
+  awayPlayer    String?
+  // Direct references to the picked players; falls back to homePlayer /
+  // awayPlayer free-text when a roster ID isn't available.
+  homePlayerId  String?
+  homePlayerRef User?          @relation("FrameHomePlayer", fields: [homePlayerId], references: [id])
+  awayPlayerId  String?
+  awayPlayerRef User?          @relation("FrameAwayPlayer", fields: [awayPlayerId], references: [id])
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([matchId, frameNumber])
+  @@map("match_frames")
+}
+
+model MatchParticipant {
+  id           String   @id @default(cuid())
+  matchId      String
+  match        Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  teamId       String?
+  framesWon    Int      @default(0)
+  framesPlayed Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@unique([matchId, userId])
+  @@index([userId])
+  @@index([teamId])
+  @@map("match_participants")
+}
+
+enum ScoreSubmissionStatus {
+  PENDING
+  AUTO_APPROVED
+  APPROVED
+  CONFLICT
+  REJECTED
+}
+
+model MatchScoreSubmission {
+  id             String                @id @default(cuid())
+  matchId        String
+  match          Match                 @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  submittedById  String
+  submittedBy    User                  @relation("ScoreSubmittedBy", fields: [submittedById], references: [id])
+  forTeamId      String
+  forTeam        Team                  @relation("ScoreForTeam", fields: [forTeamId], references: [id])
+  homeScore      Int
+  awayScore      Int
+  framesJson     Json?
+  status         ScoreSubmissionStatus @default(PENDING)
+  reviewedById   String?
+  reviewedBy     User?                 @relation("ScoreReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt     DateTime?
+  note           String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  // One submission per captain per match — a second submit overwrites it via upsert.
+  @@unique([matchId, submittedById])
+  @@index([matchId])
+  @@index([status])
+  @@map("match_score_submissions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Standings + player stats
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Standing {
+  id            String      @id @default(cuid())
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  teamId        String
+  team          Team        @relation(fields: [teamId], references: [id])
+  position      Int?
+  played        Int         @default(0)
+  won           Int         @default(0)
+  drawn         Int         @default(0)
+  lost          Int         @default(0)
+  pointsFor     Int         @default(0)
+  pointsAgainst Int         @default(0)
+  pointDiff     Int         @default(0)
+  points        Int         @default(0)
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([competitionId, teamId])
+  @@index([teamId])
+  @@index([competitionId, points(sort: Desc)])
+  @@map("standings")
+}
+
+model PlayerCompStat {
+  id            String      @id @default(cuid())
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  matchesPlayed Int         @default(0)
+  framesWon     Int         @default(0)
+  framesPlayed Int         @default(0)
+  isMvp         Boolean     @default(false)
+
+  @@unique([competitionId, userId])
+  @@index([userId])
+  @@index([isMvp])
+  @@map("player_comp_stats")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Follow / favorite — users can subscribe to a Competition or Team
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Follow {
+  id         String           @id @default(cuid())
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entityType FollowEntityType
+  entityId   String
+  createdAt  DateTime         @default(now())
+
+  @@unique([userId, entityType, entityId])
+  @@index([userId, entityType])
+  @@index([entityType, entityId])
+  @@map("follows")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Community
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CommunityPost {
+  id        String   @id @default(cuid())
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  cityId    String?
+  city      City?    @relation(fields: [cityId], references: [id])
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([cityId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("community_posts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notifications
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Notification {
+  id          String                 @id @default(cuid())
+  userId      String
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  title       String
+  message     String
+  isRead      Boolean                @default(false)
+  // Denormalized so the inbox can build a deeplink without an extra query.
+  entityType  NotificationEntityType?
+  entityId    String?
+  entitySlug  String?
+  // groupKey lets us collapse a fan-out across many recipients in the UI
+  // ("3 updates on Spring Open"). Identical across all rows in the same event.
+  groupKey    String?
+  metadata    Json?
+  createdAt   DateTime               @default(now())
+
+  @@index([userId, isRead, createdAt(sort: Desc)])
+  @@index([userId, groupKey])
+  @@index([entityType, entityId])
+  @@map("notifications")
+}
