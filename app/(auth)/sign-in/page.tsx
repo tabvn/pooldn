@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -31,19 +31,57 @@ export default function SignInPage() {
   );
 }
 
+type LockOut = { until: number; secs: number };
+
+function extractRateLimit(err: unknown): LockOut | null {
+  // Apollo's error object surfaces graphQLErrors with extensions on each.
+  // Walk the array defensively — the shape is { graphQLErrors: [...] }
+  // or { cause: { result: { errors: [...] }}}, depending on the version.
+  type GqlExt = { code?: string; retryAfterSec?: number };
+  type GqlErr = { extensions?: GqlExt };
+  type ApolloLike = { graphQLErrors?: GqlErr[] };
+  const ge = (err as ApolloLike | undefined)?.graphQLErrors;
+  if (!ge) return null;
+  for (const e of ge) {
+    const ext = e.extensions;
+    if (ext?.code === "RATE_LIMITED" && typeof ext.retryAfterSec === "number") {
+      return {
+        until: Date.now() + ext.retryAfterSec * 1000,
+        secs: ext.retryAfterSec,
+      };
+    }
+  }
+  return null;
+}
+
 function SignInForm() {
   const router = useRouter();
   const toast = useToast();
   const searchParams = useSearchParams();
   const nextHref = searchParams.get("next") ?? "/";
   const [login, { error, loading: loggingIn }] = useMutation(LoginMutation);
+  const [lockOut, setLockOut] = useState<LockOut | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
+  // Tick once a second while we're locked out so the countdown stays live.
+  useEffect(() => {
+    if (!lockOut) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [lockOut]);
+
+  const remainingSec = lockOut
+    ? Math.max(0, Math.ceil((lockOut.until - now) / 1000))
+    : 0;
+  const locked = remainingSec > 0;
+
   const onSubmit = handleSubmit(async (values) => {
+    if (locked) return;
     try {
       const result = await login({ variables: { input: values } });
       if (result.data?.login) {
@@ -51,6 +89,12 @@ function SignInForm() {
         router.refresh();
       }
     } catch (e) {
+      const rl = extractRateLimit(e);
+      if (rl) {
+        setLockOut(rl);
+        setNow(Date.now());
+        return;
+      }
       toast.error(
         "Sign in failed",
         e instanceof Error ? e.message : "Check your credentials and try again.",
@@ -106,14 +150,31 @@ function SignInForm() {
             ) : null}
           </div>
 
-          {error ? (
+          {locked ? (
+            <p
+              className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning"
+              role="alert"
+              data-testid="signin-rate-limited"
+            >
+              Too many sign-in attempts. Try again in{" "}
+              <span className="font-mono font-bold tabular-nums">
+                {remainingSec}s
+              </span>
+              .
+            </p>
+          ) : error ? (
             <p className="text-sm text-destructive" role="alert">
               {error.message}
             </p>
           ) : null}
 
-          <Button type="submit" block loading={isSubmitting || loggingIn}>
-            Sign In
+          <Button
+            type="submit"
+            block
+            loading={isSubmitting || loggingIn}
+            disabled={locked}
+          >
+            {locked ? `Locked · ${remainingSec}s` : "Sign In"}
           </Button>
           <Link href="/" className="block">
             <Button type="button" variant="outline" block>

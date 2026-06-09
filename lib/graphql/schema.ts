@@ -16,6 +16,7 @@ import "./types/roster";
 import "./types/score-submission";
 import "./types/team-collab";
 import "./types/search";
+import "./types/security";
 
 // Resolvers (split per domain).
 import "./resolvers/viewer.queries";
@@ -44,5 +45,6 @@ import "./resolvers/notification-preferences";
 import "./resolvers/subscriptions";
 import "./resolvers/location.mutations";
 import "./resolvers/admin-moderation";
+import "./resolvers/security.queries";
 
 export const schema = builder.toSchema();

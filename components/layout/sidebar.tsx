@@ -263,6 +263,11 @@ const ADMIN_ITEMS: AdminItem[] = [
     label: "Moderation",
     icon: <ShieldCheck className="size-3.5" />,
   },
+  {
+    href: "/admin/security",
+    label: "Security log",
+    icon: <ShieldCheck className="size-3.5" />,
+  },
 ];
 
 function AdminSubmenu({
