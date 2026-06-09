@@ -23,6 +23,7 @@ import {
   blocksToStructureItems,
   structureItemsToBlocks,
 } from "@/components/competition/structure-builder";
+import { planMatchdays } from "@/lib/services/match-schedule.service";
 
 const GAME_TYPES = ["EIGHT_BALL", "NINE_BALL", "TEN_BALL", "STRAIGHT_POOL"] as const;
 // Round-25 P0 gate — generateMatchdays only knows round-robin pairings today.
@@ -147,6 +148,7 @@ const schema = z.object({
   matchdayCount: z.coerce.number().int().min(1).max(52),
   matchdayStartTime: z.string().optional(),
   matchdayEndTime: z.string().optional(),
+  maxGamesPerVenuePerMatchday: optionalCount(1),
   prizePool: z.string().optional(),
   currency: z.string().min(1),
   // Step 4 — Structure & Rules
@@ -176,10 +178,11 @@ const STEPS = [
   { title: "Participants", desc: "Team and player counts." },
   { title: "Schedule", desc: "City, scheduling and matchday slots." },
   { title: "Structure", desc: "Match builder + rules (Break & Run)." },
+  { title: "Season preview", desc: "Review the auto-generated matchday calendar." },
   { title: "Review & Publish", desc: "Confirm everything before you publish." },
 ] as const;
 
-type StepIndex = 0 | 1 | 2 | 3 | 4;
+type StepIndex = 0 | 1 | 2 | 3 | 4 | 5;
 const FIELDS_BY_STEP: Record<StepIndex, (keyof FormInput)[]> = {
   0: [
     "name",
@@ -201,9 +204,13 @@ const FIELDS_BY_STEP: Record<StepIndex, (keyof FormInput)[]> = {
     "matchdayCount",
     "matchdayStartTime",
     "matchdayEndTime",
+    "maxGamesPerVenuePerMatchday",
   ],
   3: ["structureItems", "breakAndRunRule"],
+  // Step 4 — Season preview. Schedule fields already validated at step 2;
+  // the preview is read-only over them, so no additional triggers here.
   4: [],
+  5: [],
 };
 
 export type WizardInitial = {
@@ -227,6 +234,7 @@ export type WizardInitial = {
   prizePool?: string | null;
   currency: string;
   breakAndRunRule: boolean;
+  maxGamesPerVenuePerMatchday?: number | null;
   blocks: Array<{
     type: "SINGLES" | "DOUBLES" | "SCOTCH_DOUBLES";
     games: number;
@@ -282,6 +290,8 @@ export function NewCompetitionForm({
           prizePool: initial.prizePool ?? "",
           currency: initial.currency,
           breakAndRunRule: initial.breakAndRunRule,
+          maxGamesPerVenuePerMatchday:
+            initial.maxGamesPerVenuePerMatchday ?? undefined,
           structureItems:
             blocksToStructureItems(initial.blocks).length > 0
               ? blocksToStructureItems(initial.blocks)
@@ -328,7 +338,7 @@ export function NewCompetitionForm({
   async function nextStep() {
     const ok = await trigger(FIELDS_BY_STEP[step], { shouldFocus: true });
     if (!ok) return;
-    setStep((s) => (Math.min(s + 1, 4) as StepIndex));
+    setStep((s) => (Math.min(s + 1, 5) as StepIndex));
   }
 
   function prevStep() {
@@ -357,7 +367,7 @@ export function NewCompetitionForm({
     // Guard: Enter inside any earlier-step input must NOT skip Review.
     // Without this the form auto-submits on first Enter and the Review step
     // is never reached.
-    if (step !== 4) return;
+    if (step !== 5) return;
     const blocks = structureItemsToBlocks(values.structureItems);
     try {
       if (isEdit && initial) {
@@ -383,6 +393,8 @@ export function NewCompetitionForm({
               currency: values.currency,
               schedulingType: values.schedulingType,
               breakAndRunRule: values.breakAndRunRule,
+              maxGamesPerVenuePerMatchday:
+                values.maxGamesPerVenuePerMatchday ?? null,
               blocks,
             },
           },
@@ -416,6 +428,8 @@ export function NewCompetitionForm({
             currency: values.currency,
             schedulingType: values.schedulingType,
             breakAndRunRule: values.breakAndRunRule,
+            maxGamesPerVenuePerMatchday:
+              values.maxGamesPerVenuePerMatchday ?? null,
             blocks,
           },
         },
@@ -732,9 +746,23 @@ export function NewCompetitionForm({
                 </Field>
               </div>
             </div>
-            <Field label="Currency">
-              <Input defaultValue="VND" {...register("currency")} />
-            </Field>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field
+                label="Max games per venue per matchday (optional)"
+                hint="Cap on matches at the same venue in one matchday. Leave empty for no cap."
+                error={errors.maxGamesPerVenuePerMatchday?.message}
+              >
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder="No limit"
+                  {...register("maxGamesPerVenuePerMatchday")}
+                />
+              </Field>
+              <Field label="Currency">
+                <Input defaultValue="VND" {...register("currency")} />
+              </Field>
+            </div>
           </Section>
         )}
 
@@ -788,6 +816,27 @@ export function NewCompetitionForm({
         )}
 
         {step === 4 && (
+          <Section>
+            <SeasonPreviewStep
+              startDate={
+                typeof v.startDate === "string" ? v.startDate : null
+              }
+              endDate={typeof v.endDate === "string" ? v.endDate : null}
+              matchdayCount={Number(v.matchdayCount ?? 0)}
+              matchdayStartTime={
+                typeof v.matchdayStartTime === "string"
+                  ? v.matchdayStartTime
+                  : null
+              }
+              onAdjustMatchdayCount={(n) =>
+                setValue("matchdayCount", n, { shouldValidate: true })
+              }
+              onJumpToSchedule={() => setStep(2)}
+            />
+          </Section>
+        )}
+
+        {step === 5 && (
           <Section>
             <h2 className="text-lg font-semibold mb-2">Review &amp; Publish</h2>
             <p className="text-sm text-muted-foreground mb-4">
@@ -945,7 +994,7 @@ export function NewCompetitionForm({
           >
             Back
           </Button>
-          {step < 4 ? (
+          {step < 5 ? (
             <Button
               type="button"
               onClick={nextStep}
@@ -970,6 +1019,136 @@ export function NewCompetitionForm({
 
 function Section({ children }: { children: React.ReactNode }) {
   return <div className="space-y-4">{children}</div>;
+}
+
+/**
+ * Round-47 — wizard Step 4 "Season preview". Read-only over the Schedule
+ * step's inputs, runs the same date-distribution math the post-publish
+ * `generateMatchdays` mutation uses, so what the organizer sees here is
+ * what they get after Confirm & Publish. Includes a quick "+/-" pair to
+ * tune the matchday count without bouncing back to Schedule.
+ */
+function SeasonPreviewStep({
+  startDate,
+  endDate,
+  matchdayCount,
+  matchdayStartTime,
+  onAdjustMatchdayCount,
+  onJumpToSchedule,
+}: {
+  startDate: string | null;
+  endDate: string | null;
+  matchdayCount: number;
+  matchdayStartTime: string | null;
+  onAdjustMatchdayCount: (n: number) => void;
+  onJumpToSchedule: () => void;
+}) {
+  const rows = planMatchdays({
+    startDate,
+    endDate,
+    matchdayCount,
+    matchdayStartTime,
+  });
+  return (
+    <div className="space-y-4">
+      <div className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-info-foreground">
+        Calendar generated. Review the matchday dates below and confirm.
+        These exact dates are what we create when you publish — adjust the
+        spacing here or in <button
+          type="button"
+          onClick={onJumpToSchedule}
+          className="font-semibold text-primary hover:underline"
+        >
+          Schedule
+        </button>.
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 rounded-md border border-border bg-card/40 px-3 py-3">
+        <div className="space-y-1.5">
+          <span className="block text-xs font-medium text-muted-foreground">
+            Matchdays
+          </span>
+          <div className="inline-flex items-center gap-1">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={matchdayCount <= 1}
+              onClick={() =>
+                onAdjustMatchdayCount(Math.max(1, matchdayCount - 1))
+              }
+              data-testid="season-preview-decrement"
+            >
+              −
+            </Button>
+            <span className="inline-flex h-9 min-w-12 items-center justify-center rounded-md border border-border bg-background px-3 font-mono text-sm font-bold tabular-nums">
+              {matchdayCount}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={matchdayCount >= 52}
+              onClick={() =>
+                onAdjustMatchdayCount(Math.min(52, matchdayCount + 1))
+              }
+              data-testid="season-preview-increment"
+            >
+              +
+            </Button>
+          </div>
+        </div>
+        <div className="space-y-1.5 text-xs text-muted-foreground">
+          <span className="block font-medium">Window</span>
+          <span className="font-mono">
+            {startDate ? formatYmd(String(startDate)) : "TBD"}
+            {endDate ? ` → ${formatYmd(String(endDate))}` : " → weekly cadence"}
+          </span>
+        </div>
+        {matchdayStartTime ? (
+          <div className="space-y-1.5 text-xs text-muted-foreground">
+            <span className="block font-medium">Slot</span>
+            <span className="font-mono">{matchdayStartTime}</span>
+          </div>
+        ) : null}
+      </div>
+
+      <ol className="space-y-2" data-testid="season-preview-list">
+        {rows.map((md) => {
+          const d = new Date(md.scheduledDate);
+          return (
+            <li
+              key={md.number}
+              className="flex items-center justify-between rounded-md border border-border bg-background px-4 py-2"
+              data-testid={`season-preview-row-${md.number}`}
+            >
+              <span className="inline-flex items-center gap-3">
+                <span className="inline-flex size-7 items-center justify-center rounded-full bg-primary/15 text-xs font-bold tabular-nums text-primary">
+                  {md.number}
+                </span>
+                <span className="text-sm font-semibold">{md.label}</span>
+              </span>
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {d.toLocaleDateString(undefined, {
+                  weekday: "short",
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                })}
+                {matchdayStartTime ? ` · ${matchdayStartTime}` : ""}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+
+      <p className="rounded-md border border-border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
+        Team pairings get generated once applications close and you click{" "}
+        <strong>Start competition</strong> on the detail page — the dates
+        above stay fixed.
+      </p>
+    </div>
+  );
 }
 
 function Field({

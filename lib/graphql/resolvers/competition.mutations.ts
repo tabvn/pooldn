@@ -61,6 +61,7 @@ const UpdateCompetitionInput = builder.inputType("UpdateCompetitionInput", {
     bannerUrl: t.string(),
     schedulingType: t.string(),
     breakAndRunRule: t.boolean(),
+    maxGamesPerVenuePerMatchday: t.int(),
     blocks: t.field({ type: [MatchFormatBlockInput] }),
   }),
 });
@@ -98,6 +99,8 @@ builder.mutationFields((t) => ({
             currency: i.currency ?? "VND",
             schedulingType: i.schedulingType ?? undefined,
             breakAndRunRule: i.breakAndRunRule ?? false,
+            maxGamesPerVenuePerMatchday:
+              i.maxGamesPerVenuePerMatchday ?? null,
           },
         });
         if (Array.isArray(i.blocks) && i.blocks.length > 0) {
@@ -169,6 +172,10 @@ builder.mutationFields((t) => ({
           currency: i.currency ?? undefined,
           schedulingType: i.schedulingType ?? undefined,
           breakAndRunRule: i.breakAndRunRule ?? undefined,
+          maxGamesPerVenuePerMatchday:
+            i.maxGamesPerVenuePerMatchday === null
+              ? null
+              : i.maxGamesPerVenuePerMatchday ?? undefined,
         });
       }
       // Persist the update + an optional block-list replacement in one tx.
@@ -524,13 +531,22 @@ builder.mutationFields((t) => ({
       );
       const rounds = bergerPairings(teamIds);
 
+      // Round-47 — use the shared planner so the dates in the wizard's
+      // Season Preview step are exactly what we persist here.
+      const { planMatchdays } = await import(
+        "@/lib/services/match-schedule.service"
+      );
+      const planned = planMatchdays({
+        startDate: competition.startDate,
+        endDate: competition.endDate,
+        matchdayCount: rounds.length,
+      });
+
       // One transaction: bulk-create matchdays + matches + notifications.
       return ctx.prisma.$transaction(async (tx) => {
-        const startDate = competition.startDate ?? new Date();
         for (let i = 0; i < rounds.length; i++) {
           const round = rounds[i];
-          const scheduledDate = new Date(startDate);
-          scheduledDate.setDate(scheduledDate.getDate() + i * 7);
+          const scheduledDate = new Date(planned[i]!.scheduledDate);
           const md = await tx.matchday.create({
             data: {
               competitionId: competition.id,

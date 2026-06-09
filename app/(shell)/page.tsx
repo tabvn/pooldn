@@ -21,7 +21,11 @@ export default async function PoolhubDashboard() {
     client.query({ query: ViewerQuery, errorPolicy: "ignore" }),
   ]);
   const viewer = data?.viewer ?? viewerResult.data?.viewer ?? null;
-  const nextMatch = data?.viewerNextMatch ?? null;
+  // Round-47 — prefer the real "Today's Match" if there is one; fall back
+  // to the next-scheduled match so the card still has content when nothing
+  // is on today.
+  const todayMatch = data?.viewerTodayMatch ?? null;
+  const nextMatch = todayMatch ?? data?.viewerNextMatch ?? null;
   const upcoming = data?.upcoming ?? [];
   const active = data?.active ?? [];
   const followedComps = data?.myFollowedCompetitions ?? [];
@@ -56,9 +60,14 @@ export default async function PoolhubDashboard() {
         </div>
       </header>
 
-      {/* Today's match */}
+      {/* Today's match (or next scheduled when nothing today) */}
       {nextMatch ? (
-        <TodayMatchCard match={nextMatch} />
+        <section className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+            {todayMatch ? "Today's match" : "Next match"}
+          </p>
+          <TodayMatchCard match={nextMatch} />
+        </section>
       ) : viewer ? (
         <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-8 text-center text-sm text-muted-foreground">
           You have no scheduled matches right now. Browse competitions below to

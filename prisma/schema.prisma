@@ -456,6 +456,10 @@ model Competition {
   rulesUrl            String?
   // Rules
   breakAndRunRule     Boolean           @default(false)
+  // Round-47 — scheduling cap from Figma. When set, the matchday generator
+  // refuses to schedule more than this many matches at the same venue on
+  // the same matchday. Null = no cap. UI input on the wizard Schedule step.
+  maxGamesPerVenuePerMatchday Int?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 

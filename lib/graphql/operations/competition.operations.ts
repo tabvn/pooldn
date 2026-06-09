@@ -46,6 +46,7 @@ export const CompetitionEditableQuery = graphql(/* GraphQL */ `
       minPlayersPerTeam
       maxPlayersPerTeam
       breakAndRunRule
+      maxGamesPerVenuePerMatchday
       pointsWin
       pointsDraw
       pointsLoss

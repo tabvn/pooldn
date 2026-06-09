@@ -8,6 +8,37 @@ export const DashboardQuery = graphql(/* GraphQL */ `
       username
       role
     }
+    viewerTodayMatch {
+      id
+      status
+      scheduledAt
+      homeScore
+      awayScore
+      homeTeam {
+        id
+        name
+        logoUrl
+      }
+      awayTeam {
+        id
+        name
+        logoUrl
+      }
+      venue {
+        id
+        name
+      }
+      matchday {
+        id
+        number
+        competition {
+          id
+          name
+          slug
+          bannerUrl
+        }
+      }
+    }
     viewerNextMatch {
       id
       status

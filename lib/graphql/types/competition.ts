@@ -47,6 +47,10 @@ builder.prismaObject("Competition", {
     pointsLoss: t.exposeInt("pointsLoss"),
     isPublic: t.exposeBoolean("isPublic"),
     breakAndRunRule: t.exposeBoolean("breakAndRunRule"),
+    maxGamesPerVenuePerMatchday: t.exposeInt(
+      "maxGamesPerVenuePerMatchday",
+      { nullable: true },
+    ),
     blocks: t.relation("blocks", {
       query: () => ({ orderBy: { order: "asc" } }),
     }),
@@ -120,6 +124,7 @@ export const CreateCompetitionInput = builder.inputType(
       currency: t.string({ defaultValue: "VND" }),
       schedulingType: t.field({ type: SchedulingTypeEnum }),
       breakAndRunRule: t.boolean({ defaultValue: false }),
+      maxGamesPerVenuePerMatchday: t.int(),
       blocks: t.field({ type: [MatchFormatBlockInput] }),
     }),
   },

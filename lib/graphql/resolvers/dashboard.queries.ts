@@ -8,24 +8,53 @@ builder.queryFields((t) => ({
       "The viewer's next SCHEDULED match — where they captain either side, or organize the competition. Null if none.",
     resolve: async (query, _root, _args, ctx) => {
       if (!ctx.viewer) return null;
-      // A captain's next match: home or away team captained by viewer.
-      // An organizer's next match: in a competition they organize.
       return ctx.prisma.match.findFirst({
         ...query,
         where: {
           status: { in: ["SCHEDULED", "IN_PROGRESS"] },
-          OR: [
-            { homeTeam: { is: { captainId: ctx.viewer.id } } },
-            { awayTeam: { is: { captainId: ctx.viewer.id } } },
-            {
-              matchday: {
-                is: { competition: { is: { organizerId: ctx.viewer.id } } },
-              },
-            },
-          ],
+          OR: viewerMatchOR(ctx.viewer.id),
+        },
+        orderBy: { scheduledAt: "asc" },
+      });
+    },
+  }),
+
+  viewerTodayMatch: t.prismaField({
+    type: "Match",
+    nullable: true,
+    description:
+      "Round-47 — the viewer's match scheduled for TODAY (server-local day window). Same scope as viewerNextMatch but date-bounded so the dashboard's 'Today's Match' card actually says what it claims.",
+    resolve: async (query, _root, _args, ctx) => {
+      if (!ctx.viewer) return null;
+      const now = new Date();
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(now);
+      end.setHours(23, 59, 59, 999);
+      return ctx.prisma.match.findFirst({
+        ...query,
+        where: {
+          status: { in: ["SCHEDULED", "IN_PROGRESS"] },
+          scheduledAt: { gte: start, lte: end },
+          OR: viewerMatchOR(ctx.viewer.id),
         },
         orderBy: { scheduledAt: "asc" },
       });
     },
   }),
 }));
+
+// Shared OR clause for "matches the viewer is involved in" — captain on
+// either side, or organizer of the competition. Extracted so viewer*Match
+// queries can't drift apart.
+function viewerMatchOR(viewerId: string) {
+  return [
+    { homeTeam: { is: { captainId: viewerId } } },
+    { awayTeam: { is: { captainId: viewerId } } },
+    {
+      matchday: {
+        is: { competition: { is: { organizerId: viewerId } } },
+      },
+    },
+  ];
+}
