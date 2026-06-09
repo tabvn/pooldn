@@ -222,10 +222,11 @@ async function main() {
     slug: string;
     name: string;
     captainId: string;
+    cityId: string;
   }) =>
     prisma.team.upsert({
       where: { slug: input.slug },
-      update: { logoUrl: teamLogoFor(input.slug) },
+      update: { logoUrl: teamLogoFor(input.slug), cityId: input.cityId },
       create: { ...input, logoUrl: teamLogoFor(input.slug) },
     });
 
@@ -233,21 +234,25 @@ async function main() {
     slug: "gen-filling-station",
     name: "Gen Filling Station",
     captainId: gen.id,
+    cityId: daNang.id,
   });
   const tigers = await upsertTeam({
     slug: "da-nang-tigers",
     name: "Da Nang Tigers",
     captainId: thomas.id,
+    cityId: daNang.id,
   });
   const haiCrew = await upsertTeam({
     slug: "hai-crew",
     name: "Hai's Crew",
     captainId: hai.id,
+    cityId: daNang.id,
   });
   const sharks = await upsertTeam({
     slug: "pool-sharks",
     name: "Pool Sharks",
     captainId: gen.id,
+    cityId: daNang.id,
   });
 
   // members
