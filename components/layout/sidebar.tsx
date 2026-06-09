@@ -4,25 +4,61 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery } from "@apollo/client/react";
+import { Tooltip } from "@base-ui-components/react/tooltip";
 import {
-  Asterisk,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Flag,
-  Home,
   Inbox,
-  LifeBuoy,
-  Lightbulb,
   MapPin,
   ShieldCheck,
-  Target,
   Trophy,
-  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
 import { useAppShell } from "./app-shell";
+import {
+  BallMark,
+  CommunityIcon,
+  HelpIcon,
+  PoolhubIcon,
+  SuggestIcon,
+  TeamsIcon,
+  VenuesIcon,
+  Wordmark,
+} from "./sidebar-icons";
+
+/**
+ * Wraps a sidebar item in a Base UI Tooltip when the sidebar is collapsed,
+ * showing the item's label to the right of the icon. Uses a portal so the
+ * popup escapes the sidebar's `overflow-y-auto` clip.
+ */
+function CollapsedTooltip({
+  label,
+  enabled,
+  children,
+}: {
+  label: string;
+  enabled: boolean;
+  children: React.ReactNode;
+}) {
+  if (!enabled) return <>{children}</>;
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger render={<span className="block" />}>
+        {children}
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Positioner side="right" sideOffset={8} align="center">
+          <Tooltip.Popup className="z-50 rounded-md border border-border bg-popover px-2 py-1 text-xs font-medium text-popover-foreground shadow-md">
+            {label}
+          </Tooltip.Popup>
+        </Tooltip.Positioner>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  );
+}
 
 type NavItem = {
   href: string;
@@ -35,31 +71,31 @@ const NAV: NavItem[] = [
   {
     href: "/",
     label: "Poolhub",
-    icon: <Target className="size-4" />,
+    icon: <PoolhubIcon className="size-5" />,
     matchPrefixes: ["/", "/competitions"],
   },
   {
     href: "/teams",
     label: "Teams",
-    icon: <Users className="size-4" />,
+    icon: <TeamsIcon className="size-5" />,
     matchPrefixes: ["/teams"],
   },
   {
     href: "/rankings",
     label: "Rankings",
-    icon: <Trophy className="size-4" />,
+    icon: <Trophy className="size-5" />,
     matchPrefixes: ["/rankings"],
   },
   {
     href: "/venues",
     label: "Venues",
-    icon: <Home className="size-4" />,
+    icon: <VenuesIcon className="size-5" />,
     matchPrefixes: ["/venues"],
   },
   {
     href: "/community",
     label: "Community",
-    icon: <Asterisk className="size-4" />,
+    icon: <CommunityIcon className="size-5" />,
     matchPrefixes: ["/community"],
   },
 ];
@@ -82,6 +118,7 @@ export function Sidebar() {
   const { collapsed, toggleCollapsed } = useAppShell();
 
   return (
+    <Tooltip.Provider delay={150} closeDelay={0}>
     <aside
       data-collapsed={collapsed || undefined}
       className={cn(
@@ -89,28 +126,26 @@ export function Sidebar() {
         collapsed ? "w-[68px] px-2" : "w-[260px] px-4",
       )}
     >
-      {/* Logo lockup */}
-      <Link
-        href="/"
-        className={cn(
-          "flex items-center gap-2 mb-6",
-          collapsed ? "justify-center px-0" : "px-2",
-        )}
-        title={collapsed ? "Pool DN" : undefined}
-      >
-        <span className="relative inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-black text-sm">
-          <span className="absolute inset-0 rounded-full ring-2 ring-primary/30" />
-          8
-        </span>
-        {!collapsed ? (
-          <>
-            <span className="text-sm font-bold tracking-tight">Pool DN</span>
-            <span className="ml-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
-              Beta
-            </span>
-          </>
-        ) : null}
-      </Link>
+      {/* Logo lockup — 8-ball mark + "POOLDN" wordmark from Figma. */}
+      <CollapsedTooltip label="PoolDN" enabled={collapsed}>
+        <Link
+          href="/"
+          className={cn(
+            "flex items-center gap-2 mb-6",
+            collapsed ? "justify-center px-0" : "px-2",
+          )}
+        >
+          <BallMark className="size-[30px] shrink-0 text-primary" />
+          {!collapsed ? (
+            <>
+              <Wordmark className="h-[12px] w-auto text-primary" />
+              <span className="ml-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
+                Beta
+              </span>
+            </>
+          ) : null}
+        </Link>
+      </CollapsedTooltip>
 
       {/* Collapse toggle */}
       <button
@@ -136,35 +171,39 @@ export function Sidebar() {
         {NAV.map((item) => {
           const active = isActive(pathname, item);
           return (
-            <Link
+            <CollapsedTooltip
               key={item.href}
-              href={item.href}
-              data-active={active || undefined}
-              title={collapsed ? item.label : undefined}
-              className={cn(
-                "relative flex items-center gap-3 rounded-md py-2 text-sm font-medium transition-colors",
-                collapsed ? "justify-center px-2" : "px-3",
-                active
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
-              )}
+              label={item.label}
+              enabled={collapsed}
             >
-              {active ? (
-                <span
-                  aria-hidden
-                  className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-primary"
-                />
-              ) : null}
-              <span
+              <Link
+                href={item.href}
+                data-active={active || undefined}
                 className={cn(
-                  "shrink-0 transition-colors",
-                  active ? "text-primary" : "text-muted-foreground",
+                  "relative flex items-center gap-3 rounded-md py-2 text-sm font-medium transition-colors",
+                  collapsed ? "justify-center px-2" : "px-3",
+                  active
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
                 )}
               >
-                {item.icon}
-              </span>
-              {!collapsed ? item.label : null}
-            </Link>
+                {active ? (
+                  <span
+                    aria-hidden
+                    className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-primary"
+                  />
+                ) : null}
+                <span
+                  className={cn(
+                    "shrink-0 transition-colors",
+                    active ? "text-primary" : "text-muted-foreground",
+                  )}
+                >
+                  {item.icon}
+                </span>
+                {!collapsed ? item.label : null}
+              </Link>
+            </CollapsedTooltip>
           );
         })}
         {isAdmin ? (
@@ -199,30 +238,33 @@ export function Sidebar() {
 
       {/* Utility links — labels hidden in collapsed mode */}
       <div className="flex flex-col gap-0.5 pt-3 mt-1">
-        <Link
-          href="/feedback"
-          title={collapsed ? "Suggest a feature" : undefined}
-          className={cn(
-            "flex items-center gap-2 py-1.5 text-xs text-muted-foreground hover:text-foreground",
-            collapsed ? "justify-center px-2" : "px-3",
-          )}
-        >
-          <Lightbulb className="size-3.5" />
-          {!collapsed ? "Suggest a Feature" : null}
-        </Link>
-        <Link
-          href="/help"
-          title={collapsed ? "Need help" : undefined}
-          className={cn(
-            "flex items-center gap-2 py-1.5 text-xs text-muted-foreground hover:text-foreground",
-            collapsed ? "justify-center px-2" : "px-3",
-          )}
-        >
-          <LifeBuoy className="size-3.5" />
-          {!collapsed ? "Need Help?" : null}
-        </Link>
+        <CollapsedTooltip label="Suggest a Feature" enabled={collapsed}>
+          <Link
+            href="/feedback"
+            className={cn(
+              "flex items-center gap-2 py-1.5 text-xs text-muted-foreground hover:text-foreground",
+              collapsed ? "justify-center px-2" : "px-3",
+            )}
+          >
+            <SuggestIcon className="size-4" />
+            {!collapsed ? "Suggest a Feature" : null}
+          </Link>
+        </CollapsedTooltip>
+        <CollapsedTooltip label="Need Help?" enabled={collapsed}>
+          <Link
+            href="/help"
+            className={cn(
+              "flex items-center gap-2 py-1.5 text-xs text-muted-foreground hover:text-foreground",
+              collapsed ? "justify-center px-2" : "px-3",
+            )}
+          >
+            <HelpIcon className="size-4" />
+            {!collapsed ? "Need Help?" : null}
+          </Link>
+        </CollapsedTooltip>
       </div>
     </aside>
+    </Tooltip.Provider>
   );
 }
 
@@ -296,20 +338,20 @@ function AdminSubmenu({
         {ADMIN_ITEMS.map((item) => {
           const active = pathname === item.href;
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              title={item.label}
-              data-active={active || undefined}
-              className={cn(
-                "flex items-center justify-center rounded-md px-2 py-2 text-sm font-medium transition-colors",
-                active
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
-              )}
-            >
-              {item.icon}
-            </Link>
+            <CollapsedTooltip key={item.href} label={item.label} enabled>
+              <Link
+                href={item.href}
+                data-active={active || undefined}
+                className={cn(
+                  "flex items-center justify-center rounded-md px-2 py-2 text-sm font-medium transition-colors",
+                  active
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+                )}
+              >
+                {item.icon}
+              </Link>
+            </CollapsedTooltip>
           );
         })}
       </div>
