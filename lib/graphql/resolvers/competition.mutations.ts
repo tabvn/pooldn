@@ -44,6 +44,7 @@ const UpdateCompetitionInput = builder.inputType("UpdateCompetitionInput", {
   fields: (t) => ({
     name: t.string(),
     description: t.string(),
+    rulesUrl: t.string(),
     cityId: t.id(),
     gameType: t.string(),
     format: t.string(),
@@ -67,18 +68,11 @@ const UpdateCompetitionInput = builder.inputType("UpdateCompetitionInput", {
 builder.mutationFields((t) => ({
   createCompetition: t.prismaField({
     type: "Competition",
-    description: "Create a competition (DRAFT). Requires ORGANIZER or SUPER_ADMIN.",
+    description:
+      "Create a competition (DRAFT). Any signed-in user can run their own tournament — they become its organizer and get full manage rights on it via per-entity CASL (mirrors per-team captaincy).",
     args: { input: t.arg({ type: CreateCompetitionInput, required: true }) },
     resolve: (query, _root, args, ctx) => {
       requireUser(ctx.viewer);
-      if (
-        ctx.viewer.role !== "ORGANIZER" &&
-        ctx.viewer.role !== "SUPER_ADMIN"
-      ) {
-        throw new GraphQLError("Only organizers can create competitions", {
-          extensions: { code: "FORBIDDEN" },
-        });
-      }
       const viewerId = ctx.viewer.id;
       const i = args.input;
       return ctx.prisma.$transaction(async (tx) => {
@@ -87,6 +81,7 @@ builder.mutationFields((t) => ({
             name: i.name,
             slug: i.slug,
             description: i.description ?? null,
+            rulesUrl: i.rulesUrl ?? null,
             cityId: i.cityId ? String(i.cityId) : null,
             organizerId: viewerId,
             type: i.type ?? "TEAMS",
@@ -151,6 +146,7 @@ builder.mutationFields((t) => ({
       const data: Record<string, unknown> = {
         name: i.name ?? undefined,
         description: i.description === null ? null : i.description ?? undefined,
+        rulesUrl: i.rulesUrl === null ? null : i.rulesUrl ?? undefined,
         bannerUrl: i.bannerUrl === null ? null : i.bannerUrl ?? undefined,
       };
       if (editableEverything) {
@@ -316,6 +312,54 @@ builder.mutationFields((t) => ({
     },
   }),
 
+  reopenCompetition: t.prismaField({
+    type: "Competition",
+    description:
+      "Round-20 — flip a COMPLETED competition back to ONGOING. Clears the frozen MVP flag and the winner banner state. Standings recompute from live match data.",
+    args: { id: t.arg.id({ required: true }) },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const id = String(args.id);
+      const c = await ctx.prisma.competition.findUniqueOrThrow({ where: { id } });
+      ensure(ctx.ability, "update", {
+        ...c,
+        __caslSubjectType__: "Competition",
+      });
+      if (c.status !== "COMPLETED") {
+        throw new GraphQLError("Only COMPLETED competitions can be reopened", {
+          extensions: { code: "INVALID_TRANSITION" },
+        });
+      }
+      return ctx.prisma.$transaction(async (tx) => {
+        const updated = await tx.competition.update({
+          ...query,
+          where: { id },
+          data: { status: "ONGOING" },
+        });
+        // Clear the MVP flag so the winner banner falls back to "TBD" until
+        // recomputeMvp runs on the next completion.
+        await tx.playerCompStat.updateMany({
+          where: { competitionId: id },
+          data: { isMvp: false },
+        });
+        // Recompute standings live so any further match edits flow through.
+        const { recomputeStandings } = await import(
+          "@/lib/services/standings.service"
+        );
+        await recomputeStandings(tx as never, id);
+        await new NotificationService(tx).create({
+          type: "COMPETITION_STARTED",
+          title: `${c.name} has been reopened`,
+          message: "The organizer reopened this competition for further play.",
+          recipients: [c.organizerId],
+          entity: { type: "COMPETITION", id: c.id, slug: c.slug },
+          groupKey: `reopen-${c.id}`,
+        });
+        return updated;
+      });
+    },
+  }),
+
   cancelCompetition: t.prismaField({
     type: "Competition",
     description: "Cancel from any non-final status.",
@@ -328,6 +372,15 @@ builder.mutationFields((t) => ({
         ["DRAFT", "OPEN_FOR_APPLICATIONS", "APPLICATIONS_CLOSED", "ONGOING"],
         "CANCELLED",
       ),
+  }),
+
+  reopenCancelledCompetition: t.prismaField({
+    type: "Competition",
+    description:
+      "Send a CANCELLED competition back to DRAFT so the organizer can rework or republish it.",
+    args: { id: t.arg.id({ required: true }) },
+    resolve: (query, _root, args, ctx) =>
+      transition(ctx, query, String(args.id), ["CANCELLED"], "DRAFT"),
   }),
 
   applyToCompetition: t.prismaField({
@@ -392,6 +445,17 @@ builder.mutationFields((t) => ({
               applicationPlayers: playerRows.length
                 ? { create: playerRows }
                 : undefined,
+            },
+          });
+        }
+        // Block re-applies for PENDING / WAITLISTED / APPROVED — otherwise we
+        // fall through to .create() and crash on the @@unique constraint.
+        if (existing) {
+          throw new GraphQLError("Your team has already applied", {
+            extensions: {
+              code: "ALREADY_APPLIED",
+              applicationStatus: existing.status,
+              applicationId: existing.id,
             },
           });
         }

@@ -21,7 +21,11 @@ export function PageTitle({
   return (
     <section
       className={cn(
-        "relative flex flex-col gap-3 border-b border-border bg-card/40 px-8 py-8 overflow-hidden",
+        "relative flex flex-col gap-3 border-b border-border px-4 md:px-8 py-6 md:py-8 overflow-hidden",
+        // Round-45 — when there's no banner image, fall back to a subtle
+        // brand gradient instead of a flat band. A small decorative ring
+        // sits at the top-right for visual hierarchy.
+        bannerUrl ? "" : "bg-card/40 bg-gradient-to-br from-primary/15 via-card/40 to-info/10",
         className,
       )}
       style={
@@ -34,6 +38,12 @@ export function PageTitle({
           : undefined
       }
     >
+      {!bannerUrl ? (
+        <span
+          aria-hidden
+          className="absolute -top-16 -right-16 size-48 rounded-full bg-primary/15 blur-3xl pointer-events-none"
+        />
+      ) : null}
       {eyebrow ? (
         <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
           {eyebrow}

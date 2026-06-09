@@ -75,6 +75,24 @@ export const DeleteCompetitionMutation = graphql(/* GraphQL */ `
   }
 `);
 
+export const ReopenCompetitionMutation = graphql(/* GraphQL */ `
+  mutation ReopenCompetition($id: ID!) {
+    reopenCompetition(id: $id) {
+      id
+      status
+    }
+  }
+`);
+
+export const ReopenCancelledCompetitionMutation = graphql(/* GraphQL */ `
+  mutation ReopenCancelledCompetition($id: ID!) {
+    reopenCancelledCompetition(id: $id) {
+      id
+      status
+    }
+  }
+`);
+
 export const ApplyToCompetitionMutation = graphql(/* GraphQL */ `
   mutation ApplyToCompetition($input: ApplyToCompetitionInput!) {
     applyToCompetition(input: $input) {

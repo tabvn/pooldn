@@ -116,7 +116,46 @@ export const ReviewJoinRequestMutation = graphql(/* GraphQL */ `
 `);
 
 export const LeaveTeamMutation = graphql(/* GraphQL */ `
-  mutation LeaveTeam($teamId: ID!) {
-    leaveTeam(teamId: $teamId)
+  mutation LeaveTeam($teamId: ID!, $reason: String) {
+    leaveTeam(teamId: $teamId, reason: $reason)
+  }
+`);
+
+export const TransferCaptaincyMutation = graphql(/* GraphQL */ `
+  mutation TransferCaptaincy($teamId: ID!, $newCaptainUserId: ID!) {
+    transferCaptaincy(teamId: $teamId, newCaptainUserId: $newCaptainUserId) {
+      id
+      captain {
+        id
+        name
+        username
+      }
+    }
+  }
+`);
+
+export const CancelJoinRequestMutation = graphql(/* GraphQL */ `
+  mutation CancelJoinRequest($id: ID!) {
+    cancelJoinRequest(id: $id) {
+      id
+      status
+    }
+  }
+`);
+
+export const MyJoinRequestsQuery = graphql(/* GraphQL */ `
+  query MyJoinRequests {
+    myJoinRequests {
+      id
+      status
+      message
+      createdAt
+      team {
+        id
+        slug
+        name
+        logoUrl
+      }
+    }
   }
 `);

@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@apollo/client/react";
-import { ChevronDown, LogOut, Settings, User as UserIcon } from "lucide-react";
+import {
+  ChevronDown,
+  LogOut,
+  Mail,
+  Settings,
+  User as UserIcon,
+} from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -67,6 +73,12 @@ export function ViewerMenu({
         >
           <UserIcon className="size-4" />
           <span>View profile</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          render={(props) => <Link href="/invitations" {...props} />}
+        >
+          <Mail className="size-4" />
+          <span>Invitations</span>
         </DropdownMenuItem>
         <DropdownMenuItem
           render={(props) => <Link href="/settings" {...props} />}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "@apollo/client/react";
+import { useMutation, useQuery, useSubscription } from "@apollo/client/react";
 import { Popover as PopoverPrimitive } from "@base-ui-components/react/popover";
 import { Bell, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,14 +12,14 @@ import {
   NotificationsConnectionQuery,
   UnreadNotificationCountQuery,
 } from "@/lib/graphql/operations/notification.operations";
-import { useNotificationStream } from "@/lib/notifications/use-notification-stream";
+import { NotificationReceivedSubscription } from "@/lib/graphql/operations/subscriptions.operations";
 
 /**
  * Header bell with a popover preview of recent notifications.
  *
- * Unread badge updates from a count query — polled every 30s AND nudged by
- * the SSE stream (lib/notifications/use-notification-stream) so a new
- * notification refreshes the count in well under a second.
+ * Unread badge updates from a count query — polled every 30s as fallback,
+ * AND nudged by the GraphQL `notificationReceived` subscription (SSE under
+ * the hood) so a fresh notification updates the badge sub-second.
  */
 export function NotificationBell({ signedIn }: { signedIn: boolean }) {
   const router = useRouter();
@@ -39,12 +39,15 @@ export function NotificationBell({ signedIn }: { signedIn: boolean }) {
   );
   const count = data?.unreadNotificationCount ?? 0;
 
-  // Realtime nudge: the SSE stream pings whenever a notification fires for
-  // the viewer; refetch the badge + popover list so the UI reflects state
-  // without waiting for the 30s poll.
-  useNotificationStream(signedIn, () => {
-    refetch();
-    recent.refetch();
+  // Realtime nudge: the `notificationReceived` GraphQL subscription delivers
+  // the row over SSE on every new notification for this viewer; refetch the
+  // badge + popover list so state reflects sub-second without the 30s poll.
+  useSubscription(NotificationReceivedSubscription, {
+    skip: !signedIn,
+    onData: () => {
+      refetch();
+      recent.refetch();
+    },
   });
 
   const nodes = recent.data?.notifications.nodes ?? [];
@@ -94,7 +97,7 @@ export function NotificationBell({ signedIn }: { signedIn: boolean }) {
       <PopoverPrimitive.Portal>
         <PopoverPrimitive.Positioner sideOffset={8} align="end">
           <PopoverPrimitive.Popup
-            className="w-[360px] rounded-xl border border-border bg-card text-card-foreground shadow-xl outline-none"
+            className="w-[min(360px,calc(100vw-1.5rem))] rounded-xl border border-border bg-card text-card-foreground shadow-xl outline-none"
             data-testid="notification-popover"
           >
             <div className="flex items-center justify-between border-b border-border px-4 py-3">

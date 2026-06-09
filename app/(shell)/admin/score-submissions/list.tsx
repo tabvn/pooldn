@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery } from "@apollo/client/react";
+import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageTitle } from "@/components/layout/page-title";
+import { useToast } from "@/components/ui/toast";
 import type { ResultOf } from "@graphql-typed-document-node/core";
 import {
   MatchScoreSubmissionsListQuery,
@@ -20,6 +22,7 @@ type Submission = NonNullable<
 >[number];
 
 export function SubmissionsList() {
+  const toast = useToast();
   const { data, loading, refetch } = useQuery(MatchScoreSubmissionsListQuery);
   const [review, { loading: reviewing }] = useMutation(ReviewMatchScoreMutation);
   const [resolveFor, setResolveFor] = useState<string | null>(null);
@@ -37,13 +40,21 @@ export function SubmissionsList() {
   const matches = Array.from(byMatch.entries());
 
   async function onResolve(matchId: string) {
-    await review({
-      variables: {
-        input: { matchId, homeScore: scoreHome, awayScore: scoreAway },
-      },
-    });
-    setResolveFor(null);
-    await refetch();
+    try {
+      await review({
+        variables: {
+          input: { matchId, homeScore: scoreHome, awayScore: scoreAway },
+        },
+      });
+      toast.success("Score resolved");
+      setResolveFor(null);
+      await refetch();
+    } catch (e) {
+      toast.error(
+        "Could not resolve",
+        e instanceof Error ? e.message : "Try again.",
+      );
+    }
   }
 
   return (
@@ -87,10 +98,20 @@ export function SubmissionsList() {
                         {m.homeTeam?.name ?? "Home"} vs{" "}
                         {m.awayTeam?.name ?? "Away"}
                       </Link>
-                      <span className="block text-xs font-normal text-muted-foreground">
+                      <Link
+                        href={`/competitions/${m.matchday.competition.slug}`}
+                        className="mt-0.5 inline-flex items-center gap-1.5 text-xs font-normal text-muted-foreground hover:underline"
+                      >
+                        <Avatar
+                          size="sm"
+                          src={m.matchday.competition.bannerUrl ?? undefined}
+                          fallback={m.matchday.competition.name}
+                          shape="competition"
+                          className="size-4"
+                        />
                         {m.matchday.competition.name} · Matchday{" "}
                         {m.matchday.number}
-                      </span>
+                      </Link>
                     </CardTitle>
                     {conflict ? (
                       <Badge variant="warning">CONFLICT</Badge>

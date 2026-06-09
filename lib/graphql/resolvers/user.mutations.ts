@@ -1,7 +1,11 @@
+import { GraphQLError } from "graphql";
+import bcrypt from "bcryptjs";
 import { builder } from "../builder";
 import { CreateUserInput, UpdateProfileInput } from "../types/user";
 import { createUser } from "@/lib/services/user.service";
 import { requireUser } from "@/lib/casl/guard";
+
+const BCRYPT_ROUNDS = 10;
 
 builder.mutationFields((t) => ({
   createUser: t.prismaField({
@@ -47,6 +51,193 @@ builder.mutationFields((t) => ({
               : undefined,
         },
       });
+    },
+  }),
+
+  changePassword: t.boolean({
+    description:
+      "Change the viewer's own password. Requires the current password as a credential check.",
+    args: {
+      currentPassword: t.arg.string({ required: true }),
+      newPassword: t.arg.string({ required: true }),
+    },
+    resolve: async (_root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const current = String(args.currentPassword);
+      const next = String(args.newPassword);
+      if (next.length < 8) {
+        throw new GraphQLError("New password must be at least 8 characters", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      if (next === current) {
+        throw new GraphQLError("New password must differ from the current one", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const user = await ctx.prisma.user.findUniqueOrThrow({
+        where: { id: ctx.viewer.id },
+        select: { password: true },
+      });
+      const ok = await bcrypt.compare(current, user.password);
+      if (!ok) {
+        throw new GraphQLError("Current password is incorrect", {
+          extensions: { code: "INVALID_CREDENTIALS" },
+        });
+      }
+      const hashed = await bcrypt.hash(next, BCRYPT_ROUNDS);
+      await ctx.prisma.user.update({
+        where: { id: ctx.viewer.id },
+        data: { password: hashed },
+      });
+      return true;
+    },
+  }),
+
+  changeEmail: t.prismaField({
+    type: "User",
+    description:
+      "Change the viewer's own email. Requires the current password and the new address must be unique.",
+    args: {
+      newEmail: t.arg.string({ required: true }),
+      currentPassword: t.arg.string({ required: true }),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const email = String(args.newEmail).trim().toLowerCase();
+      const password = String(args.currentPassword);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new GraphQLError("Enter a valid email address", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const user = await ctx.prisma.user.findUniqueOrThrow({
+        where: { id: ctx.viewer.id },
+        select: { password: true, email: true },
+      });
+      if (email === user.email.toLowerCase()) {
+        throw new GraphQLError("That's already your email", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const ok = await bcrypt.compare(password, user.password);
+      if (!ok) {
+        throw new GraphQLError("Current password is incorrect", {
+          extensions: { code: "INVALID_CREDENTIALS" },
+        });
+      }
+      // Uniqueness check before the update so the error is informative instead
+      // of a raw "Unique constraint failed" message from Prisma.
+      const taken = await ctx.prisma.user.findUnique({
+        where: { email },
+        select: { id: true },
+      });
+      if (taken && taken.id !== ctx.viewer.id) {
+        throw new GraphQLError("That email is already in use", {
+          extensions: { code: "EMAIL_TAKEN" },
+        });
+      }
+      return ctx.prisma.user.update({
+        ...query,
+        where: { id: ctx.viewer.id },
+        // Round-23 — flipping the email resets verification status. A
+        // confirm-by-link flow is on the roadmap; until then the unverified
+        // badge in Settings is the gentle nudge.
+        data: { email, emailVerified: false },
+      });
+    },
+  }),
+
+  resendEmailVerification: t.boolean({
+    description:
+      "Stub for now — flips emailVerified back to false so the UI prompt re-appears. The real send-link flow will live here.",
+    resolve: async (_root, _args, ctx) => {
+      requireUser(ctx.viewer);
+      await ctx.prisma.user.update({
+        where: { id: ctx.viewer.id },
+        data: { emailVerified: false },
+      });
+      return true;
+    },
+  }),
+
+  adminUpdateUser: t.prismaField({
+    type: "User",
+    description:
+      "Round-21 — SUPER_ADMIN can edit any user (name, bio, role, nationality, isActive). Admins use this when a user can't update something themselves.",
+    args: {
+      id: t.arg.id({ required: true }),
+      name: t.arg.string(),
+      bio: t.arg.string(),
+      nationality: t.arg.string(),
+      role: t.arg.string(),
+      isActive: t.arg.boolean(),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      if (ctx.viewer.role !== "SUPER_ADMIN") {
+        throw new GraphQLError("Admins only", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+      const allowedRoles = [
+        "SUPER_ADMIN",
+        "ORGANIZER",
+        "TEAM_CAPTAIN",
+        "PLAYER",
+        "VIEWER",
+      ] as const;
+      if (args.role && !allowedRoles.includes(args.role as never)) {
+        throw new GraphQLError("Invalid role", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      return ctx.prisma.user.update({
+        ...query,
+        where: { id: String(args.id) },
+        data: {
+          name: args.name ?? undefined,
+          bio: args.bio === null ? null : args.bio ?? undefined,
+          nationality:
+            args.nationality === null
+              ? null
+              : args.nationality ?? undefined,
+          role: (args.role as never) ?? undefined,
+          isActive: args.isActive ?? undefined,
+        },
+      });
+    },
+  }),
+
+  deactivateAccount: t.boolean({
+    description:
+      "Round-23 danger zone — soft-deactivate the viewer's account. Requires current password and matching username confirmation. Sets isActive=false; the user can be reactivated by an admin.",
+    args: {
+      currentPassword: t.arg.string({ required: true }),
+      confirmUsername: t.arg.string({ required: true }),
+    },
+    resolve: async (_root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const user = await ctx.prisma.user.findUniqueOrThrow({
+        where: { id: ctx.viewer.id },
+        select: { password: true, username: true },
+      });
+      if (String(args.confirmUsername) !== user.username) {
+        throw new GraphQLError("Confirmation doesn't match your username", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const ok = await bcrypt.compare(String(args.currentPassword), user.password);
+      if (!ok) {
+        throw new GraphQLError("Current password is incorrect", {
+          extensions: { code: "INVALID_CREDENTIALS" },
+        });
+      }
+      await ctx.prisma.user.update({
+        where: { id: ctx.viewer.id },
+        data: { isActive: false },
+      });
+      return true;
     },
   }),
 }));

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -97,6 +98,51 @@ export default async function VenueDetailPage({
                 </a>
               </div>
             ) : null}
+          </CardContent>
+        </Card>
+
+        {/* Round-37 — Home teams */}
+        <Card data-testid="venue-home-teams">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Home teams</CardTitle>
+              <Badge variant="neutral" size="sm">
+                {v.homeTeamCount}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {v.homeTeams.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No teams call this venue home yet.
+              </p>
+            ) : (
+              <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                {v.homeTeams.map((t) => (
+                  <li key={t.id}>
+                    <Link
+                      href={`/teams/${t.slug}`}
+                      className="flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2 hover:border-primary/40"
+                    >
+                      <Avatar
+                        size="md"
+                        src={t.logoUrl ?? undefined}
+                        fallback={t.name}
+                        shape="team"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold">
+                          {t.name}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Captain {t.captain.name} · {t.members.length} members
+                        </div>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       </div>

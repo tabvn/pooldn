@@ -1,3 +1,4 @@
+import { accessibleBy } from "@casl/prisma";
 import { GraphQLError } from "graphql";
 import { builder } from "../builder";
 import { requireUser } from "@/lib/casl/guard";
@@ -17,6 +18,58 @@ builder.prismaObject("Follow", {
 });
 
 builder.queryFields((t) => ({
+  followers: t.prismaField({
+    type: ["User"],
+    description:
+      "Round-30 — users who follow a given competition or team. Cursor-paginated by Follow.id.",
+    args: {
+      entityType: t.arg({ type: FollowEntityTypeEnum, required: true }),
+      entityId: t.arg.id({ required: true }),
+      first: t.arg.int({ defaultValue: 30 }),
+      after: t.arg.string(),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      const take = Math.min(Math.max(args.first ?? 30, 1), 100);
+      const rows = await ctx.prisma.follow.findMany({
+        where: {
+          entityType: args.entityType,
+          entityId: String(args.entityId),
+        },
+        orderBy: { createdAt: "desc" },
+        take,
+        ...(args.after
+          ? { skip: 1, cursor: { id: String(args.after) } }
+          : {}),
+        select: { id: true, userId: true },
+      });
+      if (rows.length === 0) return [];
+      const users = await ctx.prisma.user.findMany({
+        ...query,
+        where: { id: { in: rows.map((r) => r.userId) } },
+      });
+      const byId = new Map(users.map((u) => [u.id, u]));
+      // Preserve follow order (newest first).
+      return rows
+        .map((r) => byId.get(r.userId))
+        .filter((u): u is NonNullable<typeof u> => !!u);
+    },
+  }),
+
+  followerCountFor: t.int({
+    description: "Cheap count for the header chip.",
+    args: {
+      entityType: t.arg({ type: FollowEntityTypeEnum, required: true }),
+      entityId: t.arg.id({ required: true }),
+    },
+    resolve: (_root, args, ctx) =>
+      ctx.prisma.follow.count({
+        where: {
+          entityType: args.entityType,
+          entityId: String(args.entityId),
+        },
+      }),
+  }),
+
   myFollows: t.prismaField({
     type: ["Follow"],
     description:
@@ -49,7 +102,14 @@ builder.queryFields((t) => ({
       const ids = follows.map((f) => f.entityId);
       const rows = await ctx.prisma.competition.findMany({
         ...query,
-        where: { id: { in: ids } },
+        where: {
+          AND: [
+            // Round-47 — CASL filter hides DRAFT/CANCELLED comps from
+            // non-organizers even if they had previously followed them.
+            accessibleBy(ctx.ability, "read").ofType("Competition"),
+            { id: { in: ids } },
+          ],
+        },
       });
       // Preserve follow order.
       const byId = new Map(rows.map((r) => [r.id, r]));
@@ -141,6 +201,23 @@ builder.mutationFields((t) => ({
 
 // Add isFollowing as a computed boolean on Competition + Team.
 builder.prismaObjectFields("Competition", (t) => ({
+  myTeamApplication: t.prismaField({
+    type: "CompetitionApplication",
+    nullable: true,
+    description:
+      "If the viewer captains a team that has applied to this comp (any status), returns the most recent application — used by the CTA to gate Apply/Withdraw/Re-apply.",
+    resolve: (query, c, _args, ctx) => {
+      if (!ctx.viewer) return null;
+      return ctx.prisma.competitionApplication.findFirst({
+        ...query,
+        where: {
+          competitionId: c.id,
+          team: { captainId: ctx.viewer.id },
+        },
+        orderBy: { submittedAt: "desc" },
+      });
+    },
+  }),
   isFollowing: t.boolean({
     description: "True if the current viewer follows this competition.",
     resolve: async (c, _args, ctx) => {
@@ -189,6 +266,62 @@ builder.prismaObjectFields("Team", (t) => ({
       ctx.prisma.follow.count({
         where: { entityType: "TEAM", entityId: t2.id },
       }),
+  }),
+}));
+
+// Round-33 — viewer's pending invitation to THIS team (if any). Powers the
+// Accept/Decline banner on /teams/[slug].
+builder.prismaObjectFields("Team", (t) => ({
+  myInvitation: t.prismaField({
+    type: "TeamInvitation",
+    nullable: true,
+    description:
+      "The viewer's pending invitation to this team, if any. Null if no invite or already responded.",
+    resolve: (query, team, _args, ctx) => {
+      if (!ctx.viewer) return null;
+      return ctx.prisma.teamInvitation.findFirst({
+        ...query,
+        where: {
+          teamId: team.id,
+          invitedUserId: ctx.viewer.id,
+          status: "PENDING",
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    },
+  }),
+}));
+
+// Round-D — follow a player. The Follow model is already generic on
+// (entityType, entityId), so we just expose the same accessors on User.
+builder.prismaObjectFields("User", (t) => ({
+  isFollowing: t.boolean({
+    description: "True if the current viewer follows this user.",
+    resolve: async (u, _args, ctx) => {
+      if (!ctx.viewer) return false;
+      if (ctx.viewer.id === u.id) return false;
+      const f = await ctx.prisma.follow.findUnique({
+        where: {
+          userId_entityType_entityId: {
+            userId: ctx.viewer.id,
+            entityType: "USER",
+            entityId: u.id,
+          },
+        },
+        select: { id: true },
+      });
+      return !!f;
+    },
+  }),
+  followerCount: t.int({
+    resolve: (u, _args, ctx) =>
+      ctx.prisma.follow.count({
+        where: { entityType: "USER", entityId: u.id },
+      }),
+  }),
+  followingCount: t.int({
+    resolve: (u, _args, ctx) =>
+      ctx.prisma.follow.count({ where: { userId: u.id } }),
   }),
 }));
 

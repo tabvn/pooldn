@@ -9,6 +9,7 @@ import {
   Lock,
   MoreVertical,
   Pencil,
+  RotateCcw,
   Rocket,
   Trash2,
   XCircle,
@@ -21,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import type { CompetitionStatus } from "@/lib/generated/prisma/enums";
 import {
   CancelCompetitionMutation,
@@ -28,6 +30,8 @@ import {
   CompleteCompetitionMutation,
   DeleteCompetitionMutation,
   PublishCompetitionMutation,
+  ReopenCancelledCompetitionMutation,
+  ReopenCompetitionMutation,
   StartCompetitionMutation,
 } from "@/lib/graphql/operations/competition-mutations.operations";
 
@@ -42,12 +46,17 @@ export function LifecycleActions({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const [publish, publishState] = useMutation(PublishCompetitionMutation);
   const [closeApps, closeState] = useMutation(CloseApplicationsMutation);
   const [start, startState] = useMutation(StartCompetitionMutation);
   const [complete, completeState] = useMutation(CompleteCompetitionMutation);
   const [cancel, cancelState] = useMutation(CancelCompetitionMutation);
   const [del, delState] = useMutation(DeleteCompetitionMutation);
+  const [reopen, reopenState] = useMutation(ReopenCompetitionMutation);
+  const [reopenCancelled, reopenCancelledState] = useMutation(
+    ReopenCancelledCompetitionMutation,
+  );
 
   const busy =
     publishState.loading ||
@@ -55,11 +64,9 @@ export function LifecycleActions({
     startState.loading ||
     completeState.loading ||
     cancelState.loading ||
-    delState.loading;
-
-  // Round-12 TASK 2: keep the kebab visible on every non-cancelled status
-  // so organizers can still Edit ONGOING / COMPLETED competitions.
-  if (status === "CANCELLED") return null;
+    delState.loading ||
+    reopenState.loading ||
+    reopenCancelledState.loading;
 
   const variables = { id: competitionId };
   const refresh = () => router.refresh();
@@ -78,8 +85,17 @@ export function LifecycleActions({
       key: "edit",
       label: "Edit details",
       icon: <Pencil className="size-4" />,
-      show: true,
+      show: status !== "CANCELLED",
       href: `/competitions/${competitionSlug}/edit`,
+    },
+    {
+      key: "reopen-cancelled",
+      label: "Reopen — back to draft",
+      icon: <RotateCcw className="size-4" />,
+      show: status === "CANCELLED",
+      confirm:
+        "Reopen this cancelled competition back to DRAFT? You'll be able to edit and publish it again.",
+      run: () => reopenCancelled({ variables }),
     },
     {
       key: "publish",
@@ -110,6 +126,15 @@ export function LifecycleActions({
       show: status === "ONGOING",
       confirm: "Mark this competition completed?",
       run: () => complete({ variables }),
+    },
+    {
+      key: "reopen",
+      label: "Reopen competition",
+      icon: <RotateCcw className="size-4" />,
+      show: status === "COMPLETED",
+      confirm:
+        "Reopen this competition? Winner banner clears and standings recompute live.",
+      run: () => reopen({ variables }),
     },
     {
       key: "cancel",
@@ -165,11 +190,26 @@ export function LifecycleActions({
                 item.href
                   ? undefined
                   : async () => {
-                      if (item.confirm && !window.confirm(item.confirm))
-                        return;
+                      if (item.confirm) {
+                        const ok = await confirm({
+                          title: item.label,
+                          description: item.confirm,
+                          destructive: item.variant === "danger",
+                          confirmLabel: item.label,
+                        });
+                        if (!ok) return;
+                      }
                       if (!item.run) return;
-                      await item.run();
-                      refresh();
+                      try {
+                        await item.run();
+                        toast.success(`${item.label} done`);
+                        refresh();
+                      } catch (e) {
+                        toast.error(
+                          `${item.label} failed`,
+                          e instanceof Error ? e.message : "Try again.",
+                        );
+                      }
                     }
               }
             >

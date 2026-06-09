@@ -8,6 +8,7 @@ import { z } from "zod";
 import { useMutation, useQuery } from "@apollo/client/react";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
+import { useToast } from "@/components/ui/toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +26,10 @@ import {
 } from "@/lib/graphql/operations/team.operations";
 import { VenuesListQuery } from "@/lib/graphql/operations/venue.operations";
 import { ApplyToCompetitionMutation } from "@/lib/graphql/operations/competition-mutations.operations";
-import { CompetitionHeaderQuery } from "@/lib/graphql/operations/competition.operations";
+import {
+  CompetitionHeaderQuery,
+  ViewerQuery,
+} from "@/lib/graphql/operations/competition.operations";
 import { RosterConflictsQuery } from "@/lib/graphql/operations/roster.operations";
 
 const schema = z.object({
@@ -42,21 +46,25 @@ const STEPS = [
   { title: "Choose team", desc: "Select the team you want to enter." },
   { title: "Roster", desc: "Pick the players who will compete." },
   { title: "Message", desc: "Optional note to the organizer." },
-  { title: "Review", desc: "Confirm everything looks right." },
+  { title: "Review & Send", desc: "Confirm everything and send to the organizer." },
 ] as const;
 
 export function ApplyForm({ slug }: { slug: string }) {
   const router = useRouter();
+  const toast = useToast();
   const [step, setStep] = useState<StepIndex>(0);
   const compQuery = useQuery(CompetitionHeaderQuery, { variables: { slug } });
   const teamsQuery = useQuery(TeamsListQuery);
+  const viewerQuery = useQuery(ViewerQuery, { errorPolicy: "ignore" });
   const venuesQuery = useQuery(VenuesListQuery, { variables: {} });
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
   const teamDetailQuery = useQuery(TeamDetailQuery, {
     variables: { slug: teamForSlug(teamsQuery.data?.teams, selectedTeamId) ?? "" },
     skip: !selectedTeamId,
   });
-  const [apply, { error }] = useMutation(ApplyToCompetitionMutation);
+  const [apply, { error, loading: applying }] = useMutation(
+    ApplyToCompetitionMutation,
+  );
   const {
     register,
     handleSubmit,
@@ -69,7 +77,16 @@ export function ApplyForm({ slug }: { slug: string }) {
   });
 
   const competition = compQuery.data?.competition;
-  const teams = teamsQuery.data?.teams ?? [];
+  // Round-43 — restrict the dropdown to teams the viewer actually captains.
+  // The server already enforces this on applyToCompetition; the UI shouldn't
+  // tease teams the viewer can't actually use. SUPER_ADMIN sees all teams
+  // so they can apply on behalf of any captain.
+  const viewerId = viewerQuery.data?.viewer?.id;
+  const isAdmin = viewerQuery.data?.viewer?.role === "SUPER_ADMIN";
+  const allTeams = teamsQuery.data?.teams ?? [];
+  const teams = isAdmin
+    ? allTeams
+    : allTeams.filter((t) => t.captain?.id === viewerId);
   const venues = venuesQuery.data?.venues ?? [];
   const roster = teamDetailQuery.data?.team?.members ?? [];
   const conflictsQuery = useQuery(RosterConflictsQuery, {
@@ -114,19 +131,27 @@ export function ApplyForm({ slug }: { slug: string }) {
     // an earlier-step input must not skip ahead.
     if (step !== 3) return;
     if (!competition) return;
-    const result = await apply({
-      variables: {
-        input: {
-          competitionId: competition.id,
-          teamId: values.teamId,
-          message: values.message || null,
-          playerUserIds: values.playerUserIds,
+    try {
+      const result = await apply({
+        variables: {
+          input: {
+            competitionId: competition.id,
+            teamId: values.teamId,
+            message: values.message || null,
+            playerUserIds: values.playerUserIds,
+          },
         },
-      },
-    });
-    if (result.data?.applyToCompetition) {
-      router.push(`/competitions/${slug}`);
-      router.refresh();
+      });
+      if (result.data?.applyToCompetition) {
+        toast.success("Application submitted", "The organizer will review it.");
+        router.push(`/competitions/${slug}`);
+        router.refresh();
+      }
+    } catch (e) {
+      toast.error(
+        "Could not apply",
+        e instanceof Error ? e.message : "Try again.",
+      );
     }
   });
 
@@ -154,7 +179,9 @@ export function ApplyForm({ slug }: { slug: string }) {
                     "h-1.5 rounded-full transition-colors " +
                     (i <= step ? "bg-primary" : "bg-secondary")
                   }
-                  aria-label={`${s.title}${i === step ? " (current)" : ""}`}
+                  // Avoid the word "Team" in the aria-label so it doesn't
+                  // collide with getByLabel("Team") in the apply tests.
+                  aria-label={`Step ${i + 1}${i === step ? " (current)" : ""}`}
                 />
               </li>
             ))}
@@ -171,8 +198,13 @@ export function ApplyForm({ slug }: { slug: string }) {
                     id="teamId"
                     {...register("teamId")}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    disabled={teams.length === 0}
                   >
-                    <option value="">Select a team you captain…</option>
+                    <option value="">
+                      {teams.length === 0
+                        ? "You don't captain any teams yet"
+                        : "Select a team you captain…"}
+                    </option>
                     {teams.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.name}
@@ -309,9 +341,39 @@ export function ApplyForm({ slug }: { slug: string }) {
               </div>
             ) : null}
 
-            {/* Step 4 — Review */}
+            {/* Step 4 — Review & Send */}
             {step === 3 ? (
               <div className="space-y-3" data-testid="apply-review">
+                <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Competition
+                  </div>
+                  <div className="mt-0.5 font-semibold">
+                    {competition?.name ?? "—"}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    {competition?.format ? (
+                      <Badge variant="primary" size="sm">
+                        {String(competition.format)
+                          .replace(/_/g, " ")
+                          .toLowerCase()}
+                      </Badge>
+                    ) : null}
+                    {competition?.gameType ? (
+                      <Badge variant="neutral" size="sm">
+                        {String(competition.gameType)
+                          .replace("_", "-")
+                          .toLowerCase()}
+                      </Badge>
+                    ) : null}
+                    {competition?.startDate ? (
+                      <span>
+                        Starts{" "}
+                        {new Date(competition.startDate).toLocaleDateString()}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
                 <ReviewRow
                   label="Team"
                   value={selectedTeam?.name ?? "—"}
@@ -331,9 +393,10 @@ export function ApplyForm({ slug }: { slug: string }) {
                   value={watchedMessage ? watchedMessage : "—"}
                   onEdit={() => setStep(2)}
                 />
-                <p className="mt-2 rounded-md border border-border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
-                  After you submit, the organizer reviews and confirms your
-                  application. You'll be notified.
+                <p className="mt-2 rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-info-foreground">
+                  Hit <strong>Confirm &amp; Send</strong> to deliver your
+                  application to the organizer. They'll review it and you'll be
+                  notified when a decision is made.
                 </p>
               </div>
             ) : null}
@@ -368,10 +431,10 @@ export function ApplyForm({ slug }: { slug: string }) {
             <Button
               form="apply"
               type="submit"
-              loading={isSubmitting}
+              loading={isSubmitting || applying}
               iconAfter={<Check className="size-4" />}
             >
-              Submit application
+              Confirm &amp; Send
             </Button>
           )}
         </CardFooter>

@@ -8,8 +8,12 @@ builder.prismaObject("Team", {
     logoUrl: t.exposeString("logoUrl", { nullable: true }),
     description: t.exposeString("description", { nullable: true }),
     captain: t.relation("captain"),
+    city: t.relation("city", { nullable: true }),
+    homeVenue: t.relation("homeVenue", { nullable: true }),
     members: t.relation("members"),
     isActive: t.exposeBoolean("isActive"),
+    bannedAt: t.expose("bannedAt", { type: "DateTime", nullable: true }),
+    banReason: t.exposeString("banReason", { nullable: true }),
     createdAt: t.expose("createdAt", { type: "DateTime" }),
     // Competitions this team has applied to (any status) — used by team-landing
     // page to list "team's competitions".
@@ -43,5 +47,10 @@ export const CreateTeamInput = builder.inputType("CreateTeamInput", {
     slug: t.string({ required: true }),
     logoUrl: t.string(),
     description: t.string(),
+    cityId: t.id(),
+    homeVenueId: t.id(),
+    // Round-35 — usernames/emails to invite as ROSTER_INVITE on creation.
+    // Captain is added automatically; this list is opt-in.
+    invites: t.stringList(),
   }),
 });

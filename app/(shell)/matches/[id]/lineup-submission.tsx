@@ -8,6 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import {
+  ApproveLineupEditMutation,
+  RejectLineupEditMutation,
+  RequestLineupEditMutation,
   SubmitLineupMutation,
   TeamRosterQuery,
 } from "@/lib/graphql/operations/match.operations";
@@ -66,10 +69,14 @@ export function LineupSubmission({
   blocks,
   viewerId,
   viewerRole,
+  matchStatus,
   homeTeam,
   awayTeam,
   homeLineupSubmittedAt,
   awayLineupSubmittedAt,
+  lineupEditRequestedAt,
+  lineupEditRequestedById,
+  lineupEditRequestedSide,
   frames,
   onSubmitted,
 }: {
@@ -77,10 +84,14 @@ export function LineupSubmission({
   blocks: Block[];
   viewerId: string | undefined;
   viewerRole: string | undefined;
+  matchStatus: string;
   homeTeam: { id: string; name: string; captain?: { id: string } | null } | null;
   awayTeam: { id: string; name: string; captain?: { id: string } | null } | null;
   homeLineupSubmittedAt: string | null;
   awayLineupSubmittedAt: string | null;
+  lineupEditRequestedAt: string | null;
+  lineupEditRequestedById: string | null;
+  lineupEditRequestedSide: string | null;
   frames: Array<{
     frameNumber: number;
     homePlayerRef?: { id: string; name: string; avatarUrl?: string | null } | null;
@@ -145,6 +156,64 @@ export function LineupSubmission({
   });
 
   const [submit, { loading: submitting }] = useMutation(SubmitLineupMutation);
+  const [requestEdit, { loading: requesting }] = useMutation(
+    RequestLineupEditMutation,
+  );
+  const [approveEdit, { loading: approving }] = useMutation(
+    ApproveLineupEditMutation,
+  );
+  const [rejectEdit, { loading: rejecting }] = useMutation(
+    RejectLineupEditMutation,
+  );
+
+  const editPending = !!lineupEditRequestedAt;
+  const iAmRequester =
+    editPending && !!viewerId && lineupEditRequestedById === viewerId;
+  const iCanRespond = editPending && !!side && !iAmRequester;
+  // The captain can ask for an edit only when both lineups are locked AND the
+  // match hasn't started — once frames are being played, edits could rewrite
+  // history. SUPER_ADMIN can always override via direct mutation.
+  const canRequestEdit =
+    !!side && bothSubmitted && !editPending && matchStatus === "SCHEDULED";
+
+  async function onRequestEdit() {
+    try {
+      await requestEdit({ variables: { matchId } });
+      toast.success("Edit request sent to your opponent");
+      await onSubmitted();
+    } catch (e) {
+      toast.error(
+        "Could not request edit",
+        e instanceof Error ? e.message : "Try again.",
+      );
+    }
+  }
+
+  async function onApprove() {
+    try {
+      await approveEdit({ variables: { matchId } });
+      toast.success("Edit approved — lineups re-opened");
+      await onSubmitted();
+    } catch (e) {
+      toast.error(
+        "Could not approve",
+        e instanceof Error ? e.message : "Try again.",
+      );
+    }
+  }
+
+  async function onReject() {
+    try {
+      await rejectEdit({ variables: { matchId } });
+      toast.success("Edit request rejected");
+      await onSubmitted();
+    } catch (e) {
+      toast.error(
+        "Could not reject",
+        e instanceof Error ? e.message : "Try again.",
+      );
+    }
+  }
 
   async function onSubmit() {
     const slots = frameRows
@@ -213,7 +282,44 @@ export function LineupSubmission({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {bothSubmitted ? (
+        {iCanRespond ? (
+          <div
+            className="space-y-2 rounded-md border border-teal-500/40 bg-teal-500/10 px-3 py-2 text-xs text-teal-200"
+            data-testid="lineup-edit-incoming"
+          >
+            <p className="font-semibold text-teal-100">
+              Opponent Requested Edit
+            </p>
+            <p>You will be able to edit your lineup as well.</p>
+            <div className="flex items-center gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="success"
+                onClick={onApprove}
+                loading={approving}
+                data-testid="lineup-edit-approve"
+              >
+                Approve
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={onReject}
+                loading={rejecting}
+                data-testid="lineup-edit-reject"
+              >
+                Reject
+              </Button>
+            </div>
+          </div>
+        ) : iAmRequester ? (
+          <p
+            className="rounded-md border border-teal-500/40 bg-teal-500/10 px-3 py-2 text-xs text-teal-200"
+            data-testid="lineup-edit-pending"
+          >
+            Edit request sent — waiting on the opponent to approve.
+          </p>
+        ) : bothSubmitted ? (
           <p className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-xs text-success">
             Both lineups submitted — locked.
           </p>
@@ -227,79 +333,93 @@ export function LineupSubmission({
           </p>
         )}
 
-        <ol className="space-y-2">
+        <ol className="space-y-2" data-testid="lineup-rows">
           {scaffold.map((row, idx) =>
             row.kind === "break" ? (
               <li
                 key={`brk-${idx}`}
-                className="rounded-md border border-dashed border-amber-500/40 bg-amber-500/5 px-3 py-1.5 text-xs font-medium text-amber-300"
+                className="flex items-center justify-center gap-2 rounded-md border border-dashed border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs font-medium text-amber-300"
               >
-                ⏸ Break — {row.minutes} min
+                <span aria-hidden>⏸</span>
+                Break Time for Next Lineup — {row.minutes} min
               </li>
             ) : (
               <li
                 key={`f-${row.frameNumber}`}
-                className="rounded-md border border-border bg-background px-3 py-2"
+                className="flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2"
                 data-testid={`lineup-slot-${row.frameNumber}`}
               >
-                <div className="flex items-center gap-3">
-                  <Badge variant="neutral" size="sm">
-                    Game {row.frameNumber}
-                  </Badge>
-                  <Badge variant="primary" size="sm">
-                    {row.type.replace("_", " ")}
-                  </Badge>
-                  <div className="ml-auto flex items-center gap-2">
+                {/* Row number on the left — matches Figma 1, 2, 3... indicator */}
+                <span
+                  aria-hidden
+                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary/60 text-xs font-bold tabular-nums text-muted-foreground"
+                >
+                  {row.frameNumber}
+                </span>
+                <Badge
+                  variant={row.type === "SINGLES" ? "primary" : "info"}
+                  size="sm"
+                >
+                  {row.type === "SINGLES"
+                    ? "Singles"
+                    : row.type === "DOUBLES"
+                      ? "Doubles"
+                      : "Scotch Doubles"}
+                </Badge>
+                <div className="ml-auto flex flex-1 items-center justify-end gap-2">
+                  <select
+                    disabled={!canEdit}
+                    value={picks[row.frameNumber]?.primary ?? ""}
+                    onChange={(e) =>
+                      setPicks((p) => ({
+                        ...p,
+                        [row.frameNumber]: {
+                          ...p[row.frameNumber],
+                          primary: e.target.value || undefined,
+                        },
+                      }))
+                    }
+                    className="h-9 max-w-[200px] flex-1 rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    <option value="">
+                      {row.type === "SINGLES"
+                        ? "Select Player"
+                        : "Select Player 1"}
+                    </option>
+                    {rosterMembers.map((m) => (
+                      <option key={m.user.id} value={m.user.id}>
+                        {m.user.name}
+                      </option>
+                    ))}
+                  </select>
+                  {row.type !== "SINGLES" ? (
                     <select
                       disabled={!canEdit}
-                      value={picks[row.frameNumber]?.primary ?? ""}
+                      value={picks[row.frameNumber]?.partner ?? ""}
                       onChange={(e) =>
                         setPicks((p) => ({
                           ...p,
                           [row.frameNumber]: {
                             ...p[row.frameNumber],
-                            primary: e.target.value || undefined,
+                            partner: e.target.value || undefined,
                           },
                         }))
                       }
-                      className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                      className="h-9 max-w-[200px] flex-1 rounded-md border border-input bg-background px-2 text-sm"
                     >
-                      <option value="">— pick player —</option>
+                      <option value="">Select Player 2</option>
                       {rosterMembers.map((m) => (
                         <option key={m.user.id} value={m.user.id}>
                           {m.user.name}
                         </option>
                       ))}
                     </select>
-                    {row.type !== "SINGLES" ? (
-                      <select
-                        disabled={!canEdit}
-                        value={picks[row.frameNumber]?.partner ?? ""}
-                        onChange={(e) =>
-                          setPicks((p) => ({
-                            ...p,
-                            [row.frameNumber]: {
-                              ...p[row.frameNumber],
-                              partner: e.target.value || undefined,
-                            },
-                          }))
-                        }
-                        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                      >
-                        <option value="">— partner —</option>
-                        {rosterMembers.map((m) => (
-                          <option key={m.user.id} value={m.user.id}>
-                            {m.user.name}
-                          </option>
-                        ))}
-                      </select>
-                    ) : null}
-                  </div>
+                  ) : null}
                 </div>
                 {/* Opponent's lineup only visible after both submit. */}
                 {bothSubmitted ? (
-                  <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="font-semibold">Opponent:</span>
+                  <div className="ml-2 hidden text-xs text-muted-foreground md:block">
+                    <span className="font-semibold">vs </span>
                     {(side === "home"
                       ? frames.find((f) => f.frameNumber === row.frameNumber)
                           ?.awayPlayerRef
@@ -317,6 +437,23 @@ export function LineupSubmission({
           <div className="flex justify-end pt-2">
             <Button onClick={onSubmit} loading={submitting}>
               {ourSubmitted ? "Update lineup" : "Submit lineup"}
+            </Button>
+          </div>
+        ) : null}
+
+        {canRequestEdit ? (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/30 px-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              Need to swap a player? Ask your opponent to re-open the lineup.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onRequestEdit}
+              loading={requesting}
+              data-testid="lineup-request-edit"
+            >
+              Request edit
             </Button>
           </div>
         ) : null}

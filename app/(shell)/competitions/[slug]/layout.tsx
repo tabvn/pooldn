@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { FollowButton } from "@/components/follow-button";
+import { ApplyCta } from "@/components/competition/apply-cta";
 import { LifecycleActions } from "@/components/competition/lifecycle-actions";
 import { MetaChips } from "@/components/competition/meta-chips";
 import { PageTitle } from "@/components/layout/page-title";
@@ -45,8 +46,14 @@ export default async function CompetitionLayout({
       label: "Applications",
     });
   }
+  // Round-30 — captaincy is per-team via team.captainId. PLAYERs who created
+  // a team are captains of THAT team without a global role change, so anyone
+  // who isn't a pure spectator (VIEWER) or an organizer/admin gets the CTA;
+  // the server-side check on applyToCompetition enforces "must be a captain
+  // of the chosen team" definitively.
   const canApply =
-    viewer?.role === "TEAM_CAPTAIN" &&
+    !!viewer &&
+    (viewer.role === "TEAM_CAPTAIN" || viewer.role === "PLAYER") &&
     c.status === "OPEN_FOR_APPLICATIONS";
   const isOpen = c.status === "OPEN_FOR_APPLICATIONS";
 
@@ -64,6 +71,7 @@ export default async function CompetitionLayout({
               entityId={c.id}
               isFollowing={c.isFollowing}
               followerCount={c.followerCount}
+              followersHref={`/competitions/${slug}/followers`}
               signedIn={!!viewer}
             />
             {canManage ? (
@@ -73,9 +81,10 @@ export default async function CompetitionLayout({
                 status={c.status}
               />
             ) : canApply ? (
-              <Link href={`/competitions/${slug}/apply`}>
-                <Button>Apply with my team</Button>
-              </Link>
+              <ApplyCta
+                competitionSlug={c.slug}
+                myApplication={c.myTeamApplication ?? null}
+              />
             ) : !viewer && isOpen ? (
               <Link href={`/sign-in?next=/competitions/${slug}/apply`}>
                 <Button>Sign in to apply</Button>
@@ -88,6 +97,28 @@ export default async function CompetitionLayout({
       <div className="px-8 pt-6">
         <TabNav items={tabs} />
       </div>
+      {/* Round-15 — pre-start banner: while the comp is still configurable,
+          surface the same wizard for editing right under the tabs. */}
+      {canManage &&
+      (c.status === "DRAFT" || c.status === "OPEN_FOR_APPLICATIONS") ? (
+        <div className="px-8 pt-4">
+          <Link
+            href={`/competitions/${slug}/edit`}
+            className="flex items-center justify-between gap-3 rounded-md border border-primary/40 bg-primary/5 px-4 py-2 text-sm hover:border-primary/70"
+            data-testid="prestart-edit-banner"
+          >
+            <span>
+              <span className="font-semibold">Pre-start setup</span>
+              <span className="ml-2 text-xs text-muted-foreground">
+                Edit basics, participants, schedule, structure, or rules.
+              </span>
+            </span>
+            <Button size="sm" variant="outline">
+              Edit in wizard
+            </Button>
+          </Link>
+        </div>
+      ) : null}
       <div className="px-8 py-6">{children}</div>
     </div>
   );

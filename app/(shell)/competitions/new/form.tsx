@@ -1,15 +1,16 @@
 "use client";
 
-import { useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery } from "@apollo/client/react";
-import { ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { CitiesQuery } from "@/lib/graphql/operations/competition.operations";
 import {
@@ -24,8 +25,65 @@ import {
 } from "@/components/competition/structure-builder";
 
 const GAME_TYPES = ["EIGHT_BALL", "NINE_BALL", "TEN_BALL", "STRAIGHT_POOL"] as const;
-const FORMATS = ["ROUND_ROBIN", "SINGLE_ELIMINATION", "DOUBLE_ELIMINATION", "SWISS"] as const;
-const TYPES = ["TEAMS", "INDIVIDUAL"] as const;
+// Round-25 P0 gate — generateMatchdays only knows round-robin pairings today.
+// Other formats are kept in the GraphQL enum (data already in flight) but the
+// wizard refuses to create one. Same for INDIVIDUAL — the rest of the app is
+// team-centric.
+const FORMATS = ["ROUND_ROBIN"] as const;
+const TYPES = ["TEAMS"] as const;
+
+// Figma-driven Step 1 tab/card option lists. The "soon" entries are rendered
+// disabled so admins see the roadmap without being able to pick something the
+// engine can't run yet (lines up with [[feedback_admin_can_edit]] — admins still
+// see the wider menu, but the schema gate keeps DB writes safe).
+const GAME_TYPE_TABS: { value: (typeof GAME_TYPES)[number]; label: string; soon?: boolean }[] = [
+  { value: "EIGHT_BALL", label: "8-Ball" },
+  { value: "NINE_BALL", label: "9-Ball" },
+  { value: "TEN_BALL", label: "10-Ball" },
+  { value: "STRAIGHT_POOL", label: "Straight" },
+];
+
+const FORMAT_TABS: { value: (typeof TYPES)[number] | "INDIVIDUAL" | "DOUBLES"; label: string; soon?: boolean }[] = [
+  { value: "TEAMS", label: "Teams" },
+  { value: "INDIVIDUAL", label: "Singles", soon: true },
+  { value: "DOUBLES", label: "Doubles (2v2)", soon: true },
+];
+
+type TournamentTypeOption = {
+  value: (typeof FORMATS)[number] | "SINGLE_ELIMINATION" | "DOUBLE_ELIMINATION";
+  title: string;
+  bullets: string[];
+  soon?: boolean;
+};
+
+const TOURNAMENT_TYPES: TournamentTypeOption[] = [
+  {
+    value: "ROUND_ROBIN",
+    title: "League (Round-Robin)",
+    bullets: [
+      "Everyone plays everyone",
+      "Pick a single round (Round Robin) or multiple rounds (League-style)",
+      "Standings based on points",
+      "Works for short groups and longer seasons",
+    ],
+  },
+  {
+    value: "SINGLE_ELIMINATION",
+    title: "Single Elimination (Knockout)",
+    bullets: ["Lose once = out", "Fast bracket, ideal for quick tournaments"],
+    soon: true,
+  },
+  {
+    value: "DOUBLE_ELIMINATION",
+    title: "Double Elimination",
+    bullets: [
+      "Players get a second chance",
+      "Has Winners & Losers bracket",
+      "Ends with a Grand Final (with possible bracket reset)",
+    ],
+    soon: true,
+  },
+];
 
 const blankToUndefined = (v: unknown) =>
   v === "" || v == null ? undefined : v;
@@ -67,6 +125,11 @@ const schema = z.object({
     .min(3, "At least 3 characters")
     .regex(/^[a-z0-9-]+$/, "Lowercase letters, numbers, hyphens only"),
   description: z.string().optional(),
+  rulesUrl: z
+    .string()
+    .url("Must be a valid URL")
+    .or(z.literal(""))
+    .optional(),
   gameType: z.enum(GAME_TYPES),
   type: z.enum(TYPES),
   format: z.enum(FORMATS),
@@ -95,33 +158,49 @@ const schema = z.object({
       "Structure must contain at least one game block",
     ),
   breakAndRunRule: z.boolean(),
-});
+})
+  // End date can't precede start date when both are set.
+  .refine(
+    (v) => {
+      if (!v.startDate || !v.endDate) return true;
+      return new Date(v.endDate).getTime() >= new Date(v.startDate).getTime();
+    },
+    { message: "End date must be on or after the start date", path: ["endDate"] },
+  );
 
 type FormInput = z.input<typeof schema>;
 type FormOutput = z.output<typeof schema>;
 
 const STEPS = [
-  { title: "Basics", desc: "Name, type, format and game." },
+  { title: "Basics", desc: "Name, game, format, tournament type, start date and prize." },
   { title: "Participants", desc: "Team and player counts." },
-  { title: "Schedule & Prize", desc: "Dates, city, and prize pool." },
+  { title: "Schedule", desc: "City, scheduling and matchday slots." },
   { title: "Structure", desc: "Match builder + rules (Break & Run)." },
-  { title: "Review", desc: "Confirm everything looks right." },
+  { title: "Review & Publish", desc: "Confirm everything before you publish." },
 ] as const;
 
 type StepIndex = 0 | 1 | 2 | 3 | 4;
 const FIELDS_BY_STEP: Record<StepIndex, (keyof FormInput)[]> = {
-  0: ["name", "slug", "description", "gameType", "type", "format"],
+  0: [
+    "name",
+    "slug",
+    "description",
+    "rulesUrl",
+    "gameType",
+    "type",
+    "format",
+    "startDate",
+    "prizePool",
+    "currency",
+  ],
   1: ["minTeams", "maxTeams", "minPlayersPerTeam", "maxPlayersPerTeam", "raceToFrames"],
   2: [
     "cityId",
     "schedulingType",
-    "startDate",
     "endDate",
     "matchdayCount",
     "matchdayStartTime",
     "matchdayEndTime",
-    "prizePool",
-    "currency",
   ],
   3: ["structureItems", "breakAndRunRule"],
   4: [],
@@ -132,6 +211,7 @@ export type WizardInitial = {
   slug: string;
   name: string;
   description?: string | null;
+  rulesUrl?: string | null;
   type: string;
   format: string;
   gameType: string;
@@ -157,8 +237,10 @@ export type WizardInitial = {
 
 export function NewCompetitionForm({
   initial,
+  defaultCityId,
 }: {
   initial?: WizardInitial;
+  defaultCityId?: string | null;
 } = {}) {
   const router = useRouter();
   const toast = useToast();
@@ -178,6 +260,7 @@ export function NewCompetitionForm({
           name: initial.name,
           slug: initial.slug,
           description: initial.description ?? "",
+          rulesUrl: initial.rulesUrl ?? "",
           gameType: initial.gameType as never,
           type: initial.type as never,
           format: initial.format as never,
@@ -220,6 +303,7 @@ export function NewCompetitionForm({
           raceToFrames: 5,
           currency: "VND",
           schedulingType: "FLEXIBLE",
+          cityId: defaultCityId ?? undefined,
           matchdayCount: 6,
           matchdayStartTime: "19:00",
           matchdayEndTime: "23:00",
@@ -275,13 +359,48 @@ export function NewCompetitionForm({
     // is never reached.
     if (step !== 4) return;
     const blocks = structureItemsToBlocks(values.structureItems);
-    if (isEdit && initial) {
-      const result = await update({
+    try {
+      if (isEdit && initial) {
+        const result = await update({
+          variables: {
+            id: initial.id,
+            input: {
+              name: values.name,
+              description: values.description || null,
+              rulesUrl: values.rulesUrl || null,
+              cityId: values.cityId || null,
+              gameType: values.gameType,
+              format: values.format,
+              type: values.type,
+              minTeams: values.minTeams,
+              maxTeams: values.maxTeams ?? null,
+              minPlayersPerTeam: values.minPlayersPerTeam,
+              maxPlayersPerTeam: values.maxPlayersPerTeam ?? null,
+              raceToFrames: values.raceToFrames,
+              startDate: values.startDate ?? null,
+              endDate: values.endDate ?? null,
+              prizePool: values.prizePool || null,
+              currency: values.currency,
+              schedulingType: values.schedulingType,
+              breakAndRunRule: values.breakAndRunRule,
+              blocks,
+            },
+          },
+        });
+        if (result.data?.updateCompetition) {
+          toast.success(`${result.data.updateCompetition.name} saved`);
+          router.push(`/competitions/${result.data.updateCompetition.slug}`);
+          router.refresh();
+        }
+        return;
+      }
+      const result = await create({
         variables: {
-          id: initial.id,
           input: {
             name: values.name,
+            slug: values.slug,
             description: values.description || null,
+            rulesUrl: values.rulesUrl || null,
             cityId: values.cityId || null,
             gameType: values.gameType,
             format: values.format,
@@ -301,42 +420,16 @@ export function NewCompetitionForm({
           },
         },
       });
-      if (result.data?.updateCompetition) {
-        toast.success(`${result.data.updateCompetition.name} saved`);
-        router.push(`/competitions/${result.data.updateCompetition.slug}`);
+      if (result.data?.createCompetition) {
+        toast.success(`${result.data.createCompetition.name} created`);
+        router.push(`/competitions/${result.data.createCompetition.slug}`);
         router.refresh();
       }
-      return;
-    }
-    const result = await create({
-      variables: {
-        input: {
-          name: values.name,
-          slug: values.slug,
-          description: values.description || null,
-          cityId: values.cityId || null,
-          gameType: values.gameType,
-          format: values.format,
-          type: values.type,
-          minTeams: values.minTeams,
-          maxTeams: values.maxTeams ?? null,
-          minPlayersPerTeam: values.minPlayersPerTeam,
-          maxPlayersPerTeam: values.maxPlayersPerTeam ?? null,
-          raceToFrames: values.raceToFrames,
-          startDate: values.startDate ?? null,
-          endDate: values.endDate ?? null,
-          prizePool: values.prizePool || null,
-          currency: values.currency,
-          schedulingType: values.schedulingType,
-          breakAndRunRule: values.breakAndRunRule,
-          blocks,
-        },
-      },
-    });
-    if (result.data?.createCompetition) {
-      toast.success(`${result.data.createCompetition.name} created`);
-      router.push(`/competitions/${result.data.createCompetition.slug}`);
-      router.refresh();
+    } catch (e) {
+      toast.error(
+        isEdit ? "Could not save competition" : "Could not create competition",
+        e instanceof Error ? e.message : "Try again.",
+      );
     }
   });
 
@@ -346,7 +439,7 @@ export function NewCompetitionForm({
     <div className="min-h-full">
       {/* Lime header band — matches the Figma "Create Competition / Step N" */}
       <header
-        className="px-8 py-8"
+        className="px-4 py-6 md:px-8 md:py-8"
         style={{
           background:
             "linear-gradient(135deg, #d0f30d 0%, #c4e60d 60%, #a9c80a 100%)",
@@ -430,59 +523,82 @@ export function NewCompetitionForm({
                 {...register("description")}
               />
             </Field>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <Field label="Type">
-                <Controller
-                  control={control}
-                  name="type"
-                  render={({ field }) => (
-                    <Select
-                      value={field.value}
-                      onValueChange={(v) =>
-                        field.onChange(v as (typeof TYPES)[number])
-                      }
-                      options={TYPES.map((v) => ({
-                        value: v,
-                        label: v.toLowerCase(),
-                      }))}
-                    />
-                  )}
-                />
+            <Field
+              label="Rules document (optional)"
+              hint="Link to a PDF or web page with the full rules. Shown on the About tab."
+              error={errors.rulesUrl?.message}
+            >
+              <Input
+                placeholder="https://…"
+                invalid={!!errors.rulesUrl}
+                {...register("rulesUrl")}
+              />
+            </Field>
+            <Field label="Game type">
+              <Controller
+                control={control}
+                name="gameType"
+                render={({ field }) => (
+                  <SegmentedTabs
+                    value={field.value}
+                    onValueChange={(v) =>
+                      field.onChange(v as (typeof GAME_TYPES)[number])
+                    }
+                    options={GAME_TYPE_TABS}
+                    testIdPrefix="comp-gametype"
+                  />
+                )}
+              />
+            </Field>
+            <Field label="Format">
+              <Controller
+                control={control}
+                name="type"
+                render={({ field }) => (
+                  <SegmentedTabs
+                    value={field.value}
+                    onValueChange={(v) =>
+                      field.onChange(v as (typeof TYPES)[number])
+                    }
+                    options={FORMAT_TABS}
+                    testIdPrefix="comp-format"
+                  />
+                )}
+              />
+            </Field>
+            <Field label="Tournament type">
+              <Controller
+                control={control}
+                name="format"
+                render={({ field }) => (
+                  <div className="space-y-2" data-testid="comp-tournament-types">
+                    {TOURNAMENT_TYPES.map((t) => (
+                      <TournamentTypeCard
+                        key={t.value}
+                        option={t}
+                        selected={field.value === t.value}
+                        onSelect={() => {
+                          if (!t.soon)
+                            field.onChange(t.value as (typeof FORMATS)[number]);
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              />
+            </Field>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field
+                label="Start date (optional)"
+                error={errors.startDate?.message}
+              >
+                <DateInput {...register("startDate")} />
               </Field>
-              <Field label="Format">
-                <Controller
-                  control={control}
-                  name="format"
-                  render={({ field }) => (
-                    <Select
-                      value={field.value}
-                      onValueChange={(v) =>
-                        field.onChange(v as (typeof FORMATS)[number])
-                      }
-                      options={FORMATS.map((v) => ({
-                        value: v,
-                        label: v.replace(/_/g, " ").toLowerCase(),
-                      }))}
-                    />
-                  )}
-                />
-              </Field>
-              <Field label="Game type">
-                <Controller
-                  control={control}
-                  name="gameType"
-                  render={({ field }) => (
-                    <Select
-                      value={field.value}
-                      onValueChange={(v) =>
-                        field.onChange(v as (typeof GAME_TYPES)[number])
-                      }
-                      options={GAME_TYPES.map((v) => ({
-                        value: v,
-                        label: v.replace("_", "-").toLowerCase(),
-                      }))}
-                    />
-                  )}
+              <Field label="Prize (optional)">
+                <Input
+                  type="text"
+                  placeholder="Prize info (money or gifts)"
+                  {...register("prizePool")}
                 />
               </Field>
             </div>
@@ -602,16 +718,10 @@ export function NewCompetitionForm({
                 />
               </Field>
               <Field
-                label="Start date (optional)"
-                error={errors.startDate?.message}
-              >
-                <Input type="date" {...register("startDate")} />
-              </Field>
-              <Field
                 label="End date (optional)"
                 error={errors.endDate?.message}
               >
-                <Input type="date" {...register("endDate")} />
+                <DateInput {...register("endDate")} />
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Matchday start">
@@ -622,19 +732,9 @@ export function NewCompetitionForm({
                 </Field>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Prize pool (optional)">
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="5000000"
-                  {...register("prizePool")}
-                />
-              </Field>
-              <Field label="Currency">
-                <Input defaultValue="VND" {...register("currency")} />
-              </Field>
-            </div>
+            <Field label="Currency">
+              <Input defaultValue="VND" {...register("currency")} />
+            </Field>
           </Section>
         )}
 
@@ -689,36 +789,54 @@ export function NewCompetitionForm({
 
         {step === 4 && (
           <Section>
-            <h2 className="text-lg font-semibold mb-2">Review</h2>
+            <h2 className="text-lg font-semibold mb-2">Review &amp; Publish</h2>
             <p className="text-sm text-muted-foreground mb-4">
-              Confirm your competition details before creating. You can edit
-              everything while it&apos;s still in DRAFT.
+              Confirm everything below before you publish. You can still edit
+              the competition while it&apos;s in DRAFT.
             </p>
 
-            <ReviewGroup
-              title="Basics"
-              onEdit={() => setStep(0)}
-            >
+            <ReviewGroup title="Basics" onEdit={() => setStep(0)}>
               <Row label="Name" value={v.name} />
               <Row label="Slug" value={v.slug} mono />
-              <Row label="Type" value={String(v.type).toLowerCase()} />
               <Row
-                label="Format"
-                value={String(v.format).replace(/_/g, " ").toLowerCase()}
+                label="Game"
+                value={
+                  GAME_TYPE_TABS.find((g) => g.value === v.gameType)?.label ??
+                  String(v.gameType)
+                }
               />
               <Row
-                label="Game type"
-                value={String(v.gameType).replace("_", "-").toLowerCase()}
+                label="Format"
+                value={
+                  FORMAT_TABS.find((f) => f.value === v.type)?.label ??
+                  String(v.type)
+                }
+              />
+              <Row
+                label="Tournament type"
+                value={
+                  TOURNAMENT_TYPES.find((t) => t.value === v.format)?.title ??
+                  String(v.format)
+                }
+              />
+              <Row
+                label="Start date"
+                value={v.startDate ? formatYmd(String(v.startDate)) : "TBD"}
+              />
+              <Row
+                label="Prize"
+                value={
+                  v.prizePool
+                    ? `${v.prizePool}${v.currency ? ` ${v.currency}` : ""}`
+                    : "—"
+                }
               />
               {v.description ? (
                 <Row label="Description" value={v.description} />
               ) : null}
             </ReviewGroup>
 
-            <ReviewGroup
-              title="Participants"
-              onEdit={() => setStep(1)}
-            >
+            <ReviewGroup title="Participants" onEdit={() => setStep(1)}>
               <Row
                 label="Min / max teams"
                 value={`${v.minTeams}${v.maxTeams ? ` – ${v.maxTeams}` : "+"}`}
@@ -730,10 +848,7 @@ export function NewCompetitionForm({
               <Row label="Race to" value={`${v.raceToFrames} frames`} />
             </ReviewGroup>
 
-            <ReviewGroup
-              title="Schedule & Prize"
-              onEdit={() => setStep(2)}
-            >
+            <ReviewGroup title="Schedule" onEdit={() => setStep(2)}>
               <Row
                 label="Dates"
                 value={
@@ -745,19 +860,9 @@ export function NewCompetitionForm({
                 }
               />
               <Row
-                label="Prize"
-                value={v.prizePool ? `${v.prizePool} ${v.currency}` : "—"}
-              />
-              <Row
                 label="City"
                 value={cities.find((c) => c.id === v.cityId)?.name ?? "—"}
               />
-            </ReviewGroup>
-
-            <ReviewGroup
-              title="Schedule details"
-              onEdit={() => setStep(2)}
-            >
               <Row
                 label="Scheduling"
                 value={String(v.schedulingType ?? "").replace(/_/g, " ").toLowerCase()}
@@ -815,9 +920,10 @@ export function NewCompetitionForm({
               />
             </ReviewGroup>
 
-            <p className="mt-4 rounded-md border border-border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
-              Creating saves the competition as DRAFT. You can publish (open
-              applications) from the competition detail page.
+            <p className="mt-4 rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-info-foreground">
+              Confirm &amp; Publish saves the competition as DRAFT. Open
+              applications from the competition detail page when you&apos;re ready
+              for teams to apply.
             </p>
 
             {error ? (
@@ -853,7 +959,7 @@ export function NewCompetitionForm({
               loading={isSubmitting}
               iconAfter={<Check className="size-4" />}
             >
-              {isEdit ? "Save changes" : "Create competition"}
+              {isEdit ? "Save changes" : "Confirm & Publish"}
             </Button>
           )}
         </div>
@@ -943,6 +1049,142 @@ function formatYmd(iso: string) {
     year: "numeric",
   });
 }
+
+type SegmentedOption<V extends string> = {
+  value: V;
+  label: string;
+  soon?: boolean;
+};
+
+function SegmentedTabs<V extends string>({
+  value,
+  onValueChange,
+  options,
+  testIdPrefix,
+}: {
+  value: V;
+  onValueChange: (v: V) => void;
+  options: SegmentedOption<V>[];
+  testIdPrefix: string;
+}) {
+  return (
+    <div
+      role="tablist"
+      className="flex items-stretch gap-1 rounded-md border border-border bg-secondary/30 p-1"
+    >
+      {options.map((opt) => {
+        const selected = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            disabled={opt.soon}
+            onClick={() => !opt.soon && onValueChange(opt.value)}
+            data-testid={`${testIdPrefix}-${opt.value.toLowerCase()}`}
+            className={cn(
+              "relative flex-1 rounded-[4px] px-3 py-2 text-sm font-semibold transition-colors",
+              selected
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+              opt.soon && "cursor-not-allowed opacity-60",
+            )}
+          >
+            {opt.label}
+            {opt.soon ? (
+              <span className="ml-1.5 inline-flex items-center rounded-sm bg-info/20 px-1 text-[10px] font-bold uppercase tracking-wider text-info">
+                Soon
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function TournamentTypeCard({
+  option,
+  selected,
+  onSelect,
+}: {
+  option: TournamentTypeOption;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      disabled={option.soon}
+      onClick={onSelect}
+      data-testid={`comp-tournament-type-${option.value.toLowerCase()}`}
+      className={cn(
+        "flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors",
+        selected
+          ? "border-primary bg-primary/5"
+          : "border-border bg-card hover:border-border/80",
+        option.soon && "cursor-not-allowed opacity-70 hover:border-border",
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full border-2",
+          selected
+            ? "border-primary bg-primary"
+            : "border-muted-foreground/40 bg-transparent",
+        )}
+      >
+        {selected ? (
+          <Check className="size-3 text-primary-foreground" />
+        ) : null}
+      </span>
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold">{option.title}</span>
+          {option.soon ? (
+            <span className="inline-flex items-center rounded-sm bg-info/20 px-1 py-0.5 text-[10px] font-bold uppercase tracking-wider text-info">
+              Coming Soon
+            </span>
+          ) : null}
+        </div>
+        <ul className="ml-4 list-disc text-xs text-muted-foreground">
+          {option.bullets.map((b) => (
+            <li key={b}>{b}</li>
+          ))}
+        </ul>
+      </div>
+    </button>
+  );
+}
+
+const DateInput = (() => {
+  // Wrap the date input with a leading calendar icon so the field reads as
+  // a date picker even on browsers that hide the native indicator under our
+  // dark theme. Forwarded ref keeps it RHF-register compatible.
+  type DateInputProps = React.InputHTMLAttributes<HTMLInputElement>;
+  function Inner(
+    props: DateInputProps,
+    ref: React.ForwardedRef<HTMLInputElement>,
+  ) {
+    return (
+      <div className="relative">
+        <CalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        <Input
+          type="date"
+          ref={ref}
+          {...props}
+          className={cn("pl-10", props.className)}
+        />
+      </div>
+    );
+  }
+  Inner.displayName = "DateInput";
+  return React.forwardRef<HTMLInputElement, DateInputProps>(Inner);
+})();
 
 function slugify(input: string): string {
   return input

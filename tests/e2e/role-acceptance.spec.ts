@@ -70,9 +70,8 @@ test.describe("Role acceptance · Captain", () => {
       page.getByRole("link", { name: /apply with my team/i }),
     ).toBeVisible();
     await page.goto("/teams/hai-crew/manage");
-    await expect(
-      page.getByRole("heading", { name: /manage roster/i }),
-    ).toBeVisible();
+    // Manage page eyebrow "Manage roster" appears above the team heading.
+    await expect(page.getByText(/manage roster/i).first()).toBeVisible();
     // Invite + join requests sections exist (round-12 TASK 3).
     await expect(page.getByTestId("invite-card")).toBeVisible();
     await expect(page.getByTestId("join-requests-card")).toBeVisible();

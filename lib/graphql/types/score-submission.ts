@@ -18,6 +18,7 @@ builder.prismaObject("MatchScoreSubmission", {
     reviewedBy: t.relation("reviewedBy", { nullable: true }),
     reviewedAt: t.expose("reviewedAt", { type: "DateTime", nullable: true }),
     note: t.exposeString("note", { nullable: true }),
+    boardImageUrls: t.exposeStringList("boardImageUrls"),
     createdAt: t.expose("createdAt", { type: "DateTime" }),
     updatedAt: t.expose("updatedAt", { type: "DateTime" }),
   }),
@@ -31,6 +32,9 @@ export const SubmitMatchScoreInput = builder.inputType(
       homeScore: t.int({ required: true }),
       awayScore: t.int({ required: true }),
       note: t.string(),
+      // Round-32 — photos of the physical scoresheet / scoreboard. Up to 3
+      // images per submission; the resolver clamps the array.
+      boardImageUrls: t.stringList(),
     }),
   },
 );

@@ -38,6 +38,21 @@ export const VenueDetailQuery = graphql(/* GraphQL */ `
         id
         name
       }
+      homeTeamCount
+      homeTeams {
+        id
+        slug
+        name
+        logoUrl
+        members {
+          id
+        }
+        captain {
+          id
+          username
+          name
+        }
+      }
     }
   }
 `);

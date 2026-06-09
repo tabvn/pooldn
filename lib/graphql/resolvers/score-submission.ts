@@ -4,6 +4,10 @@ import { requireUser } from "@/lib/casl/guard";
 import { recomputeStandings } from "@/lib/services/standings.service";
 import { NotificationService } from "@/lib/services/notification.service";
 import {
+  publishCompetitionStandingsUpdate,
+  publishMatchUpdate,
+} from "../pubsub";
+import {
   SubmitMatchScoreInput,
   ReviewMatchScoreInput,
 } from "../types/score-submission";
@@ -75,7 +79,12 @@ builder.mutationFields((t) => ({
       }
       const competitionId = match.matchday.competition.id;
 
-      return ctx.prisma.$transaction(async (tx) => {
+      const boardImageUrls = (args.input.boardImageUrls ?? [])
+        .map((u) => String(u).trim())
+        .filter(Boolean)
+        .slice(0, 3);
+
+      const result = await ctx.prisma.$transaction(async (tx) => {
         // Upsert THIS captain's submission (status flips below based on the other side).
         const mine = await tx.matchScoreSubmission.upsert({
           where: {
@@ -89,6 +98,7 @@ builder.mutationFields((t) => ({
             homeScore: args.input.homeScore,
             awayScore: args.input.awayScore,
             note: args.input.note ?? null,
+            boardImageUrls,
             status: "PENDING",
             reviewedById: null,
             reviewedAt: null,
@@ -100,6 +110,7 @@ builder.mutationFields((t) => ({
             homeScore: args.input.homeScore,
             awayScore: args.input.awayScore,
             note: args.input.note ?? null,
+            boardImageUrls,
             status: "PENDING",
           },
         });
@@ -148,12 +159,13 @@ builder.mutationFields((t) => ({
 
         if (agree) {
           // AUTO-APPROVE both, complete the match, recompute standings.
+          const agreedAt = new Date();
           await tx.matchScoreSubmission.updateMany({
             where: { matchId: match.id },
             data: {
               status: "AUTO_APPROVED",
               reviewedById: null,
-              reviewedAt: new Date(),
+              reviewedAt: agreedAt,
             },
           });
           await tx.match.update({
@@ -162,7 +174,11 @@ builder.mutationFields((t) => ({
               status: "COMPLETED",
               homeScore: args.input.homeScore,
               awayScore: args.input.awayScore,
-              completedAt: new Date(),
+              completedAt: agreedAt,
+              // Round-31 — system-finalized: no human reviewer; mode marks it
+              // as auto so the UI can render "Auto-confirmed by both captains".
+              completedById: null,
+              completionMode: "AUTO_AGREED",
             },
           });
           await recomputeStandings(tx as never, competitionId);
@@ -207,6 +223,11 @@ builder.mutationFields((t) => ({
           where: { id: mine.id },
         });
       });
+      // After the transaction commits, fan out the live updates so any
+      // browser watching this match (or this comp's standings) refreshes.
+      publishMatchUpdate(matchId);
+      publishCompetitionStandingsUpdate(competitionId);
+      return result;
     },
   }),
 
@@ -240,7 +261,8 @@ builder.mutationFields((t) => ({
         });
       }
       const competitionId = match.matchday.competition.id;
-      return ctx.prisma.$transaction(async (tx) => {
+      const result = await ctx.prisma.$transaction(async (tx) => {
+        const decidedAt = new Date();
         const updated = await tx.match.update({
           ...query,
           where: { id: match.id },
@@ -248,7 +270,13 @@ builder.mutationFields((t) => ({
             status: "COMPLETED",
             homeScore: args.input.homeScore,
             awayScore: args.input.awayScore,
-            completedAt: new Date(),
+            completedAt: decidedAt,
+            // Round-31 — record who finalized the match. Admins can also
+            // resolve organizer-owned competitions, so distinguish the two.
+            completedById: ctx.viewer!.id,
+            completionMode: isAdmin && !isOrganizer
+              ? "ADMIN_OVERRIDE"
+              : "ORGANIZER_REVIEW",
           },
         });
         // Mark all submissions APPROVED with reviewer info; non-matching ones REJECTED.
@@ -266,7 +294,7 @@ builder.mutationFields((t) => ({
                     ? "APPROVED"
                     : "REJECTED",
                 reviewedById: ctx.viewer!.id,
-                reviewedAt: new Date(),
+                reviewedAt: decidedAt,
                 note: args.input.note ?? s.note,
               },
             }),
@@ -290,6 +318,9 @@ builder.mutationFields((t) => ({
         });
         return updated;
       });
+      publishMatchUpdate(matchId);
+      publishCompetitionStandingsUpdate(competitionId);
+      return result;
     },
   }),
 }));

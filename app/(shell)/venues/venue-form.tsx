@@ -11,6 +11,7 @@ import { ImageUpload } from "@/components/ui/image-upload";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { CitiesQuery } from "@/lib/graphql/operations/competition.operations";
 import {
   CreateVenueMutation,
@@ -57,6 +58,7 @@ type Mode =
 export function VenueForm({ mode }: { mode: Mode }) {
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const citiesQuery = useQuery(CitiesQuery);
   const cities = citiesQuery.data?.cities ?? [];
   const [create] = useMutation(CreateVenueMutation);
@@ -143,12 +145,14 @@ export function VenueForm({ mode }: { mode: Mode }) {
 
   async function onDelete() {
     if (!isEdit) return;
-    if (
-      !window.confirm(
-        `Delete venue "${initial!.name}"? This deactivates it; matches already hosted there are preserved.`,
-      )
-    )
-      return;
+    const ok = await confirm({
+      title: `Delete "${initial!.name}"?`,
+      description:
+        "This deactivates the venue; matches already hosted there are preserved.",
+      confirmLabel: "Delete venue",
+      destructive: true,
+    });
+    if (!ok) return;
     await del({ variables: { id: initial!.id } });
     toast.success("Venue deleted");
     router.push("/venues");

@@ -151,13 +151,70 @@ export async function recomputeStandings(
     }
   }
 
-  // Sort & assign positions
+  // Round-30 — tie-breakers, in order: points → head-to-head (sum of points
+  // earned in matches between the two teams) → point difference → points-for
+  // → team name (stable). H2H is only meaningful when sorting *pairs*, so we
+  // first sort by all non-H2H keys and then apply a stable bubble swap that
+  // promotes a tied team that beats its sibling head-to-head.
+  function h2hPoints(a: string, b: string) {
+    let pa = 0;
+    let pb = 0;
+    for (const m of matches) {
+      const isAB =
+        (m.homeTeamId === a && m.awayTeamId === b) ||
+        (m.homeTeamId === b && m.awayTeamId === a);
+      if (!isAB) continue;
+      if (m.homeScore == null || m.awayScore == null) continue;
+      const aIsHome = m.homeTeamId === a;
+      const aScore = aIsHome ? m.homeScore : m.awayScore;
+      const bScore = aIsHome ? m.awayScore : m.homeScore;
+      if (aScore > bScore) {
+        pa += competition.pointsWin;
+        pb += competition.pointsLoss;
+      } else if (aScore < bScore) {
+        pb += competition.pointsWin;
+        pa += competition.pointsLoss;
+      } else {
+        pa += competition.pointsDraw;
+        pb += competition.pointsDraw;
+      }
+    }
+    return [pa, pb] as const;
+  }
+
+  const teamName = await prisma.team.findMany({
+    where: { id: { in: Array.from(approvedTeamIds) } },
+    select: { id: true, name: true },
+  });
+  const nameById = new Map(teamName.map((t) => [t.id, t.name]));
+
   const ranked = [...stats.entries()].sort((a, b) => {
     if (b[1].points !== a[1].points) return b[1].points - a[1].points;
     const pdA = a[1].pointsFor - a[1].pointsAgainst;
     const pdB = b[1].pointsFor - b[1].pointsAgainst;
-    return pdB - pdA;
+    if (pdB !== pdA) return pdB - pdA;
+    if (b[1].pointsFor !== a[1].pointsFor)
+      return b[1].pointsFor - a[1].pointsFor;
+    const nA = nameById.get(a[0]) ?? "";
+    const nB = nameById.get(b[0]) ?? "";
+    return nA.localeCompare(nB);
   });
+
+  // Promote head-to-head winners within tied groups. A pass of adjacent
+  // swaps is enough because the base sort already grouped ties together.
+  for (let i = 0; i < ranked.length - 1; i++) {
+    const [aId, aS] = ranked[i];
+    const [bId, bS] = ranked[i + 1];
+    if (aS.points !== bS.points) continue;
+    const aPd = aS.pointsFor - aS.pointsAgainst;
+    const bPd = bS.pointsFor - bS.pointsAgainst;
+    if (aPd !== bPd) continue;
+    const [aH2H, bH2H] = h2hPoints(aId, bId);
+    if (bH2H > aH2H) {
+      ranked[i] = [bId, bS];
+      ranked[i + 1] = [aId, aS];
+    }
+  }
 
   for (let i = 0; i < ranked.length; i++) {
     const [teamId, s] = ranked[i];

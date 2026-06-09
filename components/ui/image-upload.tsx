@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ImagePlus, Loader2, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
@@ -13,6 +13,7 @@ const MAX_BYTES = 5 * 1024 * 1024;
 export type ImageUploadKind =
   | "avatar"
   | "team-logo"
+  | "team-logo-draft"
   | "competition-banner"
   | "venue-image";
 
@@ -51,9 +52,28 @@ export function ImageUpload({
   const [previewUrl, setPreviewUrl] = useState<string | null>(value ?? null);
   const [progress, setProgress] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
-  // Avatars route through a crop modal; everything else uploads directly.
-  const requiresCrop = kind === "avatar";
+  // Avatars and team logos route through the crop modal so users can zoom,
+  // pan and reframe before persisting. Everything else uploads directly.
+  const requiresCrop =
+    kind === "avatar" ||
+    kind === "team-logo" ||
+    kind === "team-logo-draft";
+  // Avatars are circular; team logos crop to a square frame.
+  const cropShape: "circle" | "square" =
+    kind === "team-logo" || kind === "team-logo-draft" ? "square" : "circle";
+  const cropTitle =
+    kind === "team-logo" || kind === "team-logo-draft"
+      ? "Adjust your team logo"
+      : "Adjust your photo";
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+
+  // Stay in sync with the parent's value (e.g. after a refetch returns a
+  // new avatarUrl with a different cache-buster, or when the entity changes
+  // between renders). Without this the local preview gets out of step with
+  // the persisted URL the rest of the app reads.
+  useEffect(() => {
+    setPreviewUrl(value ?? null);
+  }, [value]);
 
   const upload = useCallback(
     async (file: File) => {
@@ -226,6 +246,8 @@ export function ImageUpload({
         <AvatarCropModal
           file={pendingFile}
           open={pendingFile !== null}
+          shape={cropShape}
+          title={cropTitle}
           onCancel={() => setPendingFile(null)}
           onConfirm={(cropped) => {
             setPendingFile(null);

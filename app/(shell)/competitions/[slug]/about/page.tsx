@@ -5,6 +5,7 @@ import { LocalDateTime } from "@/components/ui/local-datetime";
 import { Avatar } from "@/components/ui/avatar";
 import { getClient } from "@/lib/apollo/client";
 import { CompetitionEditableQuery } from "@/lib/graphql/operations/competition.operations";
+import { VenuesListQuery } from "@/lib/graphql/operations/venue.operations";
 
 const NUM = new Intl.NumberFormat("en-US");
 
@@ -25,12 +26,34 @@ export default async function AboutPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const { data } = await getClient().query({
+  const client = getClient();
+  const { data } = await client.query({
     query: CompetitionEditableQuery,
     variables: { slug },
   });
   const c = data?.competition;
   if (!c) return null;
+
+  // Round-19 — list city venues so About can deeplink them.
+  const venuesRes = c.city?.id
+    ? await client.query({
+        query: VenuesListQuery,
+        variables: { cityId: c.city.id },
+        errorPolicy: "ignore",
+      })
+    : null;
+  const venues = venuesRes?.data?.venues ?? [];
+
+  // Default prize distribution if no explicit split is configured: winner
+  // takes 60% / 25% / 15%. Round to whole units of the comp's currency.
+  const prizePoolNum = c.prizePool ? Number(c.prizePool) : 0;
+  const distribution = prizePoolNum > 0
+    ? [
+        { label: "1st", pct: 60, amount: Math.round(prizePoolNum * 0.6) },
+        { label: "2nd", pct: 25, amount: Math.round(prizePoolNum * 0.25) },
+        { label: "3rd", pct: 15, amount: Math.round(prizePoolNum * 0.15) },
+      ]
+    : [];
 
   const blocks = [...c.blocks].sort((a, b) => a.order - b.order);
   const totalFrames = blocks.reduce(
@@ -197,8 +220,8 @@ export default async function AboutPage({
           </CardContent>
         </Card>
 
-        {/* Prize */}
-        <Card>
+        {/* Prize + distribution */}
+        <Card data-testid="about-prize">
           <CardHeader>
             <CardTitle>Prize</CardTitle>
           </CardHeader>
@@ -214,8 +237,110 @@ export default async function AboutPage({
               />
               <Row label="Currency" value={c.currency} />
             </dl>
+            {distribution.length > 0 ? (
+              <ul className="mt-3 space-y-1">
+                {distribution.map((d) => (
+                  <li
+                    key={d.label}
+                    className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Badge variant="primary" size="sm">
+                        {d.label}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {d.pct}%
+                      </span>
+                    </span>
+                    <span className="font-mono font-semibold tabular-nums">
+                      {NUM.format(d.amount)} {c.currency}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </CardContent>
         </Card>
+
+        {/* Rules */}
+        <Card data-testid="about-rules">
+          <CardHeader>
+            <CardTitle>Rules</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl>
+              <Row label="Win points" value={c.pointsWin ?? "—"} />
+              <Row label="Draw points" value={c.pointsDraw ?? "—"} />
+              <Row label="Loss points" value={c.pointsLoss ?? "—"} />
+              <Row
+                label="Break & Run rule"
+                value={
+                  c.breakAndRunRule ? (
+                    <Badge variant="success" size="sm">
+                      ON
+                    </Badge>
+                  ) : (
+                    <span className="text-muted-foreground">off</span>
+                  )
+                }
+              />
+              <Row
+                label="Tie-breaker"
+                value="Head-to-head, then point difference"
+              />
+              <Row
+                label="Rules document"
+                value={
+                  c.rulesUrl ? (
+                    <Link
+                      href={c.rulesUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                      data-testid="about-rules-link"
+                    >
+                      Open rules ↗
+                    </Link>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )
+                }
+              />
+            </dl>
+          </CardContent>
+        </Card>
+
+        {/* Venues — every venue in the host city */}
+        {venues.length > 0 ? (
+          <Card data-testid="about-venues" className="md:col-span-2">
+            <CardHeader>
+              <CardTitle>Venues</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              {venues.map((v) => (
+                <Link
+                  key={v.id}
+                  href={`/venues/${v.slug}`}
+                  className="flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-sm hover:border-primary/40"
+                >
+                  <Avatar
+                    size="sm"
+                    src={v.imageUrl ?? undefined}
+                    fallback={v.name}
+                    shape="competition"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-semibold">{v.name}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {v.city?.name}
+                      {v.tableCount ? ` · ${v.tableCount} tables` : ""}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* Organizer */}
         <Card>

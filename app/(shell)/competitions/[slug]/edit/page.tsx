@@ -50,6 +50,7 @@ export default async function EditCompetitionPage({
           slug: c.slug,
           name: c.name,
           description: c.description,
+          rulesUrl: c.rulesUrl,
           type: c.type,
           format: c.format,
           gameType: c.gameType,

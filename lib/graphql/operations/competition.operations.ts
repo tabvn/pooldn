@@ -29,6 +29,7 @@ export const CompetitionEditableQuery = graphql(/* GraphQL */ `
       slug
       name
       description
+      rulesUrl
       status
       format
       gameType
@@ -45,6 +46,9 @@ export const CompetitionEditableQuery = graphql(/* GraphQL */ `
       minPlayersPerTeam
       maxPlayersPerTeam
       breakAndRunRule
+      pointsWin
+      pointsDraw
+      pointsLoss
       organizer {
         id
         name
@@ -90,6 +94,15 @@ export const CompetitionHeaderQuery = graphql(/* GraphQL */ `
       maxPlayersPerTeam
       isFollowing
       followerCount
+      myTeamApplication {
+        id
+        status
+        team {
+          id
+          name
+          slug
+        }
+      }
       organizer {
         id
         name
@@ -109,6 +122,28 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
     competition(slug: $slug) {
       id
       status
+      prizePool
+      currency
+      minTeams
+      maxTeams
+      applications {
+        id
+        status
+        team {
+          id
+          slug
+          name
+          logoUrl
+          captain {
+            id
+            name
+            username
+          }
+          members {
+            id
+          }
+        }
+      }
       standings {
         id
         position
@@ -136,6 +171,7 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
         user {
           id
           name
+          username
           nationality
           avatarUrl
         }
@@ -215,11 +251,33 @@ export const CompetitionApplicationsQuery = graphql(/* GraphQL */ `
           id
           name
           slug
+          logoUrl
           captain {
             id
             name
+            username
           }
         }
+      }
+    }
+  }
+`);
+
+export const MyCompetitionsQuery = graphql(/* GraphQL */ `
+  query MyCompetitions {
+    myCompetitions {
+      id
+      slug
+      name
+      status
+      bannerUrl
+      startDate
+      endDate
+      gameType
+      format
+      city {
+        id
+        name
       }
     }
   }

@@ -5,6 +5,7 @@ import { useMutation } from "@apollo/client/react";
 import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { LeaveTeamMutation } from "@/lib/graphql/operations/team-collab.operations";
 
 export function LeaveTeamButton({
@@ -16,10 +17,17 @@ export function LeaveTeamButton({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const [leave, { loading }] = useMutation(LeaveTeamMutation);
 
   async function onClick() {
-    if (!window.confirm(`Leave ${teamName}?`)) return;
+    const ok = await confirm({
+      title: `Leave ${teamName}?`,
+      description: "You'll lose access to private team channels and stats.",
+      confirmLabel: "Leave team",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await leave({ variables: { teamId } });
       toast.success(`Left ${teamName}`);

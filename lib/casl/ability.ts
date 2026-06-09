@@ -76,7 +76,24 @@ export function defineAbilityFor(actor: AbilityActor): AppAbility {
     }
 
     case "TEAM_CAPTAIN": {
-      can("read", ["Competition", "Team", "Standing", "PlayerCompStat"]);
+      // Note: Competition read is NOT granted here — DRAFT comps must stay
+      // hidden. Baseline rule limits public reads to OPEN/ONGOING/COMPLETED;
+      // the per-entity rule below grants visibility on comps they organize.
+      can("read", ["Team", "Standing", "PlayerCompStat"]);
+      can("create", "Competition");
+      // Per-entity organizer abilities on a comp they themselves run.
+      can("manage", "Competition", { organizerId: actor.id });
+      can("manage", "Matchday", {
+        competition: { is: { organizerId: actor.id } },
+      });
+      can("manage", "Match", {
+        matchday: {
+          is: { competition: { is: { organizerId: actor.id } } },
+        },
+      });
+      can(["read", "update", "approve", "reject"], "CompetitionApplication", {
+        competition: { is: { organizerId: actor.id } },
+      });
       can("create", "CompetitionApplication");
       can("cancel", "CompetitionApplication", {
         team: { is: { captainId: actor.id } },
@@ -110,9 +127,53 @@ export function defineAbilityFor(actor: AbilityActor): AppAbility {
     }
 
     case "PLAYER": {
-      can("read", ["Competition", "Team", "Standing", "PlayerCompStat"]);
+      // Same DRAFT-hiding rule as TEAM_CAPTAIN — only baseline-eligible + own.
+      can("read", ["Team", "Standing", "PlayerCompStat"]);
       can("update", "User", { id: actor.id });
       can("read", "Notification", { userId: actor.id });
+      // Round-30 — captaincy is per-team (team.captainId), not a global role.
+      // A PLAYER who creates / owns a team gets the same captain abilities for
+      // THAT team. All rules are scoped to `captainId: actor.id`.
+      can("manage", "Team", { captainId: actor.id });
+      can("manage", "TeamMember", {
+        team: { is: { captainId: actor.id } },
+      });
+      // Round-47 — same shape for competitions. Any signed-in user can run a
+      // competition, and CASL grants them organizer-level abilities only on
+      // the rows where they ARE the organizer.
+      can("create", "Competition");
+      can("manage", "Competition", { organizerId: actor.id });
+      can("manage", "Matchday", {
+        competition: { is: { organizerId: actor.id } },
+      });
+      can("manage", "Match", {
+        matchday: {
+          is: { competition: { is: { organizerId: actor.id } } },
+        },
+      });
+      can(["read", "update", "approve", "reject"], "CompetitionApplication", {
+        competition: { is: { organizerId: actor.id } },
+      });
+      can("create", "CompetitionApplication");
+      can(["read", "cancel"], "CompetitionApplication", {
+        team: { is: { captainId: actor.id } },
+      });
+      can("update", "Match", {
+        OR: [
+          { homeTeam: { is: { captainId: actor.id } } },
+          { awayTeam: { is: { captainId: actor.id } } },
+        ],
+      });
+      can("update", "MatchFrame", {
+        match: {
+          is: {
+            OR: [
+              { homeTeam: { is: { captainId: actor.id } } },
+              { awayTeam: { is: { captainId: actor.id } } },
+            ],
+          },
+        },
+      });
       break;
     }
 

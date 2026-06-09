@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { CountryFlag } from "@/components/ui/country-flag";
@@ -59,26 +60,31 @@ export default async function PlayersPage({
                 : Math.round((p.framesWon / p.framesPlayed) * 100);
             return (
               <TableRow key={p.id}>
-                <TableCell className="flex items-center gap-3">
-                  <Avatar
-                    size="sm"
-                    src={p.user.avatarUrl ?? undefined}
-                    fallback={p.user.name}
-                  />
-                  <div>
-                    <div className="flex items-center gap-2 font-semibold">
-                      {p.user.name}
-                      {p.user.nationality ? (
-                        <CountryFlag
-                          code={p.user.nationality}
-                          className="text-base leading-none"
-                        />
-                      ) : null}
+                <TableCell>
+                  <Link
+                    href={`/players/${p.user.username}`}
+                    className="flex items-center gap-3 hover:underline"
+                  >
+                    <Avatar
+                      size="sm"
+                      src={p.user.avatarUrl ?? undefined}
+                      fallback={p.user.name}
+                    />
+                    <div>
+                      <div className="flex items-center gap-2 font-semibold">
+                        {p.user.name}
+                        {p.user.nationality ? (
+                          <CountryFlag
+                            code={p.user.nationality}
+                            className="text-base leading-none"
+                          />
+                        ) : null}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        @{p.user.username}
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      @{p.user.username}
-                    </div>
-                  </div>
+                  </Link>
                 </TableCell>
                 <TableCell className="text-right">{p.matchesPlayed}</TableCell>
                 <TableCell className="text-right">{p.framesWon}</TableCell>

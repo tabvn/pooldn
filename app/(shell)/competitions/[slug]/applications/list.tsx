@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@apollo/client/react";
+import Link from "next/link";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,11 +52,27 @@ export function ApplicationsList({ slug }: { slug: string }) {
                     className="flex items-center justify-between rounded-md border border-border bg-background px-4 py-3"
                   >
                     <div className="flex items-center gap-3">
-                      <Avatar size="md" fallback={app.team.name} />
+                      <Avatar
+                        size="md"
+                        src={app.team.logoUrl ?? undefined}
+                        fallback={app.team.name}
+                        shape="team"
+                      />
                       <div>
-                        <div className="font-semibold">{app.team.name}</div>
+                        <Link
+                          href={`/teams/${app.team.slug}`}
+                          className="font-semibold hover:underline"
+                        >
+                          {app.team.name}
+                        </Link>
                         <div className="text-xs text-muted-foreground">
-                          Captain: {app.team.captain.name}
+                          Captain:{" "}
+                          <Link
+                            href={`/players/${app.team.captain.username}`}
+                            className="hover:underline"
+                          >
+                            {app.team.captain.name}
+                          </Link>
                         </div>
                       </div>
                     </div>

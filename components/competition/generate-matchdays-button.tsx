@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "@apollo/client/react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { GenerateMatchdaysMutation } from "@/lib/graphql/operations/matchday.operations";
 
 export function GenerateMatchdaysButton({
@@ -13,6 +14,7 @@ export function GenerateMatchdaysButton({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const [generate, { loading, error }] = useMutation(
     GenerateMatchdaysMutation,
   );
@@ -21,8 +23,13 @@ export function GenerateMatchdaysButton({
       <Button
         loading={loading}
         onClick={async () => {
-          if (!window.confirm("Generate matchdays for all approved teams?"))
-            return;
+          const ok = await confirm({
+            title: "Generate matchdays?",
+            description:
+              "This builds the round-robin schedule from every APPROVED team.",
+            confirmLabel: "Generate",
+          });
+          if (!ok) return;
           try {
             await generate({ variables: { id: competitionId } });
             toast.success("Matchdays generated");

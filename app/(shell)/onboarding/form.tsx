@@ -43,19 +43,26 @@ export function OnboardingForm({
   const [cityId, setCityId] = useState(viewer?.city?.id ?? "");
 
   async function onSave(redirectTo: string) {
-    await update({
-      variables: {
-        input: {
-          name,
-          bio: bio || null,
-          nationality: nationality || null,
-          cityId: cityId || null,
+    try {
+      await update({
+        variables: {
+          input: {
+            name,
+            bio: bio || null,
+            nationality: nationality || null,
+            cityId: cityId || null,
+          },
         },
-      },
-    });
-    toast.success("Welcome to PoolDN!");
-    router.push(redirectTo);
-    router.refresh();
+      });
+      toast.success("Welcome to PoolDN!");
+      router.push(redirectTo);
+      router.refresh();
+    } catch (e) {
+      toast.error(
+        "Could not save profile",
+        e instanceof Error ? e.message : "Try again.",
+      );
+    }
   }
 
   return (

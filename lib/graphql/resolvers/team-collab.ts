@@ -78,12 +78,17 @@ builder.mutationFields((t) => ({
         });
       }
 
-      // Refuse duplicates / already-members.
+      // Refuse self-invite, duplicates, already-members.
+      if (invitedUserId === ctx.viewer.id) {
+        throw new GraphQLError("You can't invite yourself", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
       if (invitedUserId) {
         const existing = await ctx.prisma.teamMember.findUnique({
           where: { teamId_userId: { teamId: team.id, userId: invitedUserId } },
         });
-        if (existing) {
+        if (existing && existing.isActive) {
           throw new GraphQLError("That player is already on this team", {
             extensions: { code: "ALREADY_MEMBER" },
           });
@@ -359,23 +364,149 @@ builder.mutationFields((t) => ({
   }),
 
   leaveTeam: t.boolean({
-    description: "Member leaves a team. The captain cannot leave their own.",
-    args: { teamId: t.arg.id({ required: true }) },
+    description:
+      "Member leaves a team. If the captain leaves, captaincy auto-promotes to the earliest-joined remaining member (Round 36). Sole-captain case is blocked — they're asked to delete the team instead.",
+    args: {
+      teamId: t.arg.id({ required: true }),
+      reason: t.arg.string(),
+    },
     resolve: async (_root, args, ctx) => {
       requireUser(ctx.viewer);
       const team = await ctx.prisma.team.findUniqueOrThrow({
         where: { id: String(args.teamId) },
       });
-      if (team.captainId === ctx.viewer.id) {
-        throw new GraphQLError(
-          "Captains cannot leave their own team — transfer captaincy first",
-          { extensions: { code: "FORBIDDEN" } },
-        );
+      const viewerId = ctx.viewer.id;
+      const viewerName = ctx.viewer.name;
+      const isCaptain = team.captainId === viewerId;
+
+      if (isCaptain) {
+        // Round-36 — auto-promote the earliest-joined remaining active member.
+        const successor = await ctx.prisma.teamMember.findFirst({
+          where: {
+            teamId: team.id,
+            isActive: true,
+            userId: { not: viewerId },
+          },
+          orderBy: { joinedAt: "asc" },
+          select: { userId: true },
+        });
+        if (!successor) {
+          throw new GraphQLError(
+            "You're the only member — delete the team instead.",
+            { extensions: { code: "ONLY_MEMBER" } },
+          );
+        }
+        await ctx.prisma.$transaction(async (tx) => {
+          await tx.team.update({
+            where: { id: team.id },
+            data: { captainId: successor.userId },
+          });
+          await tx.teamMember.updateMany({
+            where: { teamId: team.id, userId: viewerId, isActive: true },
+            data: {
+              isActive: false,
+              leftAt: new Date(),
+              leaveReason: args.reason ?? null,
+            },
+          });
+        });
+        const svc = new NotificationService(ctx.prisma);
+        await svc.create({
+          type: "ROSTER_INVITE",
+          title: `You're now the captain of ${team.name}`,
+          message: `${viewerName} stepped down. You were the next-longest-tenured member — the team is yours.`,
+          recipients: [successor.userId],
+          entity: { type: "TEAM", id: team.id, slug: team.slug },
+          groupKey: `captain-handoff-${team.id}`,
+        });
+        return true;
       }
-      await ctx.prisma.teamMember.deleteMany({
-        where: { teamId: team.id, userId: ctx.viewer.id },
+
+      // Regular member leaving — soft-delete, notify captain.
+      await ctx.prisma.teamMember.updateMany({
+        where: { teamId: team.id, userId: viewerId, isActive: true },
+        data: {
+          isActive: false,
+          leftAt: new Date(),
+          leaveReason: args.reason ?? null,
+        },
+      });
+      await new NotificationService(ctx.prisma).create({
+        type: "ROSTER_INVITE",
+        title: `${viewerName} left ${team.name}`,
+        message: args.reason ?? "Roster updated.",
+        recipients: [team.captainId],
+        entity: { type: "TEAM", id: team.id, slug: team.slug },
+        groupKey: `leave-${team.id}-${viewerId}`,
       });
       return true;
+    },
+  }),
+
+  transferCaptaincy: t.prismaField({
+    type: "Team",
+    description:
+      "Captain transfers the captaincy to another existing roster member.",
+    args: {
+      teamId: t.arg.id({ required: true }),
+      newCaptainUserId: t.arg.id({ required: true }),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const teamId = String(args.teamId);
+      const newCaptainId = String(args.newCaptainUserId);
+      const team = await assertCaptain(
+        ctx.prisma,
+        teamId,
+        ctx.viewer.id,
+        ctx.viewer.role,
+      );
+      if (newCaptainId === team.captainId) {
+        throw new GraphQLError("That player is already the captain", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const member = await ctx.prisma.teamMember.findUnique({
+        where: { teamId_userId: { teamId, userId: newCaptainId } },
+      });
+      if (!member || !member.isActive) {
+        throw new GraphQLError("The new captain must be a current roster member", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      return ctx.prisma.team.update({
+        ...query,
+        where: { id: teamId },
+        data: { captainId: newCaptainId },
+      });
+    },
+  }),
+
+  cancelJoinRequest: t.prismaField({
+    type: "TeamJoinRequest",
+    description:
+      "Player withdraws their own pending join request.",
+    args: { id: t.arg.id({ required: true }) },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const req = await ctx.prisma.teamJoinRequest.findUniqueOrThrow({
+        where: { id: String(args.id) },
+      });
+      if (req.userId !== ctx.viewer.id && ctx.viewer.role !== "SUPER_ADMIN") {
+        throw new GraphQLError("Not your join request to cancel", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+      if (req.status !== "PENDING") {
+        throw new GraphQLError("Only PENDING requests can be cancelled", {
+          extensions: { code: "INVALID_TRANSITION" },
+        });
+      }
+      return ctx.prisma.teamJoinRequest.update({
+        ...query,
+        where: { id: req.id },
+        data: { status: "CANCELLED", reviewedAt: new Date() },
+      });
     },
   }),
 }));
@@ -409,6 +540,19 @@ builder.queryFields((t) => ({
       return ctx.prisma.teamInvitation.findMany({
         ...query,
         where: { teamId: String(args.teamId), status: "PENDING" },
+        orderBy: { createdAt: "desc" },
+      });
+    },
+  }),
+
+  myJoinRequests: t.prismaField({
+    type: ["TeamJoinRequest"],
+    description: "Pending join requests submitted by the current viewer.",
+    resolve: (query, _root, _args, ctx) => {
+      if (!ctx.viewer) return [];
+      return ctx.prisma.teamJoinRequest.findMany({
+        ...query,
+        where: { userId: ctx.viewer.id, status: "PENDING" },
         orderBy: { createdAt: "desc" },
       });
     },

@@ -6,6 +6,7 @@ export const CreateTeamMutation = graphql(/* GraphQL */ `
       id
       slug
       name
+      logoUrl
     }
   }
 `);

@@ -15,6 +15,7 @@ import "./types/structure";
 import "./types/roster";
 import "./types/score-submission";
 import "./types/team-collab";
+import "./types/search";
 
 // Resolvers (split per domain).
 import "./resolvers/viewer.queries";
@@ -36,5 +37,12 @@ import "./resolvers/follow";
 import "./resolvers/roster.queries";
 import "./resolvers/score-submission";
 import "./resolvers/team-collab";
+import "./resolvers/feedback";
+import "./resolvers/search";
+import "./resolvers/community-moderation";
+import "./resolvers/notification-preferences";
+import "./resolvers/subscriptions";
+import "./resolvers/location.mutations";
+import "./resolvers/admin-moderation";
 
 export const schema = builder.toSchema();

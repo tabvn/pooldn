@@ -27,8 +27,9 @@ export default async function PoolhubDashboard() {
   const followedComps = data?.myFollowedCompetitions ?? [];
   const followedTeams = data?.myFollowedTeams ?? [];
   const hasFollowing = followedComps.length > 0 || followedTeams.length > 0;
-  const canCreate =
-    viewer?.role === "ORGANIZER" || viewer?.role === "SUPER_ADMIN";
+  // Round-47 — any signed-in user can run a competition; per-entity CASL
+  // grants organizer rights only on the comps they themselves create.
+  const canCreate = !!viewer;
   const greetingName = firstName(viewer?.name);
 
   return (

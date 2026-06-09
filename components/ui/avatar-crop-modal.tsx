@@ -1,125 +1,166 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog as DialogPrimitive } from "@base-ui-components/react/dialog";
-import { ZoomIn, ZoomOut } from "lucide-react";
+import { RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const CROP_SIZE = 320;
-const OUTPUT_SIZE = 512; // square output, written at 2× for retina
+const CROP_SIZE = 320; // px on screen
+const OUTPUT_SIZE = 512; // px in the saved PNG (2× retina)
 
 /**
- * Avatar crop/zoom modal.
+ * Avatar crop / zoom / rotate modal.
  *
- * Given a picked File, opens a circular crop window with drag-to-move and a
- * zoom slider. On save, renders the visible square to a 512×512 canvas and
- * returns a fresh File that the caller hands to the upload pipeline.
+ * Math: the image is positioned absolutely at the crop window's centre and
+ * transformed by `translate(panX, panY) rotate(rotation) scale(scale)`. To
+ * save, we replay the SAME transform onto an off-screen canvas of OUTPUT_SIZE
+ * — so what the user sees inside the circle is exactly what gets written.
  *
- * Lives outside the upload component so it stays testable in isolation and
- * the upload code path doesn't change for non-avatar use cases.
+ * `scale` starts at the value that makes the image's SHORTER side cover the
+ * crop window (`baseScale`) multiplied by a user-zoom slider (1×–4×).
  */
 export function AvatarCropModal({
   file,
   open,
   onCancel,
   onConfirm,
+  shape = "circle",
+  title,
 }: {
   file: File | null;
   open: boolean;
   onCancel: () => void;
   onConfirm: (cropped: File) => void;
+  /** "circle" for avatars; "square" for team logos / generic 1:1 crops. */
+  shape?: "circle" | "square";
+  title?: string;
 }) {
   const [srcUrl, setSrcUrl] = useState<string | null>(null);
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
-  const [zoom, setZoom] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const [zoom, setZoom] = useState(1); // user multiplier on top of baseScale
+  const [rotation, setRotation] = useState(0); // degrees
+  const [pan, setPan] = useState({ x: 0, y: 0 }); // in CSS pixels
+  const [working, setWorking] = useState(false);
+  const dragRef = useRef<{ x: number; y: number; px: number; py: number } | null>(
+    null,
+  );
   const imgRef = useRef<HTMLImageElement>(null);
 
-  // Lifecycle — load the file into an object URL when the modal opens.
+  // Load the picked file as a blob URL when the modal opens; reset state.
   useEffect(() => {
     if (!file || !open) {
-      if (srcUrl) URL.revokeObjectURL(srcUrl);
       setSrcUrl(null);
       setImgSize(null);
       setZoom(1);
-      setOffset({ x: 0, y: 0 });
+      setRotation(0);
+      setPan({ x: 0, y: 0 });
       return;
     }
     const url = URL.createObjectURL(file);
     setSrcUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [file, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [file, open]);
 
-  // Base scale: fit image so its SHORTER side covers the crop window. The
-  // user's zoom slider multiplies this.
   const baseScale = useMemo(() => {
     if (!imgSize) return 1;
+    // Cover the SHORTER side so the crop never sees background.
     return CROP_SIZE / Math.min(imgSize.w, imgSize.h);
   }, [imgSize]);
   const scale = baseScale * zoom;
 
-  // Clamp offset so the image edges never reveal the crop background.
-  const clampedOffset = useMemo(() => {
-    if (!imgSize) return offset;
+  const clampedPan = useMemo(() => {
+    if (!imgSize) return pan;
+    // Clamp so the rotated/scaled image still covers the crop window.
+    // For non-axis-aligned rotations we approximate with a circle radius equal
+    // to half the shorter side; conservative but never reveals background.
     const w = imgSize.w * scale;
     const h = imgSize.h * scale;
-    const maxX = Math.max(0, (w - CROP_SIZE) / 2);
-    const maxY = Math.max(0, (h - CROP_SIZE) / 2);
+    // Use the bounding-box approach (works perfectly when rotation is a
+    // multiple of 90°, slightly looser otherwise).
+    const r = Math.abs(rotation % 180);
+    const swap = r > 45 && r < 135;
+    const effW = swap ? h : w;
+    const effH = swap ? w : h;
+    const maxX = Math.max(0, (effW - CROP_SIZE) / 2);
+    const maxY = Math.max(0, (effH - CROP_SIZE) / 2);
     return {
-      x: Math.max(-maxX, Math.min(maxX, offset.x)),
-      y: Math.max(-maxY, Math.min(maxY, offset.y)),
+      x: Math.max(-maxX, Math.min(maxX, pan.x)),
+      y: Math.max(-maxY, Math.min(maxY, pan.y)),
     };
-  }, [imgSize, scale, offset]);
+  }, [imgSize, scale, rotation, pan]);
 
-  const onImgLoad = useCallback(() => {
+  function onImgLoad() {
     const el = imgRef.current;
     if (!el) return;
     setImgSize({ w: el.naturalWidth, h: el.naturalHeight });
-    setOffset({ x: 0, y: 0 });
+    setPan({ x: 0, y: 0 });
     setZoom(1);
-  }, []);
+    setRotation(0);
+  }
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = { x: e.clientX, y: e.clientY };
+    dragRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      px: clampedPan.x,
+      py: clampedPan.y,
+    };
   }
   function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
     if (!dragRef.current) return;
     const dx = e.clientX - dragRef.current.x;
     const dy = e.clientY - dragRef.current.y;
-    dragRef.current = { x: e.clientX, y: e.clientY };
-    setOffset((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+    setPan({ x: dragRef.current.px + dx, y: dragRef.current.py + dy });
   }
   function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
     e.currentTarget.releasePointerCapture(e.pointerId);
     dragRef.current = null;
   }
+  function onWheel(e: React.WheelEvent<HTMLDivElement>) {
+    // Mouse-wheel zoom: scroll up zooms in.
+    e.preventDefault();
+    const delta = -e.deltaY * 0.0015;
+    setZoom((z) => clamp(z + delta, 1, 4));
+  }
 
   async function onSave() {
-    if (!imgRef.current || !imgSize || !file) return;
-    // Map the displayed CROP window back to source-image pixel coordinates.
-    // Source-pixel width that fills the crop window is CROP_SIZE / scale.
-    const sw = CROP_SIZE / scale;
-    const sh = CROP_SIZE / scale;
-    // Centered baseline + user pan offset (in CSS pixels) → source-pixel.
-    const sx = imgSize.w / 2 - sw / 2 - clampedOffset.x / scale;
-    const sy = imgSize.h / 2 - sh / 2 - clampedOffset.y / scale;
-    const canvas = document.createElement("canvas");
-    canvas.width = OUTPUT_SIZE;
-    canvas.height = OUTPUT_SIZE;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(imgRef.current, sx, sy, sw, sh, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
-    const blob: Blob | null = await new Promise((resolve) =>
-      canvas.toBlob((b) => resolve(b), "image/png", 0.92),
-    );
-    if (!blob) return;
-    const cropped = new File([blob], file.name.replace(/\.[^.]+$/, ".png"), {
-      type: "image/png",
-    });
-    onConfirm(cropped);
+    if (!imgRef.current || !imgSize || !file || working) return;
+    setWorking(true);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = OUTPUT_SIZE;
+      canvas.height = OUTPUT_SIZE;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.imageSmoothingQuality = "high";
+      // Replay the visible transform onto the canvas, scaled from CROP_SIZE
+      // up to OUTPUT_SIZE.
+      const R = OUTPUT_SIZE / CROP_SIZE;
+      ctx.translate(OUTPUT_SIZE / 2, OUTPUT_SIZE / 2);
+      ctx.translate(clampedPan.x * R, clampedPan.y * R);
+      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.scale(scale * R, scale * R);
+      ctx.drawImage(
+        imgRef.current,
+        -imgSize.w / 2,
+        -imgSize.h / 2,
+        imgSize.w,
+        imgSize.h,
+      );
+      const blob: Blob | null = await new Promise((resolve) =>
+        canvas.toBlob((b) => resolve(b), "image/png", 0.92),
+      );
+      if (!blob) return;
+      const cropped = new File(
+        [blob],
+        file.name.replace(/\.[^.]+$/, ".png"),
+        { type: "image/png" },
+      );
+      onConfirm(cropped);
+    } finally {
+      setWorking(false);
+    }
   }
 
   return (
@@ -131,19 +172,23 @@ export function AvatarCropModal({
           data-testid="avatar-crop-modal"
         >
           <DialogPrimitive.Title className="text-lg font-bold">
-            Adjust your photo
+            {title ?? "Adjust your photo"}
           </DialogPrimitive.Title>
           <DialogPrimitive.Description className="mt-0.5 text-xs text-muted-foreground">
-            Drag to reposition. Use the slider to zoom.
+            Drag to reposition · scroll to zoom · use the controls below.
           </DialogPrimitive.Description>
 
+          {/* Crop window — circle for avatars, rounded-square for logos. */}
           <div
-            className="mx-auto mt-4 select-none overflow-hidden rounded-full border border-border bg-secondary/40"
-            style={{ width: CROP_SIZE, height: CROP_SIZE }}
+            className={`relative mx-auto mt-4 select-none overflow-hidden border border-border bg-secondary/40 ${
+              shape === "circle" ? "rounded-full" : "rounded-xl"
+            }`}
+            style={{ width: CROP_SIZE, height: CROP_SIZE, touchAction: "none" }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onWheel={onWheel}
           >
             {srcUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -153,44 +198,106 @@ export function AvatarCropModal({
                 alt=""
                 draggable={false}
                 onLoad={onImgLoad}
-                className="pointer-events-none select-none"
                 style={{
-                  transform: `translate(calc(-50% + ${clampedOffset.x}px), calc(-50% + ${clampedOffset.y}px)) scale(${scale})`,
-                  transformOrigin: "0 0",
-                  position: "relative",
+                  position: "absolute",
+                  // Centre the image's own centre in the crop window, then
+                  // apply pan / rotate / scale around that origin.
                   left: "50%",
                   top: "50%",
+                  transform: `translate(-50%, -50%) translate(${clampedPan.x}px, ${clampedPan.y}px) rotate(${rotation}deg) scale(${scale})`,
+                  transformOrigin: "center center",
+                  willChange: "transform",
+                  pointerEvents: "none",
                   maxWidth: "none",
+                  userSelect: "none",
+                  WebkitUserSelect: "none",
                 }}
               />
             ) : null}
           </div>
 
-          <div className="mt-4 flex items-center gap-3">
-            <ZoomOut className="size-4 text-muted-foreground" />
-            <input
-              type="range"
-              min={1}
-              max={3}
-              step={0.01}
-              value={zoom}
-              onChange={(e) => setZoom(Number(e.target.value))}
-              className="flex-1 accent-primary"
-              aria-label="Zoom"
-            />
-            <ZoomIn className="size-4 text-muted-foreground" />
+          {/* Zoom + Rotate controls */}
+          <div className="mt-4 space-y-3">
+            <div
+              className="flex items-center gap-3"
+              data-testid="avatar-crop-zoom"
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setZoom((z) => clamp(z - 0.25, 1, 4))}
+                aria-label="Zoom out"
+              >
+                <ZoomOut className="size-4" />
+              </Button>
+              <input
+                type="range"
+                min={1}
+                max={4}
+                step={0.01}
+                value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+                className="flex-1 accent-primary"
+                aria-label="Zoom"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setZoom((z) => clamp(z + 0.25, 1, 4))}
+                aria-label="Zoom in"
+              >
+                <ZoomIn className="size-4" />
+              </Button>
+            </div>
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>
+                Zoom <span className="font-mono">{zoom.toFixed(2)}×</span>
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setRotation((r) => (r + 90) % 360)}
+                iconBefore={<RotateCw className="size-4" />}
+                data-testid="avatar-crop-rotate"
+              >
+                Rotate 90°
+              </Button>
+            </div>
           </div>
 
-          <div className="mt-5 flex items-center justify-end gap-2">
-            <Button variant="ghost" onClick={onCancel}>
-              Cancel
+          <div className="mt-5 flex items-center justify-between gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setZoom(1);
+                setRotation(0);
+                setPan({ x: 0, y: 0 });
+              }}
+            >
+              Reset
             </Button>
-            <Button onClick={onSave} disabled={!srcUrl || !imgSize}>
-              Save photo
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={onCancel}>
+                Cancel
+              </Button>
+              <Button
+                onClick={onSave}
+                disabled={!srcUrl || !imgSize}
+                loading={working}
+              >
+                Save photo
+              </Button>
+            </div>
           </div>
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   );
+}
+
+function clamp(v: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, v));
 }

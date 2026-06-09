@@ -8,7 +8,14 @@ import {
   GameType,
 } from "@/lib/generated/prisma/enums";
 
-type City = { id: string; name: string };
+/**
+ * Round-34 — the City filter was removed from the competitions browse: the
+ * header's city selector already governs scope, so duplicating it here was
+ * redundant + confusing. Filters left here: search / status / game type.
+ *
+ * Cities are still passed in (for legacy callers / future filters) but the
+ * dropdown is hidden.
+ */
 
 const STATUS_OPTIONS = [
   { value: "", label: "Any status" },
@@ -26,7 +33,9 @@ const GAME_TYPE_OPTIONS = [
   { value: GameType.STRAIGHT_POOL, label: "Straight pool" },
 ] as const;
 
-export function PoolhubFilters({ cities }: { cities: City[] }) {
+type City = { id: string; name: string };
+
+export function PoolhubFilters({ cities: _cities }: { cities: City[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -39,12 +48,11 @@ export function PoolhubFilters({ cities }: { cities: City[] }) {
   }
 
   const status = searchParams.get("status") ?? "";
-  const cityId = searchParams.get("cityId") ?? "";
   const gameType = searchParams.get("gameType") ?? "";
   const search = searchParams.get("search") ?? "";
 
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
       <Input
         placeholder="Search by name or slug"
         defaultValue={search}
@@ -60,14 +68,6 @@ export function PoolhubFilters({ cities }: { cities: City[] }) {
         value={gameType}
         onValueChange={(v) => set("gameType", v)}
         options={[...GAME_TYPE_OPTIONS]}
-      />
-      <Select
-        value={cityId}
-        onValueChange={(v) => set("cityId", v)}
-        options={[
-          { value: "", label: "Any city" },
-          ...cities.map((c) => ({ value: c.id, label: c.name })),
-        ]}
       />
     </div>
   );

@@ -1,21 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@apollo/client/react";
-import { Mail, UserPlus, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { PageTitle } from "@/components/layout/page-title";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { InvitePicker } from "@/components/team/invite-picker";
 import { TeamDetailQuery } from "@/lib/graphql/operations/team.operations";
 import {
-  AddTeamMemberMutation,
   RemoveTeamMemberMutation,
-  UsersDirectoryQuery,
 } from "@/lib/graphql/operations/team-mutations.operations";
 import {
   CancelTeamInvitationMutation,
@@ -23,16 +22,15 @@ import {
   ReviewJoinRequestMutation,
   TeamInvitationsQuery,
   TeamJoinRequestsQuery,
+  TransferCaptaincyMutation,
 } from "@/lib/graphql/operations/team-collab.operations";
 
 export function ManageRoster({ slug }: { slug: string }) {
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const teamQuery = useQuery(TeamDetailQuery, { variables: { slug } });
-  const usersQuery = useQuery(UsersDirectoryQuery);
-  const [add, addState] = useMutation(AddTeamMemberMutation);
   const [remove, removeState] = useMutation(RemoveTeamMemberMutation);
-  const [search, setSearch] = useState("");
   const teamIdForQueries = teamQuery.data?.team?.id ?? "";
   const invitesQuery = useQuery(TeamInvitationsQuery, {
     variables: { teamId: teamIdForQueries },
@@ -47,10 +45,23 @@ export function ManageRoster({ slug }: { slug: string }) {
   const [invite, inviteState] = useMutation(InviteToTeamMutation);
   const [cancelInvite] = useMutation(CancelTeamInvitationMutation);
   const [reviewJoin, reviewJoinState] = useMutation(ReviewJoinRequestMutation);
-  const [inviteIdentifier, setInviteIdentifier] = useState("");
-
+  const [transferCaptaincy, transferState] = useMutation(TransferCaptaincyMutation);
   const team = teamQuery.data?.team;
-  const users = usersQuery.data?.users ?? [];
+
+  // R45+ — feed the invite picker a set of user-ids it should skip:
+  //   - everyone already on the active roster (so we can't double-add)
+  //   - everyone with a PENDING invitation
+  //   - the viewer themselves (server enforces "no self-invite" anyway)
+  const excludeIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of team?.members ?? []) {
+      if (m.user?.id) s.add(m.user.id);
+    }
+    for (const inv of invitesQuery.data?.teamInvitations ?? []) {
+      if (inv.invitedUser?.id) s.add(inv.invitedUser.id);
+    }
+    return s;
+  }, [team?.members, invitesQuery.data?.teamInvitations]);
 
   if (!team) {
     return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
@@ -58,53 +69,54 @@ export function ManageRoster({ slug }: { slug: string }) {
   const teamId = team.id;
   const captainId = team.captain.id;
 
-  const memberIds = new Set(team.members.map((m) => m.user.id));
-  const candidates = users.filter(
-    (u) =>
-      !memberIds.has(u.id) &&
-      (search === "" ||
-        u.name.toLowerCase().includes(search.toLowerCase()) ||
-        u.username.toLowerCase().includes(search.toLowerCase())),
-  );
-
-  async function onAdd(userId: string, name: string) {
-    await add({ variables: { teamId, userId } });
-    toast.success(`${name} added to the roster`);
-    await teamQuery.refetch();
-    router.refresh();
-  }
-
   async function onRemove(userId: string, name: string) {
-    if (!window.confirm(`Remove ${name} from the roster?`)) return;
+    const ok = await confirm({
+      title: `Remove ${name}?`,
+      description: "They'll be dropped from the roster immediately.",
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
     await remove({ variables: { teamId, userId } });
     toast.success(`${name} removed`);
     await teamQuery.refetch();
     router.refresh();
   }
 
-  async function onInvite() {
-    const id = inviteIdentifier.trim();
-    if (!id) return;
+  async function onInviteUser(input:
+    | { kind: "user"; userId: string; label: string }
+    | { kind: "email"; email: string }): Promise<boolean> {
     try {
-      const isEmail = id.includes("@");
-      const isUsername = id.startsWith("@");
       await invite({
         variables: {
           teamId,
-          username: isUsername ? id.slice(1) : isEmail ? null : id,
-          email: isEmail ? id : null,
+          userId: input.kind === "user" ? input.userId : null,
+          username: null,
+          email: input.kind === "email" ? input.email : null,
         },
       });
-      toast.success("Invitation sent");
-      setInviteIdentifier("");
+      toast.success(
+        "Invitation sent",
+        input.kind === "user"
+          ? `Invited ${input.label}.`
+          : `Invited ${input.email} by email.`,
+      );
       await invitesQuery.refetch();
+      return true;
     } catch (e) {
-      toast.error("Could not send invite", e instanceof Error ? e.message : "");
+      toast.error("Could not send invite", e);
+      return false;
     }
   }
 
   async function onCancelInvite(id: string) {
-    if (!window.confirm("Cancel this pending invitation?")) return;
+    const ok = await confirm({
+      title: "Cancel this invitation?",
+      description: "The invitee will no longer see it in their invitations.",
+      confirmLabel: "Cancel invitation",
+      destructive: true,
+    });
+    if (!ok) return;
     await cancelInvite({ variables: { id } });
     toast.success("Invitation cancelled");
     await invitesQuery.refetch();
@@ -115,6 +127,30 @@ export function ManageRoster({ slug }: { slug: string }) {
     toast.success(approve ? `${name} added` : `Declined ${name}`);
     await Promise.all([joinReqQuery.refetch(), teamQuery.refetch()]);
     router.refresh();
+  }
+
+  async function onTransferCaptaincy(userId: string, name: string) {
+    const ok = await confirm({
+      title: `Transfer captaincy to ${name}?`,
+      description:
+        "You'll stop being the team captain. You can stay on the roster as a regular member.",
+      confirmLabel: "Transfer captaincy",
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await transferCaptaincy({
+        variables: { teamId, newCaptainUserId: userId },
+      });
+      toast.success(`${name} is now the captain`);
+      await teamQuery.refetch();
+      router.refresh();
+    } catch (e) {
+      toast.error(
+        "Could not transfer captaincy",
+        e instanceof Error ? e.message : "Try again.",
+      );
+    }
   }
 
   return (
@@ -163,15 +199,28 @@ export function ManageRoster({ slug }: { slug: string }) {
                         Captain
                       </Badge>
                     ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        loading={removeState.loading}
-                        onClick={() => onRemove(m.user.id, m.user.name)}
-                        aria-label={`Remove ${m.user.name}`}
-                      >
-                        <X className="size-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={transferState.loading}
+                          onClick={() =>
+                            onTransferCaptaincy(m.user.id, m.user.name)
+                          }
+                          data-testid={`transfer-captaincy-${m.user.id}`}
+                        >
+                          Make captain
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          loading={removeState.loading}
+                          onClick={() => onRemove(m.user.id, m.user.name)}
+                          aria-label={`Remove ${m.user.name}`}
+                        >
+                          <X className="size-4" />
+                        </Button>
+                      </div>
                     )}
                   </div>
                 );
@@ -183,23 +232,17 @@ export function ManageRoster({ slug }: { slug: string }) {
         <Card data-testid="invite-card">
           <CardHeader>
             <CardTitle>Invite a player</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Search by name or username; or paste an email to invite someone
+              new. Current members and existing invitees won't show up.
+            </p>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Input
-              placeholder="@username or email"
-              value={inviteIdentifier}
-              onChange={(e) => setInviteIdentifier(e.target.value)}
+            <InvitePicker
+              excludeUserIds={excludeIds}
+              loading={inviteState.loading}
+              onSubmit={onInviteUser}
             />
-            <div className="flex justify-end">
-              <Button
-                size="sm"
-                loading={inviteState.loading}
-                iconBefore={<Mail className="size-4" />}
-                onClick={onInvite}
-              >
-                Send invitation
-              </Button>
-            </div>
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-2 mb-2">
                 Pending invitations
@@ -300,53 +343,8 @@ export function ManageRoster({ slug }: { slug: string }) {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Add a player directly</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Input
-              placeholder="Search players by name or username"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <ul className="space-y-2 max-h-96 overflow-y-auto">
-              {candidates.length === 0 ? (
-                <li className="text-sm text-muted-foreground">
-                  No matching players.
-                </li>
-              ) : (
-                candidates.map((u) => (
-                  <li
-                    key={u.id}
-                    className="flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2"
-                  >
-                    <Avatar
-                      size="sm"
-                      src={u.avatarUrl ?? undefined}
-                      fallback={u.name}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium">{u.name}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        @{u.username}
-                        {u.nationality ? ` · ${u.nationality}` : ""}
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      iconBefore={<UserPlus className="size-4" />}
-                      loading={addState.loading}
-                      onClick={() => onAdd(u.id, u.name)}
-                    >
-                      Add
-                    </Button>
-                  </li>
-                ))
-              )}
-            </ul>
-          </CardContent>
-        </Card>
+        {/* Round-28 — captain can ONLY add via invitations or by approving
+            join requests. No direct-add UI; addTeamMember is admin/seed-only. */}
       </div>
     </div>
   );

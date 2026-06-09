@@ -1,6 +1,7 @@
 import { mkdir, writeFile, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
 
 /**
  * Tiny filesystem-backed storage abstraction. The shape mirrors what an S3/R2
@@ -13,8 +14,23 @@ const UPLOADS_ROOT = join(process.cwd(), "public", "uploads");
 export type UploadKind =
   | "avatar"
   | "team-logo"
+  | "team-logo-draft"
   | "competition-banner"
-  | "venue-image";
+  | "venue-image"
+  | "community-image"
+  | "score-board";
+
+/**
+ * Multi-instance kinds where a single owner produces many files (e.g. a
+ * user dropping several images into a post). Each upload lands at
+ *   public/uploads/{kind}/{ownerId}/{random}.{ext}
+ * and lives independently — deletes remove only that one URL.
+ */
+export const MULTI_KINDS: ReadonlySet<UploadKind> = new Set([
+  "community-image",
+  "score-board",
+  "team-logo-draft",
+]);
 
 export type StoredFile = {
   /** Public URL that the browser can use directly. */
@@ -62,6 +78,17 @@ export async function put(
 ): Promise<StoredFile> {
   const ext = extForMime(contentType);
   if (!ext) throw new Error(`Unsupported content type: ${contentType}`);
+  if (MULTI_KINDS.has(kind)) {
+    const id = randomUUID();
+    const path = join(UPLOADS_ROOT, kind, ownerId, `${id}.${ext}`);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, buf);
+    return {
+      url: `${UPLOADS_PUBLIC_PREFIX}/${kind}/${ownerId}/${id}.${ext}`,
+      size: buf.byteLength,
+      contentType,
+    };
+  }
   const path = objectPath(kind, ownerId, ext);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, buf);

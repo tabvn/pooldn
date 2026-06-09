@@ -7,6 +7,7 @@ export const SubmitMatchScoreMutation = graphql(/* GraphQL */ `
       status
       homeScore
       awayScore
+      boardImageUrls
       submittedBy {
         id
         name
@@ -34,6 +35,7 @@ export const MatchScoreSubmissionsForMatchQuery = graphql(/* GraphQL */ `
       awayScore
       status
       note
+      boardImageUrls
       createdAt
       reviewedAt
       submittedBy {
@@ -96,6 +98,7 @@ export const MatchScoreSubmissionsListQuery = graphql(/* GraphQL */ `
             id
             slug
             name
+            bannerUrl
           }
         }
       }

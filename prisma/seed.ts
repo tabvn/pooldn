@@ -142,6 +142,14 @@ async function main() {
     role: "SUPER_ADMIN",
     cityId: daNang.id,
   });
+  const bekazat = await upsertUser({
+    username: "bekazat",
+    name: "Bekazat",
+    email: "bek@thebay.city",
+    role: "SUPER_ADMIN",
+    cityId: daNang.id,
+  });
+  void bekazat;
   const michael = await upsertUser({
     username: "michael",
     name: "Michael Dibbson",
@@ -392,6 +400,50 @@ async function main() {
     },
   });
 
+  // A competition in APPLICATIONS_CLOSED with enough approved teams to
+  // immediately trigger generateMatchdays from the organizer's "Start" action
+  // — used by E2E that drive the start-competition flow end-to-end, and as
+  // a manual QA fixture so reviewers can press Start without first having to
+  // close applications.
+  const startable = await prisma.competition.upsert({
+    where: { slug: "da-nang-winter-cup-2026" },
+    update: { bannerUrl: bannerFor("da-nang-winter-cup-2026") },
+    create: {
+      bannerUrl: bannerFor("da-nang-winter-cup-2026"),
+      slug: "da-nang-winter-cup-2026",
+      name: "Da Nang Winter Cup",
+      description:
+        "Applications closed, roster locked. Ready to start — organizer just hits Start.",
+      organizerId: michael.id,
+      cityId: daNang.id,
+      status: "APPLICATIONS_CLOSED",
+      type: "TEAMS",
+      format: "ROUND_ROBIN",
+      gameType: "TEN_BALL",
+      maxTeams: 4,
+      minTeams: 3,
+      raceToFrames: 5,
+      startDate: new Date("2026-12-01"),
+      endDate: new Date("2027-02-28"),
+      applicationDeadline: new Date("2026-11-15"),
+      prizePool: "4000000",
+      currency: "VND",
+    },
+  });
+
+  // Mirror the singles/doubles/singles structure used by ongoing so the start
+  // action has a real match-format scaffold to thread through.
+  await prisma.matchFormatBlock.deleteMany({
+    where: { competitionId: startable.id },
+  });
+  await prisma.matchFormatBlock.createMany({
+    data: [
+      { competitionId: startable.id, order: 1, type: "SINGLES", games: 3, breakAfterMin: 10 },
+      { competitionId: startable.id, order: 2, type: "DOUBLES", games: 2, breakAfterMin: 5 },
+      { competitionId: startable.id, order: 3, type: "SINGLES", games: 3 },
+    ],
+  });
+
   // ── Applications ────────────────────────────────────────────────────────
   type AppStatus =
     | "PENDING"
@@ -432,6 +484,11 @@ async function main() {
     "REJECTED",
     "Roster below minimum size",
   );
+
+  // Startable comp — all approved, hits minTeams=3 so Start succeeds.
+  await upsertApp(startable.id, genTeam.id, "APPROVED");
+  await upsertApp(startable.id, tigers.id, "APPROVED");
+  await upsertApp(startable.id, haiCrew.id, "APPROVED");
 
   // Open comp — mixed states (Hai's Crew intentionally NOT pre-applied so
   // the apply-approve-standings e2e can drive the full flow as hai).
@@ -898,6 +955,389 @@ async function main() {
       ],
     });
   }
+
+  // Round-14 — scaffold per-match MatchFrame rows from the competition
+  // structure for ONGOING + COMPLETED comps so the lineup screen + About
+  // tab + scoreboard have real frames + block types to render.
+  const { scaffoldMatchFramesFromStructure } = await import(
+    "../lib/services/match-frame-scaffold"
+  );
+  const framedMatches = await prisma.match.findMany({
+    where: {
+      matchday: {
+        competitionId: { in: [ongoing.id, completed.id] },
+      },
+    },
+    select: { id: true },
+  });
+  for (const m of framedMatches) {
+    await scaffoldMatchFramesFromStructure(prisma, m.id);
+  }
+
+  // Round-31 — turn the COMPLETED competition into a full all-play-all
+  // round-robin so the recap card has real depth (multiple matchdays, all
+  // teams in standings, MVP derived from frames across the whole season).
+  //
+  // Approves Hai's Crew + Pool Sharks (in addition to Gen + Tigers) and
+  // generates 3 matchdays of 2 matches each (4 teams → 6 matches). Each
+  // match's frame results are picked deterministically per the score so
+  // recomputeMvp produces stable "top scorer" lists.
+  {
+    await upsertApp(completed.id, haiCrew.id, "APPROVED");
+    await upsertApp(completed.id, sharks.id, "APPROVED");
+
+    // Drop everything we previously hand-rolled — start the round-robin
+    // from a clean slate so re-seeds don't accumulate cruft.
+    await prisma.match.deleteMany({
+      where: { matchday: { competitionId: completed.id } },
+    });
+    await prisma.standing.deleteMany({
+      where: { competitionId: completed.id },
+    });
+    await prisma.matchday.deleteMany({
+      where: { competitionId: completed.id },
+    });
+
+    // Round-robin schedule for 4 teams across 3 matchdays.
+    const teams = [genTeam, tigers, haiCrew, sharks];
+    type Pair = [typeof genTeam, typeof genTeam];
+    const rounds: Pair[][] = [
+      // R1
+      [
+        [genTeam, tigers],
+        [haiCrew, sharks],
+      ],
+      // R2
+      [
+        [genTeam, haiCrew],
+        [tigers, sharks],
+      ],
+      // R3
+      [
+        [genTeam, sharks],
+        [tigers, haiCrew],
+      ],
+    ];
+
+    // Pre-defined scores keyed by `${homeIdx}-${awayIdx}` (team order in
+    // `teams` above). Crafted so Hai's Crew finishes top, Gen second, and
+    // every team plays 3 matches.
+    const scores: Record<string, [number, number]> = {
+      "0-1": [5, 3], // Gen 5-3 Tigers
+      "2-3": [5, 2], // Hai 5-2 Sharks
+      "0-2": [3, 5], // Gen 3-5 Hai
+      "1-3": [5, 4], // Tigers 5-4 Sharks
+      "0-3": [5, 1], // Gen 5-1 Sharks
+      "1-2": [2, 5], // Tigers 2-5 Hai
+    };
+
+    let matchdayNumber = 0;
+    for (const round of rounds) {
+      matchdayNumber += 1;
+      const matchday = await prisma.matchday.create({
+        data: {
+          competitionId: completed.id,
+          number: matchdayNumber,
+          label: `Week ${matchdayNumber}`,
+          scheduledDate: new Date(`2026-10-${10 + matchdayNumber}`),
+          isGenerated: true,
+        },
+      });
+      for (const [home, away] of round) {
+        const hi = teams.indexOf(home);
+        const ai = teams.indexOf(away);
+        const key = `${hi}-${ai}`;
+        const [hs, as] = scores[key]!;
+        const match = await prisma.match.create({
+          data: {
+            matchdayId: matchday.id,
+            homeTeamId: home.id,
+            awayTeamId: away.id,
+            venueId: fillingStation.id,
+            status: "COMPLETED",
+            homeScore: hs,
+            awayScore: as,
+            scheduledAt: new Date(
+              `2026-10-${10 + matchdayNumber}T19:00:00Z`,
+            ),
+            completedAt: new Date(
+              `2026-10-${10 + matchdayNumber}T21:30:00Z`,
+            ),
+            completionMode: "AUTO_AGREED",
+          },
+        });
+        // Create frames matching the score so recomputeMvp has data.
+        const totalFrames = hs + as;
+        const homeRoster = await prisma.teamMember.findMany({
+          where: { teamId: home.id, isActive: true },
+          select: { userId: true },
+          take: 4,
+        });
+        const awayRoster = await prisma.teamMember.findMany({
+          where: { teamId: away.id, isActive: true },
+          select: { userId: true },
+          take: 4,
+        });
+        for (let i = 0; i < totalFrames; i++) {
+          const homeWon = i < hs;
+          const hp = homeRoster[i % Math.max(1, homeRoster.length)]?.userId ?? null;
+          const ap = awayRoster[i % Math.max(1, awayRoster.length)]?.userId ?? null;
+          await prisma.matchFrame.create({
+            data: {
+              matchId: match.id,
+              frameNumber: i + 1,
+              homeWon,
+              homePlayerId: hp,
+              awayPlayerId: ap,
+            },
+          });
+        }
+      }
+    }
+  }
+
+  // Round-31 — aggregate playerCompStat for the COMPLETED comp directly
+  // from the frames we just created. recomputeMvp reads from this table,
+  // so without this step the MVP flag would lag behind the actual play.
+  {
+    const frames = await prisma.matchFrame.findMany({
+      where: {
+        match: { matchday: { competitionId: completed.id }, status: "COMPLETED" },
+        OR: [{ homePlayerId: { not: null } }, { awayPlayerId: { not: null } }],
+      },
+      select: {
+        homePlayerId: true,
+        awayPlayerId: true,
+        homeWon: true,
+        matchId: true,
+      },
+    });
+    type Agg = {
+      framesPlayed: number;
+      framesWon: number;
+      matches: Set<string>;
+    };
+    const tally = new Map<string, Agg>();
+    function bump(userId: string, won: boolean, matchId: string) {
+      const a = tally.get(userId) ?? {
+        framesPlayed: 0,
+        framesWon: 0,
+        matches: new Set<string>(),
+      };
+      a.framesPlayed += 1;
+      if (won) a.framesWon += 1;
+      a.matches.add(matchId);
+      tally.set(userId, a);
+    }
+    for (const f of frames) {
+      if (f.homePlayerId) bump(f.homePlayerId, f.homeWon === true, f.matchId);
+      if (f.awayPlayerId) bump(f.awayPlayerId, f.homeWon === false, f.matchId);
+    }
+    // Reset all stats for the completed comp before re-aggregating.
+    await prisma.playerCompStat.deleteMany({
+      where: { competitionId: completed.id },
+    });
+    for (const [userId, agg] of tally) {
+      await prisma.playerCompStat.create({
+        data: {
+          competitionId: completed.id,
+          userId,
+          framesPlayed: agg.framesPlayed,
+          framesWon: agg.framesWon,
+          matchesPlayed: agg.matches.size,
+          isMvp: false,
+        },
+      });
+    }
+  }
+
+  // Round-18 — derive MVP from highest frames-won % on the COMPLETED comp.
+  const { recomputeMvp, recomputeStandings } = await import(
+    "../lib/services/standings.service"
+  );
+  // Now that the completed comp has a real round-robin, derive standings
+  // from the actual matches instead of the hand-rolled placeholders.
+  await recomputeStandings(prisma, completed.id);
+  await recomputeMvp(prisma, completed.id);
+  await recomputeMvp(prisma, ongoing.id);
+
+  // Round-22 — backfill player ratings deterministically so /rankings has a
+  // populated board on a fresh seed. Hash the username into [800, 1900] and
+  // derive level from the rating (1000 → 3, 1500 → 8).
+  const allPlayers = await prisma.user.findMany({
+    where: { role: { in: ["PLAYER", "TEAM_CAPTAIN"] } },
+    select: { id: true, username: true },
+  });
+  const { levelFromRating } = await import("../lib/services/rating.service");
+  for (const u of allPlayers) {
+    let h = 0;
+    for (let i = 0; i < u.username.length; i++) {
+      h = (h * 31 + u.username.charCodeAt(i)) | 0;
+    }
+    const rating = 800 + (Math.abs(h) % 1100); // 800–1899
+    await prisma.user.update({
+      where: { id: u.id },
+      data: { rating, level: levelFromRating(rating) },
+    });
+  }
+
+  // Round-41 — seed submittable score-submission fixtures on the ONGOING
+  // competition so the audit/conflict/admin-override paths are testable
+  // out of the box. We DO NOT pre-complete these — they're left in states
+  // that exercise the dual-confirmation flow.
+  const matches = await prisma.match.findMany({
+    where: { matchday: { competitionId: ongoing.id }, status: "SCHEDULED" },
+    include: {
+      homeTeam: { select: { id: true, captainId: true, name: true } },
+      awayTeam: { select: { id: true, captainId: true, name: true } },
+    },
+    take: 3,
+  });
+  // Match #1: leave clean (both captains can submit AUTO_AGREED in tests).
+  // Match #2: one captain has already submitted → next test submitting a
+  //           different score yields CONFLICT immediately.
+  // Match #3: pre-create both captain submissions in CONFLICT so the
+  //           organizer's review queue (/admin/score-submissions) loads
+  //           with data.
+  if (matches[1]?.homeTeam?.captainId && matches[1].homeTeamId) {
+    await prisma.matchScoreSubmission.upsert({
+      where: {
+        matchId_submittedById: {
+          matchId: matches[1].id,
+          submittedById: matches[1].homeTeam.captainId,
+        },
+      },
+      create: {
+        matchId: matches[1].id,
+        submittedById: matches[1].homeTeam.captainId,
+        forTeamId: matches[1].homeTeamId,
+        homeScore: 5,
+        awayScore: 3,
+        status: "PENDING",
+        note: "We won on the deciding 8-ball.",
+      },
+      update: {},
+    });
+  }
+  if (
+    matches[2]?.homeTeam?.captainId &&
+    matches[2]?.awayTeam?.captainId &&
+    matches[2].homeTeamId &&
+    matches[2].awayTeamId
+  ) {
+    await prisma.matchScoreSubmission.upsert({
+      where: {
+        matchId_submittedById: {
+          matchId: matches[2].id,
+          submittedById: matches[2].homeTeam.captainId,
+        },
+      },
+      create: {
+        matchId: matches[2].id,
+        submittedById: matches[2].homeTeam.captainId,
+        forTeamId: matches[2].homeTeamId,
+        homeScore: 5,
+        awayScore: 2,
+        status: "CONFLICT",
+        note: "Final frame called as our win.",
+      },
+      update: { status: "CONFLICT" },
+    });
+    await prisma.matchScoreSubmission.upsert({
+      where: {
+        matchId_submittedById: {
+          matchId: matches[2].id,
+          submittedById: matches[2].awayTeam.captainId,
+        },
+      },
+      create: {
+        matchId: matches[2].id,
+        submittedById: matches[2].awayTeam.captainId,
+        forTeamId: matches[2].awayTeamId,
+        homeScore: 3,
+        awayScore: 5,
+        status: "CONFLICT",
+        note: "Disputed — we sank the 8-ball legally.",
+      },
+      update: { status: "CONFLICT" },
+    });
+  }
+
+  // Round-31 — community posts so the feed isn't empty.
+  const da = allPlayers.slice(0, 4);
+  if (da.length >= 2) {
+    await prisma.communityPost.createMany({
+      data: [
+        {
+          authorId: da[0]!.id,
+          body: "Anyone up for a #ladder this weekend? 🎱",
+          tags: ["ladder"],
+        },
+        {
+          authorId: da[1]!.id,
+          body: "Big shoutout to @" + da[0]!.username + " for the clutch win.",
+        },
+        {
+          authorId: da[0]!.id,
+          body: "League standings looking spicy. Final stretch incoming.",
+        },
+      ],
+      skipDuplicates: true,
+    });
+  }
+
+  // Round-31 — admin feedback rows in mixed statuses.
+  if (allPlayers.length >= 2) {
+    await prisma.feedback.createMany({
+      data: [
+        {
+          userId: allPlayers[0]!.id,
+          type: "BUG",
+          subject: "Mobile bottom nav covers Post button",
+          message:
+            "On the community page the bottom nav overlays my Post button.",
+          status: "NEW",
+        },
+        {
+          userId: allPlayers[1]!.id,
+          type: "FEATURE",
+          subject: "Add doubles ladder mode",
+          message:
+            "Would love a doubles ladder option in addition to round-robin.",
+          status: "REVIEWING",
+        },
+        {
+          userId: allPlayers[0]!.id,
+          type: "OTHER",
+          subject: "Stripe payouts question",
+          message: "When are prize payouts processed after a comp completes?",
+          status: "RESOLVED",
+        },
+      ],
+      skipDuplicates: true,
+    });
+  }
+
+  console.log("\n📍 Score-submission fixtures (Round 41):");
+  if (matches[0]) {
+    console.log(
+      `   AUTO-AGREE candidate: /matches/${matches[0].id}  ` +
+        `(both captains: @${(await prisma.user.findUnique({ where: { id: matches[0].homeTeam!.captainId } }))?.username}, ` +
+        `@${(await prisma.user.findUnique({ where: { id: matches[0].awayTeam!.captainId } }))?.username})`,
+    );
+  }
+  if (matches[1]) {
+    console.log(
+      `   CONFLICT candidate (home already submitted 5-3): /matches/${matches[1].id}  ` +
+        `(submit a different score as @${(await prisma.user.findUnique({ where: { id: matches[1].awayTeam!.captainId } }))?.username})`,
+    );
+  }
+  if (matches[2]) {
+    console.log(
+      `   CONFLICT (review queue): /matches/${matches[2].id}  → organize via @michael at /admin/score-submissions`,
+    );
+  }
+  console.log("   Admin override fixture: same CONFLICT match — sign in as @toan (SUPER_ADMIN) and resolve.\n");
 
   console.log("seed: users=" + (await prisma.user.count()));
   console.log("seed: teams=" + (await prisma.team.count()));

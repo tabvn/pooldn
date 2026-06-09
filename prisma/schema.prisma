@@ -76,6 +76,40 @@ enum SchedulingType {
   AUTO_GENERATED
 }
 
+enum FeedbackType {
+  BUG
+  FEATURE
+  OTHER
+}
+
+enum FeedbackStatus {
+  NEW
+  REVIEWING
+  RESOLVED
+  CLOSED
+}
+
+model Feedback {
+  id           String         @id @default(cuid())
+  userId       String?
+  user         User?          @relation("FeedbackAuthor", fields: [userId], references: [id], onDelete: SetNull)
+  contactEmail String?
+  type         FeedbackType   @default(OTHER)
+  subject      String
+  message      String
+  status       FeedbackStatus @default(NEW)
+  adminNote    String?
+  resolvedById String?
+  resolvedBy   User?          @relation("FeedbackResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolvedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("feedback")
+}
+
 enum NotificationType {
   WELCOME
   APPLICATION_SUBMITTED
@@ -87,6 +121,19 @@ enum NotificationType {
   MATCH_SCHEDULED
   MATCH_RESULT_RECORDED
   ROSTER_INVITE
+  COMMUNITY_LIKE
+  COMMUNITY_COMMENT
+  COMMUNITY_REPLY
+  COMMUNITY_MENTION
+  COMMUNITY_QUOTE
+}
+
+enum CommunityReactionType {
+  LIKE
+  FIRE
+  LAUGH
+  CLAP
+  TROPHY
 }
 
 enum NotificationEntityType {
@@ -95,11 +142,13 @@ enum NotificationEntityType {
   MATCH
   TEAM
   USER
+  COMMUNITY_POST
 }
 
 enum FollowEntityType {
   COMPETITION
   TEAM
+  USER
 }
 
 enum GameBlockType {
@@ -126,6 +175,15 @@ model User {
   cityId        String?
   emailVerified Boolean  @default(false)
   isActive      Boolean  @default(true)
+  // Round-46 — admin-managed lockout. When `bannedAt` is set the user can't
+  // access ANY page or call ANY mutation; they only see the "your account
+  // is banned" screen. `banReason` is shown on that screen verbatim.
+  bannedAt      DateTime?
+  banReason     String?
+  rating        Int      @default(1000)
+  // Round-22 — derived from rating but cached for cheap sorting/display.
+  // Recompute on rating writes (see lib/services/rating.service.ts).
+  level         Int      @default(1)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -149,10 +207,27 @@ model User {
   teamJoinReviews         TeamJoinRequest[]     @relation("JoinRequestReviewer")
   framesAsHomePlayer      MatchFrame[]          @relation("FrameHomePlayer")
   framesAsAwayPlayer      MatchFrame[]          @relation("FrameAwayPlayer")
+  feedbackAuthored        Feedback[]            @relation("FeedbackAuthor")
+  feedbackResolved        Feedback[]            @relation("FeedbackResolver")
+  communityReactions      CommunityReaction[]   @relation("CommunityReactor")
+  communityComments       CommunityComment[]    @relation("CommunityCommenter")
+  communityReports        CommunityReport[]     @relation("CommunityReporter")
+  communityReportReviews  CommunityReport[]     @relation("CommunityReportReviewer")
+  communityBlocks         CommunityBlock[]      @relation("CommunityBlocker")
+  communityBlockedBy      CommunityBlock[]      @relation("CommunityBlocked")
+  communityPostHides      CommunityPost[]       @relation("CommunityPostHider")
+  communityCommentHides   CommunityComment[]    @relation("CommunityCommentHider")
+  matchesCompleted        Match[]               @relation("MatchCompletedBy")
+  notificationPreferences NotificationPreference[]
+  digestRuns              DigestRun[]
+  rescheduleRequests      MatchRescheduleRequest[] @relation("RescheduleRequestedBy")
+  rescheduleReviews       MatchRescheduleRequest[] @relation("RescheduleReviewedBy")
 
   @@index([cityId])
   @@index([role])
   @@index([isActive])
+  @@index([bannedAt])
+  @@index([rating])
   @@map("users")
 }
 
@@ -187,14 +262,17 @@ model City {
   name      String
   countryId String
   country   Country @relation(fields: [countryId], references: [id])
+  isActive  Boolean @default(true)
 
   users        User[]
   venues       Venue[]
   competitions Competition[]
   posts        CommunityPost[]
+  teams        Team[]          @relation("TeamCity")
 
   @@unique([countryId, name])
   @@index([countryId])
+  @@index([isActive])
   @@map("cities")
 }
 
@@ -215,6 +293,7 @@ model Venue {
   updatedAt  DateTime @updatedAt
 
   matches Match[]
+  homeTeams Team[] @relation("VenueHomeTeams")
 
   @@index([cityId])
   @@index([isActive])
@@ -233,7 +312,17 @@ model Team {
   description String?
   captainId   String
   captain     User     @relation("CaptainedBy", fields: [captainId], references: [id])
+  cityId      String?
+  city        City?    @relation("TeamCity", fields: [cityId], references: [id])
+  // Round-37 — a team's regular home venue. Surfaces on the venue page as
+  // "Home teams" and on the team page as the headline location.
+  homeVenueId String?
+  homeVenue   Venue?   @relation("VenueHomeTeams", fields: [homeVenueId], references: [id], onDelete: SetNull)
   isActive    Boolean  @default(true)
+  // Round-46 — admin can ban a team (members keep their data but the team is
+  // locked: no roster edits, no new applications, no matches scheduled).
+  bannedAt    DateTime?
+  banReason   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -244,6 +333,7 @@ model Team {
   standings     Standing[]
   rosterEntries CompetitionRoster[]
   scoreSubmissions MatchScoreSubmission[] @relation("ScoreForTeam")
+  forfeitedMatches Match[]                @relation("ForfeitTeam")
   invitations   TeamInvitation[]
   joinRequests  TeamJoinRequest[]
 
@@ -308,13 +398,17 @@ model TeamJoinRequest {
 }
 
 model TeamMember {
-  id       String   @id @default(cuid())
-  teamId   String
-  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  userId   String
-  user     User     @relation(fields: [userId], references: [id])
-  joinedAt DateTime @default(now())
-  isActive Boolean  @default(true)
+  id          String    @id @default(cuid())
+  teamId      String
+  team        Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  joinedAt    DateTime  @default(now())
+  isActive    Boolean   @default(true)
+  // Round-20 — when a player leaves voluntarily, keep the row for history
+  // and stamp the reason / timestamp instead of hard-deleting.
+  leftAt      DateTime?
+  leaveReason String?
 
   @@unique([teamId, userId])
   @@index([userId])
@@ -470,6 +564,20 @@ model Matchday {
   @@map("matchdays")
 }
 
+enum MatchWinType {
+  NORMAL
+  WALKOVER
+  FORFEIT
+  DOUBLE_FORFEIT
+}
+
+enum MatchCompletionMode {
+  AUTO_AGREED          // both captains posted matching scores
+  ORGANIZER_REVIEW     // organizer resolved a CONFLICT or set a manual result
+  ADMIN_OVERRIDE       // SUPER_ADMIN finalized
+  FORFEIT              // walkover / no-show
+}
+
 model Match {
   id          String      @id @default(cuid())
   matchdayId  String
@@ -484,9 +592,21 @@ model Match {
   scheduledAt DateTime?
   startedAt   DateTime?
   completedAt DateTime?
+  // Round-31 — audit trail for who/how the final score was accepted.
+  // AUTO_AGREED → completedById is null (system); both captains' submissions
+  // captured the timestamps.
+  // ORGANIZER_REVIEW / ADMIN_OVERRIDE → completedById is the resolver.
+  completedById   String?
+  completedBy     User?               @relation("MatchCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  completionMode  MatchCompletionMode?
   homeScore   Int?
   awayScore   Int?
   notes       String?
+  // Round-20 — no-show / walkover bookkeeping.
+  winType        MatchWinType @default(NORMAL)
+  forfeitTeamId  String?
+  forfeitTeam    Team?        @relation("ForfeitTeam", fields: [forfeitTeamId], references: [id])
+  forfeitReason  String?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
@@ -498,9 +618,18 @@ model Match {
   awayLineupSubmittedById String?
   awayLineupSubmittedAt   DateTime?
 
+  // Round-47 — lineup edit request flow. Once both lineups lock, a captain
+  // can ask the opponent to re-open editing (e.g. a player can't make it).
+  // The opponent approves or rejects via dedicated mutations. On approve,
+  // BOTH lineup timestamps clear so both sides re-submit.
+  lineupEditRequestedById  String?
+  lineupEditRequestedAt    DateTime?
+  lineupEditRequestedSide  String?
+
   frames       MatchFrame[]
   participants MatchParticipant[]
   scoreSubmissions MatchScoreSubmission[]
+  rescheduleRequests MatchRescheduleRequest[]
 
   @@index([matchdayId])
   @@index([venueId])
@@ -520,6 +649,9 @@ model MatchFrame {
   // time (Round-14). Nullable for legacy frames recorded before scaffolding.
   blockType     GameBlockType?
   homeWon       Boolean?
+  // Round-20 — per-frame walkover (e.g. an absent doubles partner). The
+  // present side is awarded the frame; the UI surfaces a "Walkover" chip.
+  isWalkover    Boolean      @default(false)
   homePlayer    String?
   awayPlayer    String?
   // Direct references to the picked players; falls back to homePlayer /
@@ -571,6 +703,10 @@ model MatchScoreSubmission {
   homeScore      Int
   awayScore      Int
   framesJson     Json?
+  // Round-32 — captains attach photos of the scoresheet / scoreboard so the
+  // result has a physical audit trail. Empty list means no evidence; conflicts
+  // can still be resolved without photos.
+  boardImageUrls String[] @default([])
   status         ScoreSubmissionStatus @default(PENDING)
   reviewedById   String?
   reviewedBy     User?                 @relation("ScoreReviewedBy", fields: [reviewedById], references: [id])
@@ -584,6 +720,32 @@ model MatchScoreSubmission {
   @@index([matchId])
   @@index([status])
   @@map("match_score_submissions")
+}
+
+enum RescheduleRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model MatchRescheduleRequest {
+  id             String                  @id @default(cuid())
+  matchId        String
+  match          Match                   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  requestedById  String
+  requestedBy    User                    @relation("RescheduleRequestedBy", fields: [requestedById], references: [id])
+  proposedDate   DateTime
+  reason         String?
+  status         RescheduleRequestStatus @default(PENDING)
+  reviewedById   String?
+  reviewedBy     User?                   @relation("RescheduleReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt     DateTime?
+  createdAt      DateTime                @default(now())
+
+  @@index([matchId])
+  @@index([status])
+  @@map("match_reschedule_requests")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -652,6 +814,48 @@ model Follow {
 // Community
 // ─────────────────────────────────────────────────────────────────────────────
 
+enum CommunityReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum CommunityReportTarget {
+  POST
+  COMMENT
+}
+
+model CommunityReport {
+  id          String                @id @default(cuid())
+  reporterId  String
+  reporter    User                  @relation("CommunityReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetType  CommunityReportTarget
+  targetId    String
+  reason      String
+  status      CommunityReportStatus @default(OPEN)
+  reviewedById String?
+  reviewedBy   User?                @relation("CommunityReportReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?
+  createdAt    DateTime              @default(now())
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([targetType, targetId])
+  @@map("community_reports")
+}
+
+model CommunityBlock {
+  id          String   @id @default(cuid())
+  blockerId   String
+  blocker     User     @relation("CommunityBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId   String
+  blocked     User     @relation("CommunityBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("community_blocks")
+}
+
 model CommunityPost {
   id        String   @id @default(cuid())
   authorId  String
@@ -659,11 +863,73 @@ model CommunityPost {
   cityId    String?
   city      City?    @relation(fields: [cityId], references: [id])
   body      String
+  // Round-C — admin soft-hide. Hidden posts are invisible to non-admins and
+  // to the original author (they see a "hidden by moderator" placeholder).
+  isHidden       Boolean   @default(false)
+  hiddenReason   String?
+  hiddenById     String?
+  hiddenBy       User?     @relation("CommunityPostHider", fields: [hiddenById], references: [id], onDelete: SetNull)
+  hiddenAt       DateTime?
+  // Pinned posts (city-scoped if cityId set, otherwise global) bubble to the
+  // top of the feed regardless of recency.
+  pinnedAt    DateTime?
+  // Round-A2/A3 — denormalized so feed queries can filter by tag/mention
+  // without LIKE scans over the body.
+  tags      String[] @default([])
+  imageUrls String[] @default([])
+  // Round-A6 — quote-a-post. A new post can reference an existing one; the
+  // UI renders the quoted post inline as a mini-card. Setting onDelete to
+  // SetNull keeps the quoting post intact if the original is removed.
+  quotedPostId String?
+  quotedPost   CommunityPost?  @relation("CommunityQuote", fields: [quotedPostId], references: [id], onDelete: SetNull)
+  quotedBy     CommunityPost[] @relation("CommunityQuote")
   createdAt DateTime @default(now())
+
+  reactions CommunityReaction[]
+  comments  CommunityComment[]
 
   @@index([cityId, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
+  @@index([tags])
   @@map("community_posts")
+}
+
+model CommunityReaction {
+  id        String                @id @default(cuid())
+  postId    String
+  post      CommunityPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                  @relation("CommunityReactor", fields: [userId], references: [id], onDelete: Cascade)
+  type      CommunityReactionType
+  createdAt DateTime              @default(now())
+
+  @@unique([postId, userId, type])
+  @@index([postId, type])
+  @@index([userId])
+  @@map("community_reactions")
+}
+
+model CommunityComment {
+  id        String        @id @default(cuid())
+  postId    String
+  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User          @relation("CommunityCommenter", fields: [authorId], references: [id], onDelete: Cascade)
+  parentId  String?
+  parent    CommunityComment? @relation("CommentParent", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   CommunityComment[] @relation("CommentParent")
+  body      String
+  editedAt  DateTime?
+  isHidden       Boolean   @default(false)
+  hiddenReason   String?
+  hiddenById     String?
+  hiddenBy       User?     @relation("CommunityCommentHider", fields: [hiddenById], references: [id], onDelete: SetNull)
+  hiddenAt       DateTime?
+  createdAt DateTime      @default(now())
+
+  @@index([postId, createdAt])
+  @@index([parentId])
+  @@map("community_comments")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -692,4 +958,49 @@ model Notification {
   @@index([userId, groupKey])
   @@index([entityType, entityId])
   @@map("notifications")
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  DIGEST
+}
+
+/**
+ * Per-(user, type, channel) opt-in/out. Missing rows imply the default
+ * (everything in-app enabled, digest enabled, transactional emails off).
+ * Mutating a row through the settings UI inserts/updates with isEnabled.
+ */
+model NotificationPreference {
+  id          String              @id @default(cuid())
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  channel     NotificationChannel
+  isEnabled   Boolean             @default(true)
+  updatedAt   DateTime            @updatedAt
+  createdAt   DateTime            @default(now())
+
+  @@unique([userId, type, channel])
+  @@index([userId])
+  @@map("notification_preferences")
+}
+
+/**
+ * One row per weekly digest sent. Lets us idempotently re-run a week without
+ * duplicating sends; also a tidy place to drop telemetry (open/click) later.
+ */
+model DigestRun {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekStart    DateTime
+  itemCount    Int
+  sentAt       DateTime @default(now())
+  status       String   @default("SENT")  // SENT / SKIPPED_EMPTY / FAILED
+  failureNote  String?
+
+  @@unique([userId, weekStart])
+  @@index([weekStart])
+  @@map("digest_runs")
 }

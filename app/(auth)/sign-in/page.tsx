@@ -9,6 +9,7 @@ import { useMutation } from "@apollo/client/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/toast";
 import { WelcomeHeading } from "@/components/auth/welcome-heading";
 import { OrDivider, SocialButtons } from "@/components/auth/social-buttons";
 import { DemoAccounts } from "@/components/auth/demo-accounts";
@@ -23,9 +24,10 @@ type FormValues = z.infer<typeof schema>;
 
 export default function SignInPage() {
   const router = useRouter();
+  const toast = useToast();
   const searchParams = useSearchParams();
   const nextHref = searchParams.get("next") ?? "/";
-  const [login, { error }] = useMutation(LoginMutation);
+  const [login, { error, loading: loggingIn }] = useMutation(LoginMutation);
   const {
     register,
     handleSubmit,
@@ -33,10 +35,17 @@ export default function SignInPage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   const onSubmit = handleSubmit(async (values) => {
-    const result = await login({ variables: { input: values } });
-    if (result.data?.login) {
-      router.push(nextHref);
-      router.refresh();
+    try {
+      const result = await login({ variables: { input: values } });
+      if (result.data?.login) {
+        router.push(nextHref);
+        router.refresh();
+      }
+    } catch (e) {
+      toast.error(
+        "Sign in failed",
+        e instanceof Error ? e.message : "Check your credentials and try again.",
+      );
     }
   });
 
@@ -94,7 +103,7 @@ export default function SignInPage() {
             </p>
           ) : null}
 
-          <Button type="submit" block loading={isSubmitting}>
+          <Button type="submit" block loading={isSubmitting || loggingIn}>
             Sign In
           </Button>
           <Link href="/" className="block">

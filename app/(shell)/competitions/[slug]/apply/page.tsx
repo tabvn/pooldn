@@ -7,9 +7,11 @@ export default async function ApplyPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  // Round-30 — captaincy is per-team (team.captainId), so PLAYERs who own a
+  // team can apply with it; applyToCompetition enforces the captain check.
   await requireViewer({
     next: `/competitions/${slug}/apply`,
-    roles: ["TEAM_CAPTAIN", "SUPER_ADMIN"],
+    roles: ["PLAYER", "TEAM_CAPTAIN", "SUPER_ADMIN"],
   });
   return <ApplyForm slug={slug} />;
 }

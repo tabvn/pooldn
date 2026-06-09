@@ -36,18 +36,20 @@ test("anonymous viewer can browse a Competition's tabs", async ({ page }) => {
   await expect(page.getByText("League Standings")).toBeVisible();
   await expect(page.getByText("Gen Filling Station").first()).toBeVisible();
   await expect(page.getByText("Winner!")).toBeVisible();
-  await expect(page.getByText("Thomas Bryan").first()).toBeVisible();
+  // MVP = highest frames-won % (Round-18). Gen has 5/8 = 62.5% vs Thomas 4/8.
+  await expect(page.getByText("Gen Hoang").first()).toBeVisible();
 
   await page.getByRole("link", { name: "Matchdays" }).click();
   await expect(page.getByText(/Matchday 1/)).toBeVisible();
 
   await page.getByRole("link", { name: "Players" }).click();
   await expect(
-    page.getByRole("cell", { name: /Thomas Bryan/ }),
+    page.getByRole("cell", { name: /Gen Hoang/ }),
   ).toBeVisible();
 
   await page.getByRole("link", { name: "About" }).click();
-  await expect(page.getByText(/Race to/i)).toBeVisible();
+  // About tab now lists the structure with multiple "Race to X" chips per block.
+  await expect(page.getByText(/Race to/i).first()).toBeVisible();
 });
 
 test("anonymous viewer can browse teams and venues", async ({ page }) => {

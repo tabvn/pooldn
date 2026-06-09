@@ -5,12 +5,16 @@ import { CompetitionFilters } from "../types/competition";
 builder.queryFields((t) => ({
   competitions: t.prismaField({
     type: ["Competition"],
-    description: "List competitions visible to the viewer with optional filters.",
+    description:
+      "List competitions visible to the viewer. Cursor-paginated by id when `first`/`after` are supplied; defaults to a generous slice for legacy callers.",
     args: {
       filters: t.arg({ type: CompetitionFilters }),
+      first: t.arg.int(),
+      after: t.arg.id(),
     },
     resolve: (query, _root, args, ctx) => {
       const f = args.filters;
+      const take = Math.min(Math.max(args.first ?? 100, 1), 100);
       return ctx.prisma.competition.findMany({
         ...query,
         where: {
@@ -31,7 +35,9 @@ builder.queryFields((t) => ({
               : []),
           ],
         },
-        orderBy: { startDate: "desc" },
+        orderBy: [{ startDate: "desc" }, { id: "asc" }],
+        take,
+        ...(args.after ? { skip: 1, cursor: { id: String(args.after) } } : {}),
       });
     },
   }),
@@ -51,5 +57,20 @@ builder.queryFields((t) => ({
           ],
         },
       }),
+  }),
+
+  myCompetitions: t.prismaField({
+    type: ["Competition"],
+    description:
+      "Competitions the viewer organizes — newest first. Returns [] when not signed in.",
+    resolve: (query, _root, _args, ctx) => {
+      if (!ctx.viewer) return [];
+      return ctx.prisma.competition.findMany({
+        ...query,
+        where: { organizerId: ctx.viewer.id },
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        take: 50,
+      });
+    },
   }),
 }));

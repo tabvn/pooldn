@@ -27,5 +27,10 @@ builder.prismaObject("PlayerCompStat", {
     framesWon: t.exposeInt("framesWon"),
     framesPlayed: t.exposeInt("framesPlayed"),
     isMvp: t.exposeBoolean("isMvp"),
+    winRate: t.float({
+      nullable: true,
+      resolve: (s) =>
+        s.framesPlayed > 0 ? s.framesWon / s.framesPlayed : null,
+    }),
   }),
 });

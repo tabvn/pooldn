@@ -4,14 +4,19 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@apollo/client/react";
 import {
+  AtSign,
   Bell,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
+  Heart,
   Inbox,
   Mail,
   Megaphone,
+  MessageCircle,
+  Quote,
+  Reply,
   Trophy,
   UserPlus,
   XCircle,
@@ -82,6 +87,31 @@ const ACCENT: Record<NotificationType, Accent> = {
   },
   ROSTER_INVITE: {
     icon: <UserPlus className="size-4" />,
+    tone: "bg-info/15 text-info",
+    border: "border-l-info",
+  },
+  COMMUNITY_LIKE: {
+    icon: <Heart className="size-4" />,
+    tone: "bg-primary/15 text-primary",
+    border: "border-l-primary",
+  },
+  COMMUNITY_COMMENT: {
+    icon: <MessageCircle className="size-4" />,
+    tone: "bg-info/15 text-info",
+    border: "border-l-info",
+  },
+  COMMUNITY_REPLY: {
+    icon: <Reply className="size-4" />,
+    tone: "bg-info/15 text-info",
+    border: "border-l-info",
+  },
+  COMMUNITY_MENTION: {
+    icon: <AtSign className="size-4" />,
+    tone: "bg-primary/15 text-primary",
+    border: "border-l-primary",
+  },
+  COMMUNITY_QUOTE: {
+    icon: <Quote className="size-4" />,
     tone: "bg-info/15 text-info",
     border: "border-l-info",
   },

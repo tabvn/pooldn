@@ -35,6 +35,7 @@ export const DashboardQuery = graphql(/* GraphQL */ `
           id
           name
           slug
+          bannerUrl
         }
       }
     }
@@ -47,6 +48,7 @@ export const DashboardQuery = graphql(/* GraphQL */ `
       status
       format
       gameType
+      bannerUrl
       startDate
       endDate
       prizePool
@@ -105,6 +107,7 @@ export const DashboardQuery = graphql(/* GraphQL */ `
       status
       format
       gameType
+      bannerUrl
       startDate
       endDate
       prizePool

@@ -16,7 +16,11 @@ export type TodayMatch = {
   venue?: { id: string; name: string } | null;
   matchday: {
     number: number;
-    competition: { name: string; slug: string };
+    competition: {
+      name: string;
+      slug: string;
+      bannerUrl?: string | null;
+    };
   };
 };
 
@@ -27,8 +31,17 @@ export function TodayMatchCard({ match }: { match: TodayMatch }) {
         <CardHeader className="border-b-0 pb-3">
           <div className="flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground">
             <span>Today&apos;s match</span>
-            <span>
-              {match.matchday.competition.name} · Matchday {match.matchday.number}
+            <span className="inline-flex items-center gap-2 normal-case tracking-normal">
+              <Avatar
+                size="sm"
+                src={match.matchday.competition.bannerUrl ?? undefined}
+                fallback={match.matchday.competition.name}
+                shape="competition"
+              />
+              <span>
+                {match.matchday.competition.name} · Matchday{" "}
+                {match.matchday.number}
+              </span>
             </span>
           </div>
         </CardHeader>

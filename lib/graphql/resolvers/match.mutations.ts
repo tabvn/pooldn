@@ -9,6 +9,10 @@ import { ensure, requireUser } from "@/lib/casl/guard";
 import { recomputeStandings } from "@/lib/services/standings.service";
 import { scaffoldMatchFramesFromStructure } from "@/lib/services/match-frame-scaffold";
 import { NotificationService } from "@/lib/services/notification.service";
+import {
+  publishCompetitionStandingsUpdate,
+  publishMatchUpdate,
+} from "../pubsub";
 
 async function composeDuoLabel(
   tx: import("@/lib/generated/prisma/client").PrismaClient | Parameters<Parameters<import("@/lib/generated/prisma/client").PrismaClient["$transaction"]>[0]>[0],
@@ -61,7 +65,7 @@ builder.mutationFields((t) => ({
         ...match,
         __caslSubjectType__: "Match",
       });
-      return ctx.prisma.matchFrame.upsert({
+      const frame = await ctx.prisma.matchFrame.upsert({
         ...query,
         where: {
           matchId_frameNumber: {
@@ -82,20 +86,44 @@ builder.mutationFields((t) => ({
           awayPlayer: args.input.awayPlayer ?? null,
         },
       });
+      // Live: notify everyone watching this match. Standings don't move on
+      // a frame change (only on full-match completion), so we don't publish
+      // a standings event here.
+      publishMatchUpdate(match.id);
+      return frame;
     },
   }),
 
   submitMatchResult: t.prismaField({
     type: "Match",
     description:
-      "Captain marks a match COMPLETED with a final score. Triggers standings recomputation.",
+      "Organizer or SUPER_ADMIN finalizes a match with a direct score. Captains MUST use submitMatchScore (two-captain agreement); this path is the organizer/admin override.",
     args: { input: t.arg({ type: SubmitMatchResultInput, required: true }) },
     resolve: async (query, _root, args, ctx) => {
       requireUser(ctx.viewer);
       const match = await ctx.prisma.match.findUniqueOrThrow({
         where: { id: String(args.input.matchId) },
-        include: { matchday: { select: { competitionId: true } } },
+        include: {
+          matchday: {
+            select: {
+              competitionId: true,
+              competition: { select: { organizerId: true } },
+            },
+          },
+        },
       });
+      // Round-41 — close the single-captain bypass. Captains can record frames
+      // and call submitMatchScore, but only the organizer / SUPER_ADMIN can
+      // skip the dual-confirmation flow.
+      const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
+      const isOrganizer =
+        match.matchday.competition.organizerId === ctx.viewer.id;
+      if (!isAdmin && !isOrganizer) {
+        throw new GraphQLError(
+          "Captains must use submitMatchScore — both captains' agreement (or organizer review) is required to finalize a match.",
+          { extensions: { code: "FORBIDDEN" } },
+        );
+      }
       ensure(ctx.ability, "update", {
         ...match,
         __caslSubjectType__: "Match",
@@ -106,7 +134,7 @@ builder.mutationFields((t) => ({
         });
       }
       const competitionId = match.matchday.competitionId;
-      return ctx.prisma.$transaction(async (tx) => {
+      const result = await ctx.prisma.$transaction(async (tx) => {
         const updated = await tx.match.update({
           ...query,
           where: { id: match.id },
@@ -115,6 +143,11 @@ builder.mutationFields((t) => ({
             homeScore: args.input.homeScore,
             awayScore: args.input.awayScore,
             completedAt: new Date(),
+            completedById: ctx.viewer!.id,
+            completionMode:
+              ctx.viewer!.role === "SUPER_ADMIN"
+                ? "ADMIN_OVERRIDE"
+                : "ORGANIZER_REVIEW",
           },
         });
         await recomputeStandings(tx as never, competitionId);
@@ -150,6 +183,9 @@ builder.mutationFields((t) => ({
         });
         return updated;
       });
+      publishMatchUpdate(match.id);
+      publishCompetitionStandingsUpdate(competitionId);
+      return result;
     },
   }),
 
@@ -303,6 +339,293 @@ builder.mutationFields((t) => ({
     },
   }),
 
+  markFrameWalkover: t.prismaField({
+    type: "MatchFrame",
+    description:
+      "Round-20 — award an individual frame by walkover (e.g. a doubles partner is absent). Captain or organizer/admin only.",
+    args: {
+      matchId: t.arg.id({ required: true }),
+      frameNumber: t.arg.int({ required: true }),
+      homeWon: t.arg.boolean({ required: true }),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const match = await ctx.prisma.match.findUniqueOrThrow({
+        where: { id: String(args.matchId) },
+        include: {
+          homeTeam: { select: { captainId: true } },
+          awayTeam: { select: { captainId: true } },
+          matchday: {
+            select: { competition: { select: { organizerId: true } } },
+          },
+        },
+      });
+      const isOrganizer =
+        match.matchday.competition.organizerId === ctx.viewer.id;
+      const isCaptain =
+        match.homeTeam?.captainId === ctx.viewer.id ||
+        match.awayTeam?.captainId === ctx.viewer.id;
+      const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
+      if (!isOrganizer && !isCaptain && !isAdmin) {
+        throw new GraphQLError("Only a captain or organizer may mark a walkover", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+      return ctx.prisma.matchFrame.upsert({
+        ...query,
+        where: {
+          matchId_frameNumber: {
+            matchId: match.id,
+            frameNumber: args.frameNumber,
+          },
+        },
+        update: {
+          homeWon: args.homeWon,
+          isWalkover: true,
+        },
+        create: {
+          matchId: match.id,
+          frameNumber: args.frameNumber,
+          homeWon: args.homeWon,
+          isWalkover: true,
+        },
+      });
+    },
+  }),
+
+  forfeitMatch: t.prismaField({
+    type: "Match",
+    description:
+      "Round-20 — record a no-show. The non-forfeiting side wins by walkover (race-to-frames : 0). Pass `bothForfeit: true` for a double no-show.",
+    args: {
+      matchId: t.arg.id({ required: true }),
+      forfeitingTeamId: t.arg.id({ required: true }),
+      bothForfeit: t.arg.boolean({ defaultValue: false }),
+      reason: t.arg.string(),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const match = await ctx.prisma.match.findUniqueOrThrow({
+        where: { id: String(args.matchId) },
+        include: {
+          homeTeam: { select: { id: true, captainId: true } },
+          awayTeam: { select: { id: true, captainId: true } },
+          matchday: {
+            select: {
+              competition: {
+                select: {
+                  id: true,
+                  slug: true,
+                  organizerId: true,
+                  raceToFrames: true,
+                },
+              },
+            },
+          },
+        },
+      });
+      const isOrganizer =
+        match.matchday.competition.organizerId === ctx.viewer.id;
+      const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
+      if (!isOrganizer && !isAdmin) {
+        throw new GraphQLError("Only the organizer or admin may forfeit a match", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+      if (match.status === "COMPLETED") {
+        throw new GraphQLError("Match is already completed", {
+          extensions: { code: "INVALID_TRANSITION" },
+        });
+      }
+      const forfeitId = String(args.forfeitingTeamId);
+      const isHomeForfeit = forfeitId === match.homeTeamId;
+      const isAwayForfeit = forfeitId === match.awayTeamId;
+      if (!isHomeForfeit && !isAwayForfeit) {
+        throw new GraphQLError("forfeitingTeamId is not in this match", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const both = !!args.bothForfeit;
+      const race = match.matchday.competition.raceToFrames;
+      const winType = both ? "DOUBLE_FORFEIT" : "WALKOVER";
+      const home = both ? 0 : isAwayForfeit ? race : 0;
+      const away = both ? 0 : isHomeForfeit ? race : 0;
+      const compId = match.matchday.competition.id;
+      const result = await ctx.prisma.$transaction(async (tx) => {
+        const updated = await tx.match.update({
+          ...query,
+          where: { id: match.id },
+          data: {
+            status: "COMPLETED",
+            winType: winType as never,
+            forfeitTeamId: forfeitId,
+            forfeitReason: args.reason ?? null,
+            homeScore: home,
+            awayScore: away,
+            completedAt: new Date(),
+            completedById: ctx.viewer!.id,
+            completionMode: "FORFEIT",
+          },
+        });
+        const { recomputeStandings } = await import(
+          "@/lib/services/standings.service"
+        );
+        await recomputeStandings(tx as never, match.matchday.competition.id);
+        await new NotificationService(tx).create({
+          type: "MATCH_RESULT_RECORDED",
+          title: both
+            ? "Double forfeit recorded"
+            : "Match awarded by walkover",
+          message: args.reason ?? "The organizer recorded a no-show forfeit.",
+          recipients: [
+            match.homeTeam?.captainId,
+            match.awayTeam?.captainId,
+          ].filter((id): id is string => !!id),
+          entity: {
+            type: "MATCH",
+            id: match.id,
+            slug: match.matchday.competition.slug,
+          },
+          groupKey: `forfeit-${match.id}`,
+        });
+        return updated;
+      });
+      publishMatchUpdate(match.id);
+      publishCompetitionStandingsUpdate(compId);
+      return result;
+    },
+  }),
+
+  requestMatchReschedule: t.prismaField({
+    type: "MatchRescheduleRequest",
+    description:
+      "Round-20 — captain proposes a new date/time; organizer reviews. Multiple PENDING requests per match are allowed.",
+    args: {
+      matchId: t.arg.id({ required: true }),
+      proposedDate: t.arg({ type: "DateTime", required: true }),
+      reason: t.arg.string(),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const match = await ctx.prisma.match.findUniqueOrThrow({
+        where: { id: String(args.matchId) },
+        include: {
+          homeTeam: { select: { captainId: true } },
+          awayTeam: { select: { captainId: true } },
+          matchday: {
+            select: {
+              competition: {
+                select: { id: true, slug: true, organizerId: true },
+              },
+            },
+          },
+        },
+      });
+      const isCaptain =
+        match.homeTeam?.captainId === ctx.viewer.id ||
+        match.awayTeam?.captainId === ctx.viewer.id;
+      if (!isCaptain && ctx.viewer.role !== "SUPER_ADMIN") {
+        throw new GraphQLError("Only a participating captain may request a reschedule", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+      const created = await ctx.prisma.matchRescheduleRequest.create({
+        ...query,
+        data: {
+          matchId: match.id,
+          requestedById: ctx.viewer.id,
+          proposedDate: args.proposedDate,
+          reason: args.reason ?? null,
+        },
+      });
+      await new NotificationService(ctx.prisma).create({
+        type: "MATCH_SCHEDULED",
+        title: "Reschedule requested",
+        message: args.reason ?? "A captain proposed a new match date.",
+        recipients: [match.matchday.competition.organizerId],
+        entity: {
+          type: "MATCH",
+          id: match.id,
+          slug: match.matchday.competition.slug,
+        },
+        groupKey: `resched-${created.id}`,
+      });
+      return created;
+    },
+  }),
+
+  reviewRescheduleRequest: t.prismaField({
+    type: "MatchRescheduleRequest",
+    description:
+      "Round-20 — organizer approves or rejects a reschedule request. Approval moves the match's scheduledAt.",
+    args: {
+      id: t.arg.id({ required: true }),
+      approve: t.arg.boolean({ required: true }),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const req = await ctx.prisma.matchRescheduleRequest.findUniqueOrThrow({
+        where: { id: String(args.id) },
+        include: {
+          match: {
+            include: {
+              matchday: {
+                select: { competition: { select: { organizerId: true, slug: true } } },
+              },
+            },
+          },
+        },
+      });
+      const isOrganizer =
+        req.match.matchday.competition.organizerId === ctx.viewer.id;
+      const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
+      if (!isOrganizer && !isAdmin) {
+        throw new GraphQLError("Only the organizer or admin may review", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+      if (req.status !== "PENDING") {
+        throw new GraphQLError("Already reviewed", {
+          extensions: { code: "INVALID_TRANSITION" },
+        });
+      }
+      return ctx.prisma.$transaction(async (tx) => {
+        const updated = await tx.matchRescheduleRequest.update({
+          ...query,
+          where: { id: req.id },
+          data: {
+            status: args.approve ? "APPROVED" : "REJECTED",
+            reviewedById: ctx.viewer!.id,
+            reviewedAt: new Date(),
+          },
+        });
+        if (args.approve) {
+          await tx.match.update({
+            where: { id: req.matchId },
+            data: { scheduledAt: req.proposedDate },
+          });
+        }
+        await new NotificationService(tx).create({
+          type: "MATCH_SCHEDULED",
+          title: args.approve
+            ? "Reschedule approved"
+            : "Reschedule rejected",
+          message: args.approve
+            ? "The match has been moved to the proposed date."
+            : "The organizer declined the proposed date.",
+          recipients: [req.requestedById],
+          entity: {
+            type: "MATCH",
+            id: req.matchId,
+            slug: req.match.matchday.competition.slug,
+          },
+          groupKey: `resched-${req.id}`,
+        });
+        return updated;
+      });
+    },
+  }),
+
   updateMatchSchedule: t.prismaField({
     type: "Match",
     description: "Organizer reschedules a match (or assigns a venue).",
@@ -359,6 +682,217 @@ builder.mutationFields((t) => ({
           scheduledDate: args.scheduledDate ?? md.scheduledDate,
         },
       });
+    },
+  }),
+
+  // Round-47 — lineup edit request: a captain asks the opponent to re-open
+  // the lineup. Both sides must have already submitted (lineups locked) and
+  // the match must not be in progress or completed.
+  requestLineupEdit: t.prismaField({
+    type: "Match",
+    description:
+      "Captain asks the opponent captain to re-open both lineups for editing. Only valid after both lineups are submitted and before the match starts.",
+    args: { matchId: t.arg.id({ required: true }) },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const matchId = String(args.matchId);
+      const match = await ctx.prisma.match.findUniqueOrThrow({
+        where: { id: matchId },
+        include: {
+          homeTeam: { select: { captainId: true, name: true } },
+          awayTeam: { select: { captainId: true, name: true } },
+          matchday: { select: { competition: { select: { slug: true } } } },
+        },
+      });
+      const side =
+        match.homeTeam?.captainId === ctx.viewer.id
+          ? "HOME"
+          : match.awayTeam?.captainId === ctx.viewer.id
+            ? "AWAY"
+            : null;
+      if (!side && ctx.viewer.role !== "SUPER_ADMIN") {
+        throw new GraphQLError("Only a captain may request a lineup edit", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+      if (!match.homeLineupSubmittedAt || !match.awayLineupSubmittedAt) {
+        throw new GraphQLError("Both lineups must be submitted first", {
+          extensions: { code: "INVALID_TRANSITION" },
+        });
+      }
+      if (match.status !== "SCHEDULED") {
+        throw new GraphQLError(
+          "Lineup edit requests aren't allowed once the match has started",
+          { extensions: { code: "INVALID_TRANSITION" } },
+        );
+      }
+      if (match.lineupEditRequestedAt) {
+        throw new GraphQLError("A request is already pending", {
+          extensions: { code: "INVALID_TRANSITION" },
+        });
+      }
+      const updated = await ctx.prisma.$transaction(async (tx) => {
+        const m = await tx.match.update({
+          ...query,
+          where: { id: match.id },
+          data: {
+            lineupEditRequestedById: ctx.viewer!.id,
+            lineupEditRequestedAt: new Date(),
+            lineupEditRequestedSide: side ?? "HOME",
+          },
+        });
+        const otherCaptain =
+          side === "HOME"
+            ? match.awayTeam?.captainId
+            : match.homeTeam?.captainId;
+        if (otherCaptain) {
+          await new NotificationService(tx).create({
+            type: "MATCH_SCHEDULED",
+            title: "Opponent requested a lineup edit",
+            message: "Approve to re-open both lineups, or reject to keep them locked.",
+            recipients: [otherCaptain],
+            entity: {
+              type: "MATCH",
+              id: match.id,
+              slug: match.matchday.competition.slug,
+            },
+            groupKey: `lineup-edit-${match.id}`,
+          });
+        }
+        return m;
+      });
+      publishMatchUpdate(match.id);
+      return updated;
+    },
+  }),
+
+  approveLineupEdit: t.prismaField({
+    type: "Match",
+    description:
+      "Opponent captain approves a pending lineup-edit request. Clears BOTH lineup-submitted timestamps so both sides can re-edit; player assignments stay so each side only adjusts what changed.",
+    args: { matchId: t.arg.id({ required: true }) },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const matchId = String(args.matchId);
+      const match = await ctx.prisma.match.findUniqueOrThrow({
+        where: { id: matchId },
+        include: {
+          homeTeam: { select: { captainId: true } },
+          awayTeam: { select: { captainId: true } },
+          matchday: { select: { competition: { select: { slug: true } } } },
+        },
+      });
+      if (!match.lineupEditRequestedAt) {
+        throw new GraphQLError("No pending lineup edit request", {
+          extensions: { code: "INVALID_TRANSITION" },
+        });
+      }
+      // Only the OTHER captain (not the requester) can approve.
+      const requester = match.lineupEditRequestedById;
+      const isOtherCaptain =
+        (match.homeTeam?.captainId === ctx.viewer.id ||
+          match.awayTeam?.captainId === ctx.viewer.id) &&
+        ctx.viewer.id !== requester;
+      if (!isOtherCaptain && ctx.viewer.role !== "SUPER_ADMIN") {
+        throw new GraphQLError("Only the other captain may approve", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+      const updated = await ctx.prisma.$transaction(async (tx) => {
+        const m = await tx.match.update({
+          ...query,
+          where: { id: match.id },
+          data: {
+            homeLineupSubmittedAt: null,
+            homeLineupSubmittedById: null,
+            awayLineupSubmittedAt: null,
+            awayLineupSubmittedById: null,
+            lineupEditRequestedAt: null,
+            lineupEditRequestedById: null,
+            lineupEditRequestedSide: null,
+          },
+        });
+        if (requester) {
+          await new NotificationService(tx).create({
+            type: "MATCH_SCHEDULED",
+            title: "Lineup edit approved",
+            message:
+              "Both lineups re-opened — submit again when you're ready.",
+            recipients: [requester],
+            entity: {
+              type: "MATCH",
+              id: match.id,
+              slug: match.matchday.competition.slug,
+            },
+            groupKey: `lineup-edit-${match.id}`,
+          });
+        }
+        return m;
+      });
+      publishMatchUpdate(match.id);
+      return updated;
+    },
+  }),
+
+  rejectLineupEdit: t.prismaField({
+    type: "Match",
+    description:
+      "Opponent captain rejects a pending lineup-edit request. Lineups stay locked.",
+    args: { matchId: t.arg.id({ required: true }) },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const matchId = String(args.matchId);
+      const match = await ctx.prisma.match.findUniqueOrThrow({
+        where: { id: matchId },
+        include: {
+          homeTeam: { select: { captainId: true } },
+          awayTeam: { select: { captainId: true } },
+          matchday: { select: { competition: { select: { slug: true } } } },
+        },
+      });
+      if (!match.lineupEditRequestedAt) {
+        throw new GraphQLError("No pending lineup edit request", {
+          extensions: { code: "INVALID_TRANSITION" },
+        });
+      }
+      const requester = match.lineupEditRequestedById;
+      const isOtherCaptain =
+        (match.homeTeam?.captainId === ctx.viewer.id ||
+          match.awayTeam?.captainId === ctx.viewer.id) &&
+        ctx.viewer.id !== requester;
+      if (!isOtherCaptain && ctx.viewer.role !== "SUPER_ADMIN") {
+        throw new GraphQLError("Only the other captain may reject", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+      const updated = await ctx.prisma.$transaction(async (tx) => {
+        const m = await tx.match.update({
+          ...query,
+          where: { id: match.id },
+          data: {
+            lineupEditRequestedAt: null,
+            lineupEditRequestedById: null,
+            lineupEditRequestedSide: null,
+          },
+        });
+        if (requester) {
+          await new NotificationService(tx).create({
+            type: "MATCH_SCHEDULED",
+            title: "Lineup edit rejected",
+            message: "Opponent declined the lineup edit request.",
+            recipients: [requester],
+            entity: {
+              type: "MATCH",
+              id: match.id,
+              slug: match.matchday.competition.slug,
+            },
+            groupKey: `lineup-edit-${match.id}`,
+          });
+        }
+        return m;
+      });
+      publishMatchUpdate(match.id);
+      return updated;
     },
   }),
 }));

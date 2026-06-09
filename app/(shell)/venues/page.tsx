@@ -6,11 +6,16 @@ import { Button } from "@/components/ui/button";
 import { getClient } from "@/lib/apollo/client";
 import { VenuesListQuery } from "@/lib/graphql/operations/venue.operations";
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
+import { getHeaderCityId } from "@/lib/headers/city";
 
 export default async function VenuesPage() {
   const client = getClient();
+  const cityId = await getHeaderCityId();
   const [{ data }, viewerResult] = await Promise.all([
-    client.query({ query: VenuesListQuery }),
+    client.query({
+      query: VenuesListQuery,
+      variables: { cityId: cityId ?? undefined },
+    }),
     client.query({ query: ViewerQuery, errorPolicy: "ignore" }),
   ]);
   const venues = data?.venues ?? [];

@@ -18,11 +18,44 @@ const ALLOWED_MIMES = new Set([
   "image/webp",
 ]);
 
+/**
+ * Magic-byte sniffer for the formats we accept.
+ *
+ * The browser-provided `file.type` is a hint from the OS file extension and
+ * can lie ("image.jpg" containing an HTML payload, an .exe renamed to .png,
+ * a polyglot file). We read the first 12 bytes and confirm the actual file
+ * signature — defense against both honest-mistake renames and malicious
+ * polyglot uploads.
+ *
+ *   PNG: 89 50 4E 47 0D 0A 1A 0A
+ *   JPG: FF D8 FF
+ *   WebP: 'RIFF' (52 49 46 46) + 4 bytes len + 'WEBP' (57 45 42 50)
+ */
+function sniffImageMime(buf: Buffer): "image/png" | "image/jpeg" | "image/webp" | null {
+  if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+    return "image/png";
+  }
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (
+    buf.length >= 12 &&
+    buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+    buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  return null;
+}
+
 const VALID_KINDS: ReadonlySet<UploadKind> = new Set([
   "avatar",
   "team-logo",
   "competition-banner",
   "venue-image",
+  "community-image",
+  "score-board",
+  "team-logo-draft",
 ]);
 
 async function loadViewer(req: Request) {
@@ -55,11 +88,28 @@ async function authorize(
       const t = await prisma.team.findUnique({ where: { id: ownerId } });
       return !!t && t.captainId === viewer.id;
     }
+    case "team-logo-draft": {
+      // R43 #3 — draft kind lets the create-team wizard upload a logo BEFORE
+      // the team exists. Owner is the viewer's user id; createTeam adopts
+      // the URL into team.logoUrl on submission.
+      return viewer.id === ownerId;
+    }
     case "competition-banner": {
       const c = await prisma.competition.findUnique({
         where: { id: ownerId },
       });
       return !!c && c.organizerId === viewer.id;
+    }
+    case "community-image": {
+      // The image lives loose under the viewer's folder; the URL is later
+      // attached to a CommunityPost via createCommunityPost. We only verify
+      // the viewer is uploading under their own folder.
+      return viewer.id === ownerId;
+    }
+    case "score-board": {
+      // Score-board photos are scoped to a captain — owner-id is the
+      // captain's user id; URLs get persisted on submitMatchScore.
+      return viewer.id === ownerId;
     }
     case "venue-image": {
       // Venues are organizer/admin-managed; any ORGANIZER can update an
@@ -111,9 +161,12 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  if (!ownerId) {
+  // ownerId becomes part of the on-disk file path. Reject anything that
+  // isn't a strict alphanumeric (+ hyphen / underscore) id so path traversal
+  // (`..`) and absolute paths (`/etc/...`) are structurally impossible.
+  if (!ownerId || !/^[A-Za-z0-9_-]{1,64}$/.test(ownerId)) {
     return NextResponse.json(
-      { error: "ownerId is required" },
+      { error: "ownerId must be alphanumeric (1–64 chars)" },
       { status: 400 },
     );
   }
@@ -123,13 +176,32 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  if (file.size === 0) {
+    return NextResponse.json(
+      { error: "Empty file rejected" },
+      { status: 400 },
+    );
+  }
   if (file.size > MAX_BYTES) {
     return NextResponse.json(
       { error: `File too large (max ${MAX_BYTES} bytes)` },
       { status: 413 },
     );
   }
-  if (!ALLOWED_MIMES.has(file.type)) {
+  // The browser-provided `file.type` is spoofable — verify the real content
+  // by sniffing the first 12 bytes against known magic numbers and only
+  // accept the actual content type that matches.
+  const sniffBuf = Buffer.from(await file.slice(0, 12).arrayBuffer());
+  const sniffedMime = sniffImageMime(sniffBuf);
+  if (!sniffedMime) {
+    return NextResponse.json(
+      { error: "File contents do not match a supported image format" },
+      { status: 415 },
+    );
+  }
+  // Cross-check with the declared header — if it lies, reject. If it
+  // matches, prefer the sniffed value going forward.
+  if (file.type && file.type !== sniffedMime && !ALLOWED_MIMES.has(file.type)) {
     return NextResponse.json(
       { error: `Unsupported MIME type: ${file.type}` },
       { status: 415 },
@@ -146,7 +218,10 @@ export async function POST(req: Request) {
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
-  const stored = await put(kind, ownerId, buf, file.type);
+  // Trust the SNIFFED mime type, not the client-provided one — the latter
+  // is already validated above but the actual on-disk extension should
+  // reflect what the bytes really are.
+  const stored = await put(kind, ownerId, buf, sniffedMime);
 
   // Best-effort: persist the URL on the owning entity so the next read shows
   // the new image immediately without a separate mutation.

@@ -15,3 +15,26 @@ export const UnfollowEntityMutation = graphql(/* GraphQL */ `
     unfollowEntity(entityType: $entityType, entityId: $entityId)
   }
 `);
+
+export const FollowersQuery = graphql(/* GraphQL */ `
+  query Followers(
+    $entityType: FollowEntityType!
+    $entityId: ID!
+    $first: Int
+    $after: String
+  ) {
+    followers(
+      entityType: $entityType
+      entityId: $entityId
+      first: $first
+      after: $after
+    ) {
+      id
+      name
+      username
+      avatarUrl
+      nationality
+    }
+    followerCountFor(entityType: $entityType, entityId: $entityId)
+  }
+`);

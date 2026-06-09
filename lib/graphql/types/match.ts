@@ -1,6 +1,23 @@
 import { builder } from "../builder";
 import { MatchStatusEnum } from "./enums";
 import { GameBlockTypeEnum } from "./structure";
+import {
+  MatchCompletionMode,
+  MatchWinType,
+  RescheduleRequestStatus,
+} from "@/lib/generated/prisma/enums";
+
+const MatchWinTypeEnum = builder.enumType(MatchWinType, {
+  name: "MatchWinType",
+});
+
+const MatchCompletionModeEnum = builder.enumType(MatchCompletionMode, {
+  name: "MatchCompletionMode",
+});
+
+const RescheduleRequestStatusEnum = builder.enumType(RescheduleRequestStatus, {
+  name: "RescheduleRequestStatus",
+});
 
 builder.prismaObject("Matchday", {
   fields: (t) => ({
@@ -31,6 +48,11 @@ builder.prismaObject("Match", {
       type: "DateTime",
       nullable: true,
     }),
+    completedBy: t.relation("completedBy", { nullable: true }),
+    completionMode: t.expose("completionMode", {
+      type: MatchCompletionModeEnum,
+      nullable: true,
+    }),
     homeScore: t.exposeInt("homeScore", { nullable: true }),
     awayScore: t.exposeInt("awayScore", { nullable: true }),
     notes: t.exposeString("notes", { nullable: true }),
@@ -50,6 +72,23 @@ builder.prismaObject("Match", {
       resolve: (m) =>
         !!m.homeLineupSubmittedAt && !!m.awayLineupSubmittedAt,
     }),
+    lineupEditRequestedAt: t.expose("lineupEditRequestedAt", {
+      type: "DateTime",
+      nullable: true,
+    }),
+    lineupEditRequestedById: t.exposeID("lineupEditRequestedById", {
+      nullable: true,
+    }),
+    lineupEditRequestedSide: t.exposeString("lineupEditRequestedSide", {
+      nullable: true,
+    }),
+    // Round-20 — no-show bookkeeping.
+    winType: t.expose("winType", { type: MatchWinTypeEnum }),
+    forfeitTeamId: t.exposeID("forfeitTeamId", { nullable: true }),
+    forfeitReason: t.exposeString("forfeitReason", { nullable: true }),
+    rescheduleRequests: t.relation("rescheduleRequests", {
+      query: () => ({ orderBy: { createdAt: "desc" } }),
+    }),
   }),
 });
 
@@ -62,6 +101,7 @@ builder.prismaObject("MatchFrame", {
       nullable: true,
     }),
     homeWon: t.exposeBoolean("homeWon", { nullable: true }),
+    isWalkover: t.exposeBoolean("isWalkover"),
     homePlayer: t.exposeString("homePlayer", { nullable: true }),
     awayPlayer: t.exposeString("awayPlayer", { nullable: true }),
     homePlayerRef: t.relation("homePlayerRef", { nullable: true }),
@@ -85,6 +125,21 @@ export const RecordFrameInput = builder.inputType("RecordFrameInput", {
     homeWon: t.boolean({ required: true }),
     homePlayer: t.string(),
     awayPlayer: t.string(),
+  }),
+});
+
+// Round-20 — reschedule requests.
+builder.prismaObject("MatchRescheduleRequest", {
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    match: t.relation("match"),
+    requestedBy: t.relation("requestedBy"),
+    proposedDate: t.expose("proposedDate", { type: "DateTime" }),
+    reason: t.exposeString("reason", { nullable: true }),
+    status: t.expose("status", { type: RescheduleRequestStatusEnum }),
+    reviewedBy: t.relation("reviewedBy", { nullable: true }),
+    reviewedAt: t.expose("reviewedAt", { type: "DateTime", nullable: true }),
+    createdAt: t.expose("createdAt", { type: "DateTime" }),
   }),
 });
 

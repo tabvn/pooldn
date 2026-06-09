@@ -1,8 +1,8 @@
 import { graphql } from "@/lib/graphql/generated";
 
 export const TeamsListQuery = graphql(/* GraphQL */ `
-  query TeamsList {
-    teams {
+  query TeamsList($cityId: ID) {
+    teams(cityId: $cityId) {
       id
       slug
       name
@@ -20,6 +20,32 @@ export const TeamsListQuery = graphql(/* GraphQL */ `
   }
 `);
 
+export const MyTeamsQuery = graphql(/* GraphQL */ `
+  query MyTeams {
+    viewer {
+      id
+    }
+    myTeams {
+      id
+      slug
+      name
+      logoUrl
+      isActive
+      captain {
+        id
+        name
+        username
+      }
+      members {
+        id
+        user {
+          id
+        }
+      }
+    }
+  }
+`);
+
 export const TeamDetailQuery = graphql(/* GraphQL */ `
   query TeamDetail($slug: String!) {
     team(slug: $slug) {
@@ -29,8 +55,20 @@ export const TeamDetailQuery = graphql(/* GraphQL */ `
       logoUrl
       description
       isActive
+      bannedAt
+      banReason
       isFollowing
       followerCount
+      myInvitation {
+        id
+        message
+        createdAt
+        invitedBy {
+          id
+          name
+          username
+        }
+      }
       captain {
         id
         name
@@ -81,6 +119,7 @@ export const TeamDetailQuery = graphql(/* GraphQL */ `
             id
             slug
             name
+            bannerUrl
           }
         }
       }
@@ -105,6 +144,7 @@ export const TeamDetailQuery = graphql(/* GraphQL */ `
             id
             slug
             name
+            bannerUrl
           }
         }
       }

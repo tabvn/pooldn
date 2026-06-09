@@ -9,6 +9,7 @@ import { useMutation } from "@apollo/client/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/toast";
 import { WelcomeHeading } from "@/components/auth/welcome-heading";
 import { OrDivider, SocialButtons } from "@/components/auth/social-buttons";
 import { RegisterMutation } from "@/lib/graphql/operations/auth.operations";
@@ -35,7 +36,10 @@ function deriveUsername(email: string, firstName: string) {
 
 export default function SignUpPage() {
   const router = useRouter();
-  const [registerUser, { error }] = useMutation(RegisterMutation);
+  const toast = useToast();
+  const [registerUser, { error, loading: registering }] = useMutation(
+    RegisterMutation,
+  );
   const {
     register,
     handleSubmit,
@@ -43,21 +47,29 @@ export default function SignUpPage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   const onSubmit = handleSubmit(async (values) => {
-    const result = await registerUser({
-      variables: {
-        input: {
-          name: `${values.firstName} ${values.lastName}`.trim(),
-          username: deriveUsername(values.email, values.firstName),
-          email: values.email,
-          password: values.password,
+    try {
+      // Username is intentionally omitted — the server auto-generates one
+      // from the name and resolves collisions with a numeric suffix so we
+      // don't blow up on "username taken" for a UI that doesn't show it.
+      const result = await registerUser({
+        variables: {
+          input: {
+            name: `${values.firstName} ${values.lastName}`.trim(),
+            email: values.email,
+            password: values.password,
+          },
         },
-      },
-    });
-    if (result.data?.register) {
-      // Round-12 TASK 4 — funnel new accounts through the setup screen so
-      // they pick an avatar / city / bio before landing on the dashboard.
-      router.push("/onboarding?new=1");
-      router.refresh();
+      });
+      if (result.data?.register) {
+        toast.success("Account created", "Set up your profile next.");
+        router.push("/onboarding?new=1");
+        router.refresh();
+      }
+    } catch (e) {
+      toast.error(
+        "Sign up failed",
+        e instanceof Error ? e.message : "Try again.",
+      );
     }
   });
 
@@ -154,7 +166,7 @@ export default function SignUpPage() {
             </p>
           ) : null}
 
-          <Button type="submit" block loading={isSubmitting}>
+          <Button type="submit" block loading={isSubmitting || registering}>
             Create Account
           </Button>
           <Link href="/" className="block">

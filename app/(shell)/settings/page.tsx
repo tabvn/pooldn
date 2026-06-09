@@ -1,7 +1,5 @@
-import { requireViewer } from "@/lib/auth/server";
-import { SettingsForm } from "./form";
+import { ProfileTab } from "./profile-tab";
 
-export default async function SettingsPage() {
-  await requireViewer({ next: "/settings" });
-  return <SettingsForm />;
+export default function SettingsProfilePage() {
+  return <ProfileTab />;
 }
