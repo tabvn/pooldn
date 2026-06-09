@@ -21,6 +21,11 @@
 4. Submit the `email` permission for **App Review** (and add a Privacy Policy URL + app icon) before going public; add yourself as a Tester to use it in dev meanwhile.
 5. Copy **App ID** → `FACEBOOK_CLIENT_ID`, **App Secret** → `FACEBOOK_CLIENT_SECRET` in `.env`; restart the dev server.
 
+## Data Deletion — using the Instructions URL (decided)
+- We register Facebook's **Data Deletion Instructions URL** = `https://pooldn.thebaycity.dev/data-deletion` (the existing `/data-deletion` page). No signed-request callback, no `facebookId` column, **no migration**.
+- The earlier callback experiment was reverted: `User.facebookId` removed from the schema, the login-time id write removed, and `app/api/auth/facebook/data-deletion/route.ts` reduced to a redirect to `/data-deletion` (harmless; not registered with Facebook).
+- To make in-app deletion real end-to-end, wire a "Delete account" action in Settings → Account (separate task).
+
 ## Tests
 - Configured app: button → Facebook dialog → callback creates/links user → onboarding/next.
 - No-email account → `facebook_no_email` message (until OAuthAccount table lands).

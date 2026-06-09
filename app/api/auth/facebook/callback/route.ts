@@ -22,9 +22,20 @@ function fail(origin: string, code: string) {
   return NextResponse.redirect(new URL(`/sign-in?authError=${code}`, origin));
 }
 
+/**
+ * Round-47 — clear the temp state/next cookies via raw Set-Cookie headers
+ * (NOT res.cookies.set). The success path issues session cookies via
+ * res.headers.append; mixing the two APIs on the same response causes
+ * NextResponse to serialize through its cookies store and drop the
+ * appended headers — symptom: Facebook login redirects but no
+ * pooldn_session cookie lands. Same fix as the Google callback.
+ */
 function clearTemp(res: NextResponse) {
   for (const n of ["fb_state", "fb_next"]) {
-    res.cookies.set(n, "", { path: "/", maxAge: 0 });
+    res.headers.append(
+      "Set-Cookie",
+      `${n}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
+    );
   }
 }
 
@@ -123,18 +134,6 @@ export async function GET(request: Request) {
     }
 
     const { user, isNew } = await resolveUser({ ...identity, email: identity.email });
-    // Remember the Facebook id so the Data Deletion callback can find this
-    // user later. Raw SQL → compiles before the `facebookId` migration lands;
-    // best-effort so login never fails if the column isn't there yet.
-    try {
-      await prisma.$executeRawUnsafe(
-        'UPDATE "users" SET "facebookId" = $1 WHERE id = $2',
-        identity.id,
-        user.id,
-      );
-    } catch {
-      /* column not migrated yet — non-fatal */
-    }
     if (!user.isActive) {
       const res = fail(origin, "account_suspended");
       clearTemp(res);
