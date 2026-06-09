@@ -7,6 +7,7 @@ import { useQuery } from "@apollo/client/react";
 import {
   Asterisk,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Flag,
   Home,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
+import { useAppShell } from "./app-shell";
 
 type NavItem = {
   href: string;
@@ -77,20 +79,57 @@ export function Sidebar() {
     errorPolicy: "ignore",
   });
   const isAdmin = viewerData?.viewer?.role === "SUPER_ADMIN";
+  const { collapsed, toggleCollapsed } = useAppShell();
 
   return (
-    <aside className="hidden md:flex w-[260px] shrink-0 flex-col gap-2 border-r border-border bg-card px-4 py-6">
+    <aside
+      data-collapsed={collapsed || undefined}
+      className={cn(
+        "hidden md:flex h-[100dvh] shrink-0 flex-col gap-2 border-r border-border bg-card py-6 transition-[width] duration-200 ease-out overflow-y-auto",
+        collapsed ? "w-[68px] px-2" : "w-[260px] px-4",
+      )}
+    >
       {/* Logo lockup */}
-      <Link href="/" className="flex items-center gap-2 px-2 mb-6">
-        <span className="relative inline-flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground font-black text-sm">
+      <Link
+        href="/"
+        className={cn(
+          "flex items-center gap-2 mb-6",
+          collapsed ? "justify-center px-0" : "px-2",
+        )}
+        title={collapsed ? "Pool DN" : undefined}
+      >
+        <span className="relative inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-black text-sm">
           <span className="absolute inset-0 rounded-full ring-2 ring-primary/30" />
           8
         </span>
-        <span className="text-sm font-bold tracking-tight">Pool DN</span>
-        <span className="ml-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
-          Beta
-        </span>
+        {!collapsed ? (
+          <>
+            <span className="text-sm font-bold tracking-tight">Pool DN</span>
+            <span className="ml-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
+              Beta
+            </span>
+          </>
+        ) : null}
       </Link>
+
+      {/* Collapse toggle */}
+      <button
+        type="button"
+        onClick={toggleCollapsed}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        data-testid="sidebar-collapse-toggle"
+        className={cn(
+          "inline-flex size-7 items-center justify-center rounded-md border border-border bg-secondary/40 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors",
+          collapsed ? "self-center -mt-3" : "self-end -mt-3",
+        )}
+      >
+        {collapsed ? (
+          <ChevronRight className="size-3.5" />
+        ) : (
+          <ChevronLeft className="size-3.5" />
+        )}
+      </button>
 
       {/* Primary nav */}
       <nav className="flex flex-col gap-1">
@@ -101,8 +140,10 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               data-active={active || undefined}
+              title={collapsed ? item.label : undefined}
               className={cn(
-                "relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "relative flex items-center gap-3 rounded-md py-2 text-sm font-medium transition-colors",
+                collapsed ? "justify-center px-2" : "px-3",
                 active
                   ? "bg-primary/10 text-primary"
                   : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
@@ -122,49 +163,63 @@ export function Sidebar() {
               >
                 {item.icon}
               </span>
-              {item.label}
+              {!collapsed ? item.label : null}
             </Link>
           );
         })}
-        {isAdmin ? <AdminSubmenu pathname={pathname} /> : null}
+        {isAdmin ? (
+          <AdminSubmenu pathname={pathname} collapsed={collapsed} />
+        ) : null}
       </nav>
 
-      {/* Mobile app promo */}
-      <div
-        className="mt-auto overflow-hidden rounded-xl p-4 text-white shadow-lg"
-        style={{
-          background:
-            "linear-gradient(135deg, #9810fa 0%, #4a106e 55%, #1c2280 100%)",
-        }}
-      >
-        <div className="flex items-center gap-2 mb-1.5">
-          <span className="inline-flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-black">
-            8
-          </span>
-          <span className="text-sm font-bold">PoolDN Mobile App</span>
+      {/* Mobile app promo — hidden when collapsed (no space) */}
+      {!collapsed ? (
+        <div
+          className="mt-auto overflow-hidden rounded-xl p-4 text-white shadow-lg"
+          style={{
+            background:
+              "linear-gradient(135deg, #9810fa 0%, #4a106e 55%, #1c2280 100%)",
+          }}
+        >
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-black">
+              8
+            </span>
+            <span className="text-sm font-bold">PoolDN Mobile App</span>
+          </div>
+          <p className="text-xs text-white/80 leading-snug">
+            Coming Soon
+            <br />
+            on Android and iOS
+          </p>
         </div>
-        <p className="text-xs text-white/80 leading-snug">
-          Coming Soon
-          <br />
-          on Android and iOS
-        </p>
-      </div>
+      ) : (
+        <div className="mt-auto" />
+      )}
 
-      {/* Utility links — kept after the mobile-app promo */}
+      {/* Utility links — labels hidden in collapsed mode */}
       <div className="flex flex-col gap-0.5 pt-3 mt-1">
         <Link
           href="/feedback"
-          className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+          title={collapsed ? "Suggest a feature" : undefined}
+          className={cn(
+            "flex items-center gap-2 py-1.5 text-xs text-muted-foreground hover:text-foreground",
+            collapsed ? "justify-center px-2" : "px-3",
+          )}
         >
           <Lightbulb className="size-3.5" />
-          Suggest a Feature
+          {!collapsed ? "Suggest a Feature" : null}
         </Link>
         <Link
           href="/help"
-          className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+          title={collapsed ? "Need help" : undefined}
+          className={cn(
+            "flex items-center gap-2 py-1.5 text-xs text-muted-foreground hover:text-foreground",
+            collapsed ? "justify-center px-2" : "px-3",
+          )}
         >
           <LifeBuoy className="size-3.5" />
-          Need Help?
+          {!collapsed ? "Need Help?" : null}
         </Link>
       </div>
     </aside>
@@ -204,19 +259,52 @@ const ADMIN_ITEMS: AdminItem[] = [
     icon: <MapPin className="size-3.5" />,
   },
   {
-    href: "/admin/banned",
-    label: "Banned",
+    href: "/admin/moderation",
+    label: "Moderation",
     icon: <ShieldCheck className="size-3.5" />,
   },
 ];
 
-function AdminSubmenu({ pathname }: { pathname: string }) {
+function AdminSubmenu({
+  pathname,
+  collapsed = false,
+}: {
+  pathname: string;
+  collapsed?: boolean;
+}) {
   const onAdmin = pathname.startsWith("/admin");
-  const [open, setOpen] = useState(onAdmin);
+  const [open, setOpen] = useState(onAdmin && !collapsed);
   // Keep state in sync if the viewer navigates into /admin from elsewhere.
   useEffect(() => {
-    if (onAdmin) setOpen(true);
-  }, [onAdmin]);
+    if (onAdmin && !collapsed) setOpen(true);
+  }, [onAdmin, collapsed]);
+
+  // Collapsed sidebar: render the admin items inline as icons (no submenu).
+  if (collapsed) {
+    return (
+      <div className="mt-1 border-t border-border/40 pt-2 flex flex-col gap-1">
+        {ADMIN_ITEMS.map((item) => {
+          const active = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              title={item.label}
+              data-active={active || undefined}
+              className={cn(
+                "flex items-center justify-center rounded-md px-2 py-2 text-sm font-medium transition-colors",
+                active
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+              )}
+            >
+              {item.icon}
+            </Link>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div className="mt-1 border-t border-border/40 pt-2">

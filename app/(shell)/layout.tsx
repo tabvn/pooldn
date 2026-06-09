@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
+import { AppScrollMain, AppShell } from "@/components/layout/app-shell";
 import { Header } from "@/components/layout/header";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import {
@@ -47,17 +48,21 @@ export default async function ShellLayout({
       : "Da Nang, Vietnam";
   }
 
+  // Round-44 — read the sidebar collapse preference SSR-side so the initial
+  // width matches the user's last setting (no width-flash on hydration).
+  const initialCollapsed = cookieStore.get("pooldn_sidebar")?.value === "1";
+
   return (
-    <div className="flex min-h-screen w-full">
+    <AppShell initialCollapsed={initialCollapsed}>
       <Sidebar />
-      <div className="flex flex-1 flex-col min-w-0">
+      <div className="flex flex-1 flex-col min-w-0 h-[100dvh]">
         <Header
           city={label}
           viewerName={data?.viewer?.name ?? null}
           viewerUsername={data?.viewer?.username ?? null}
           viewerAvatarUrl={data?.viewer?.avatarUrl ?? null}
         />
-        <main className="flex-1 overflow-auto pb-16 md:pb-0">{children}</main>
+        <AppScrollMain>{children}</AppScrollMain>
       </div>
       <MobileNav />
       <NotificationToaster enabled={!!data?.viewer} />
@@ -67,6 +72,6 @@ export default async function ShellLayout({
         visibleToasts={3}
         closeButton
       />
-    </div>
+    </AppShell>
   );
 }

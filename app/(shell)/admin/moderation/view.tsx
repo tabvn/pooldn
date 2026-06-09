@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsList, TabsPanel, TabsTrigger } from "@/components/ui/tabs";
 import {
   BannedTeamsQuery,
   BannedUsersQuery,
@@ -35,12 +36,13 @@ type TeamRow = ResultOf<typeof BannedTeamsQuery>["bannedTeams"][number];
 const PAGE = 25;
 
 /**
- * Round-46 — admin moderation tables for banned users + banned teams.
+ * Round-47 — Admin moderation tables.
  *
- * Cursor-paginated via local accumulators; unbanning a row drops it from
- * the local list optimistically, then we refetch to reconcile. Hard delete
- * on teams asks for confirmation since it cascades roster / matches /
- * applications.
+ * NOTE: this route lives at /admin/moderation (not /admin/banned). The
+ * `/banned` path segment caused Next.js 16 + Turbopack to hang SSR
+ * indefinitely on any URL containing it under the (shell) group — confirmed
+ * via Playwright A/B: same code, /admin/banned hangs, /admin/moderation 200s.
+ * Path collision with the lockout `/banned` route is the suspected cause.
  */
 export function BannedAdmin() {
   return (
@@ -54,9 +56,23 @@ export function BannedAdmin() {
         }
         description="Locked-out users and banned teams. Unban to restore; delete a team to remove it permanently."
       />
-      <div className="p-4 md:p-8 max-w-5xl space-y-6">
-        <BannedUsersTable />
-        <BannedTeamsTable />
+      <div className="p-4 md:p-8 max-w-5xl">
+        <Tabs defaultValue="users">
+          <TabsList data-testid="moderation-tabs">
+            <TabsTrigger value="users" data-testid="moderation-tab-users">
+              Users
+            </TabsTrigger>
+            <TabsTrigger value="teams" data-testid="moderation-tab-teams">
+              Teams
+            </TabsTrigger>
+          </TabsList>
+          <TabsPanel value="users">
+            <BannedUsersTable />
+          </TabsPanel>
+          <TabsPanel value="teams">
+            <BannedTeamsTable />
+          </TabsPanel>
+        </Tabs>
       </div>
     </div>
   );
@@ -70,8 +86,6 @@ function BannedUsersTable() {
     BannedUsersQuery,
     {
       variables: { first: PAGE },
-      // network-only avoids the cache-and-network loading-stuck case that
-      // showed as "load forever" on /admin/banned.
       fetchPolicy: "network-only",
       notifyOnNetworkStatusChange: true,
     },

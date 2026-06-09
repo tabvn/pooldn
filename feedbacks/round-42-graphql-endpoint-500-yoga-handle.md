@@ -1,36 +1,13 @@
-# PoolDN — P0: GraphQL endpoint 500s on EVERY operation (wrong Yoga method) (Round 42)
+# PoolDN — Round 42 (CORRECTED / RESOLVED): GraphQL 500 was transient, NOT `yoga.handle`
 
-## Symptom
-After switching `app/api/graphql/route.ts` to **graphql-yoga** (`createYoga`) for the new subscriptions, the GraphQL HTTP endpoint returns **HTTP 500 with an empty body on every request** — even `{ __typename }` and `{ viewer { id } }`. This takes down the **entire app's data layer**: login (demo quick-login + form) fails with `ServerError: Received status code 500`, and any client/SSR GraphQL call errors. The whole multi-role flow is blocked.
+## Correction
+My original round-42 claimed the GraphQL endpoint 500 was caused by `yoga.handle` being undefined (recommending `yoga.handleRequest`). **That diagnosis was wrong.** Verified afterward: the endpoint returns 200 with `yoga.handle(...)` still in `app/api/graphql/route.ts`, so `yoga.handle` is a valid method in this graphql-yoga version. **Do NOT change `yoga.handle` to `handleRequest`.**
 
-## Root cause
-In `route.ts`:
-```ts
-async function handle(request: Request) {
-  return yoga.handle(request, { responseHeaders: new Headers() }); // ❌ yoga.handle is undefined
-}
-```
-The Yoga instance from `createYoga` has **no `handle` method**. Calling `yoga.handle(...)` throws `TypeError: yoga.handle is not a function`, which Next returns as an empty 500 before Yoga can format any GraphQL response.
+## Actual root cause
+The endpoint 500'd on every operation only *transiently*, while the AI was mid-editing the new subscription wiring (`builder.subscriptionType`, `resolvers/subscriptions.ts`, `pubsub.ts`, `builder.ts`). During that window `schema.toSchema()` (or the Yoga handler init) threw at request time, so every request — even `{ __typename }` — returned an empty 500. A dev-server restart / completing the edits cleared it. Same class of issue as the earlier `./resolvers/search` wedge: a half-written module in the schema import graph takes the whole endpoint down until it compiles cleanly.
 
-## Fix
-Use Yoga's Next.js App Router entry point — **`handleRequest`** (or call the instance's `fetch`):
-```ts
-async function handle(request: Request) {
-  return yoga.handleRequest(request, { responseHeaders: new Headers() });
-}
-```
-The idiomatic Yoga + Next App Router pattern is also acceptable:
-```ts
-const { handleRequest } = createYoga<ServerContext, GraphQLContext>({ schema, context: createContext, graphqlEndpoint: "/api/graphql", fetchAPI: { Response, Request }, plugins: [relayResponseHeaders] });
-export { handleRequest as GET, handleRequest as POST, handleRequest as OPTIONS };
-```
-Verify `createContext` runs under Yoga (it receives the Yoga serverContext) and that the `relayResponseHeaders` plugin still appends auth/Set-Cookie headers so **login sets the session cookie** correctly.
+## Status: RESOLVED
+Endpoint now returns 200; login + all data work; the AI also added a correct set-cookie fix ("Round-45") so login cookies aren't corrupted when two `set-cookie` rows are joined.
 
-## Verify after fix
-- `POST /api/graphql {query:"{ __typename }"}` → 200.
-- Demo quick-login (`[data-testid="demo-login-*"]`) signs in and redirects; `{ viewer { id username } }` returns the user.
-- Subscriptions (`matchUpdated`, `competitionStandingsUpdated`, notifications) still connect over SSE/WS.
-- Run the e2e suite — auth/anonymous/apply-approve specs were all failing while the endpoint was 500; they must go green again.
-
-## Definition of done
-`/api/graphql` returns 200 for queries/mutations; login + all data work; subscriptions stream; e2e suite green.
+## Prevention (still worth doing)
+When adding a new module to the schema import graph (resolvers/types/builder), create the file (even a stub) before importing it, and avoid leaving the schema in a non-compiling state — otherwise the entire `/api/graphql` endpoint 500s app-wide, not just the new feature.
