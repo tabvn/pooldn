@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useAppShell } from "./app-shell";
 import { CitySelector } from "./city-selector";
@@ -32,19 +33,31 @@ export function Header({
           : "h-[72px] px-3 md:gap-4 md:px-6",
       )}
     >
+      {/* Mobile logo + city — sidebar is hidden on small screens so the
+          header carries the brand mark. */}
+      <Link
+        href="/"
+        className="flex shrink-0 items-center gap-2 md:hidden"
+        aria-label="PoolDN home"
+      >
+        <span className="relative inline-flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground font-black text-xs">
+          <span className="absolute inset-0 rounded-full ring-2 ring-primary/30" />
+          8
+        </span>
+      </Link>
       <div className="hidden md:block">
         <CitySelector city={city} />
       </div>
       <div
         className={cn(
-          "hidden flex-1 justify-center px-2 sm:flex md:px-4",
-          scrolled && "sm:px-2 md:px-2",
+          "flex flex-1 justify-center px-2 md:px-4",
+          scrolled && "md:px-2",
         )}
       >
         <GlobalSearch />
       </div>
       <div className="flex items-center gap-2 md:gap-3 ml-auto">
-        <NotificationBell signedIn={signedIn} />
+        {signedIn ? <NotificationBell signedIn={signedIn} /> : null}
         <ViewerMenu
           viewerName={viewerName}
           viewerUsername={viewerUsername}

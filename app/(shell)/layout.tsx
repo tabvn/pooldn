@@ -8,6 +8,7 @@ import {
   NotificationToasterContainer,
 } from "@/components/layout/notification-toaster";
 import { Sidebar } from "@/components/layout/sidebar";
+import { redirectIfBanned } from "@/lib/auth/server";
 import { getClient } from "@/lib/apollo/client";
 import { CitiesQuery, ViewerQuery } from "@/lib/graphql/operations/competition.operations";
 
@@ -16,6 +17,16 @@ export default async function ShellLayout({
 }: {
   children: ReactNode;
 }) {
+  // Round-47 — banned-user lockout used to live in proxy.ts (formerly
+  // middleware.ts). That approach caused real problems: Next 16 deprecation
+  // warnings, Turbopack URL-segment collisions with /banned (broke
+  // /admin/banned entirely), and edge-runtime restrictions on imports.
+  // Replaced with a server-component check in this layout — every (shell)
+  // route renders through here, while /sign-in, /sign-up, /banned, and
+  // /api/* live outside the (shell) group so the redirect can't loop on
+  // its own destination.
+  await redirectIfBanned("");
+
   const client = getClient();
   const [{ data }, citiesRes, cookieStore] = await Promise.all([
     client.query({ query: ViewerQuery, errorPolicy: "ignore" }),

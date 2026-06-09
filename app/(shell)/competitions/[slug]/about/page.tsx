@@ -285,8 +285,16 @@ export default async function AboutPage({
                 }
               />
               <Row
-                label="Tie-breaker"
-                value="Head-to-head, then point difference"
+                label="Tie-breakers"
+                value={
+                  <ol className="text-right text-sm">
+                    <li>1. Points</li>
+                    <li>2. Head-to-head</li>
+                    <li>3. Point difference</li>
+                    <li>4. Points for</li>
+                    <li>5. Team name (A–Z)</li>
+                  </ol>
+                }
               />
               <Row
                 label="Rules document"

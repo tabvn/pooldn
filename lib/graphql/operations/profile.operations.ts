@@ -90,6 +90,12 @@ export const ResendEmailVerificationMutation = graphql(/* GraphQL */ `
   }
 `);
 
+export const VerifyEmailTokenMutation = graphql(/* GraphQL */ `
+  mutation VerifyEmailToken($token: String!) {
+    verifyEmailToken(token: $token)
+  }
+`);
+
 export const ChangeEmailMutation = graphql(/* GraphQL */ `
   mutation ChangeEmail($newEmail: String!, $currentPassword: String!) {
     changeEmail(newEmail: $newEmail, currentPassword: $currentPassword) {

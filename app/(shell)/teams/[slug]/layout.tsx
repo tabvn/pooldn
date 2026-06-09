@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { BanTeamButton } from "@/components/admin/ban-team-button";
+import { TeamActionsMenu } from "@/components/team/team-actions-menu";
 import { FollowButton } from "@/components/follow-button";
 import { PageTitle } from "@/components/layout/page-title";
 import { TabNav } from "@/components/layout/tab-nav";
@@ -69,29 +69,20 @@ export default async function TeamLayout({
               followersHref={`/teams/${slug}/followers`}
               signedIn={!!viewer}
             />
-            {canManage ? (
-              <>
-                <Link href={`/teams/${slug}/manage`}>
-                  <Button variant="outline">Manage roster</Button>
-                </Link>
-                <Link href={`/teams/${slug}/edit`}>
-                  <Button variant="outline">Edit team</Button>
-                </Link>
-              </>
-            ) : null}
             {canRequestToJoin ? (
               <JoinTeamButton teamId={team.id} teamName={team.name} />
             ) : null}
             {isMember && !isCaptain ? (
               <LeaveTeamButton teamId={team.id} teamName={team.name} />
             ) : null}
-            {isAdmin ? (
-              <BanTeamButton
-                teamId={team.id}
-                teamName={team.name}
-                bannedAt={team.bannedAt ?? null}
-              />
-            ) : null}
+            <TeamActionsMenu
+              teamId={team.id}
+              teamSlug={slug}
+              teamName={team.name}
+              bannedAt={team.bannedAt ?? null}
+              isCaptain={isCaptain}
+              isAdmin={isAdmin}
+            />
           </div>
         }
         meta={

@@ -220,6 +220,7 @@ model User {
   matchesCompleted        Match[]               @relation("MatchCompletedBy")
   notificationPreferences NotificationPreference[]
   digestRuns              DigestRun[]
+  emailTokens             EmailToken[]
   rescheduleRequests      MatchRescheduleRequest[] @relation("RescheduleRequestedBy")
   rescheduleReviews       MatchRescheduleRequest[] @relation("RescheduleReviewedBy")
 
@@ -1003,4 +1004,29 @@ model DigestRun {
   @@unique([userId, weekStart])
   @@index([weekStart])
   @@map("digest_runs")
+}
+
+/**
+ * Round-47 — opaque single-use tokens for email-driven flows.
+ *
+ * `purpose` distinguishes verify-email from password-reset etc., so a leaked
+ * verify token can't be replayed against the reset endpoint. Tokens are
+ * stored as `tokenHash` (sha256) — the plaintext value only exists in the
+ * outbound email body. Expiry is enforced at the resolver layer.
+ */
+model EmailToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   String   // "VERIFY_EMAIL" | "PASSWORD_RESET"
+  tokenHash String   @unique
+  /// For VERIFY_EMAIL when the user changes email — the new pending address.
+  /// Empty for other purposes.
+  pendingEmail String?
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, purpose])
+  @@map("email_tokens")
 }

@@ -137,25 +137,85 @@ builder.mutationFields((t) => ({
           extensions: { code: "EMAIL_TAKEN" },
         });
       }
-      return ctx.prisma.user.update({
+      // Round-47 — instead of swapping the email immediately, store the
+      // requested address on an EmailToken and send a confirm link to the
+      // NEW address. Until the user clicks the link, their account keeps
+      // the old email + a "pending change" badge.
+      const updated = await ctx.prisma.user.update({
         ...query,
         where: { id: ctx.viewer.id },
-        // Round-23 — flipping the email resets verification status. A
-        // confirm-by-link flow is on the roadmap; until then the unverified
-        // badge in Settings is the gentle nudge.
-        data: { email, emailVerified: false },
+        data: {},
       });
+      const { issueEmailToken } = await import("@/lib/services/email-token.service");
+      const { token } = await issueEmailToken(ctx.prisma, {
+        userId: ctx.viewer.id,
+        purpose: "VERIFY_EMAIL",
+        pendingEmail: email,
+        ttlMs: 24 * 60 * 60 * 1000,
+      });
+      const { sendEmailVerification } = await import(
+        "@/lib/services/email.service"
+      );
+      await sendEmailVerification({
+        to: email,
+        name: ctx.viewer.name ?? "there",
+        token,
+      });
+      return updated;
     },
   }),
 
   resendEmailVerification: t.boolean({
     description:
-      "Stub for now — flips emailVerified back to false so the UI prompt re-appears. The real send-link flow will live here.",
+      "Issue a fresh verification token for the viewer's current email and send the confirm link.",
     resolve: async (_root, _args, ctx) => {
       requireUser(ctx.viewer);
-      await ctx.prisma.user.update({
+      const u = await ctx.prisma.user.findUniqueOrThrow({
         where: { id: ctx.viewer.id },
-        data: { emailVerified: false },
+        select: { email: true, name: true },
+      });
+      const { issueEmailToken } = await import("@/lib/services/email-token.service");
+      const { token } = await issueEmailToken(ctx.prisma, {
+        userId: ctx.viewer.id,
+        purpose: "VERIFY_EMAIL",
+        ttlMs: 24 * 60 * 60 * 1000,
+      });
+      const { sendEmailVerification } = await import(
+        "@/lib/services/email.service"
+      );
+      await sendEmailVerification({
+        to: u.email,
+        name: u.name ?? "there",
+        token,
+      });
+      return true;
+    },
+  }),
+
+  verifyEmailToken: t.boolean({
+    description:
+      "Redeem a verification token from an outbound email. If the token has a pending email change, the user's email is swapped; otherwise we just flip emailVerified=true.",
+    args: { token: t.arg.string({ required: true }) },
+    resolve: async (_root, args, ctx) => {
+      const { consumeEmailToken } = await import(
+        "@/lib/services/email-token.service"
+      );
+      const r = await consumeEmailToken(
+        ctx.prisma,
+        String(args.token),
+        "VERIFY_EMAIL",
+      );
+      if (!r) {
+        throw new GraphQLError("Verification link is invalid or expired", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      await ctx.prisma.user.update({
+        where: { id: r.userId },
+        data: {
+          emailVerified: true,
+          ...(r.pendingEmail ? { email: r.pendingEmail } : {}),
+        },
       });
       return true;
     },

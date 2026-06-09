@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { LocalDateTime } from "@/components/ui/local-datetime";
+import { RatingBadge } from "@/components/ui/rating-badge";
+import { pointsToNextTier, tierFromRating } from "@/lib/rating/tier";
 import { BanUserButton } from "@/components/admin/ban-user-button";
 import { FollowButton } from "@/components/follow-button";
 import { PageTitle } from "@/components/layout/page-title";
@@ -81,6 +83,7 @@ export default async function ProfilePage({
         }
         meta={
           <>
+            <RatingBadge rating={user.rating} size="md" showRating />
             <Badge variant="primary">{user.role.replace(/_/g, " ")}</Badge>
             {user.bannedAt ? (
               <Badge variant="danger" data-testid="profile-banned-badge">
@@ -146,12 +149,58 @@ export default async function ProfilePage({
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-3xl font-bold tabular-nums text-primary">
-                    {user.rating}
-                  </span>
-                  <span className="text-xs text-muted-foreground">Elo</span>
-                </div>
+                <RatingBadge rating={user.rating} variant="hero" />
+                {(() => {
+                  const tier = tierFromRating(user.rating);
+                  const remaining = pointsToNextTier(user.rating);
+                  if (tier.next === null) {
+                    return (
+                      <p className="text-xs text-muted-foreground">
+                        {tier.blurb} You've reached the top tier.
+                      </p>
+                    );
+                  }
+                  const span = tier.next - tier.min;
+                  const progress = Math.min(
+                    100,
+                    Math.max(0, ((user.rating - tier.min) / span) * 100),
+                  );
+                  return (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        {tier.blurb}
+                      </p>
+                      <div className="space-y-1.5">
+                        <div className="flex items-baseline justify-between text-[11px]">
+                          <span className="font-semibold">{tier.name}</span>
+                          <span className="text-muted-foreground tabular-nums">
+                            {remaining} pts to next
+                          </span>
+                        </div>
+                        <div
+                          className="h-2 w-full overflow-hidden rounded-full bg-secondary/60"
+                          role="progressbar"
+                          aria-valuemin={tier.min}
+                          aria-valuemax={tier.next ?? user.rating}
+                          aria-valuenow={user.rating}
+                          data-testid="tier-progress"
+                        >
+                          <div
+                            className="h-full rounded-full transition-[width]"
+                            style={{
+                              width: `${progress}%`,
+                              background: tier.gradient,
+                            }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
+                          <span>{tier.min}</span>
+                          <span>{tier.next}</span>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
                 <div className="flex items-center justify-between text-xs">
                   <span className="inline-flex items-center gap-1.5">
                     <Badge variant="primary" size="sm">

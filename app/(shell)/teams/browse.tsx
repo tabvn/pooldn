@@ -7,7 +7,6 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select } from "@/components/ui/select";
 import { MyTeamsQuery } from "@/lib/graphql/operations/team.operations";
 
 type Team = {
@@ -19,8 +18,6 @@ type Team = {
   memberCount: number;
   captain: { id: string; name: string; username: string };
 };
-
-type Sort = "name-asc" | "members-desc" | "recent";
 
 const PAGE = 12;
 
@@ -44,7 +41,6 @@ export function TeamsBrowse({
   viewerId: string | null;
   canCreate: boolean;
 }) {
-  const [sort, setSort] = useState<Sort>("name-asc");
   const [visible, setVisible] = useState(PAGE);
 
   // Pull the viewer's teams so we can exclude them from the discover grid.
@@ -55,23 +51,11 @@ export function TeamsBrowse({
   );
 
   const filtered = useMemo(() => {
-    const subset = teams.filter((t) => !myTeamIds.has(t.id));
-    const sorted = [...subset];
-    switch (sort) {
-      case "members-desc":
-        sorted.sort((a, b) => b.memberCount - a.memberCount);
-        break;
-      case "recent":
-        // Lacking createdAt on the list payload, the seed already returns
-        // newest first — preserve insertion order.
-        break;
-      case "name-asc":
-      default:
-        sorted.sort((a, b) => a.name.localeCompare(b.name));
-        break;
-    }
-    return sorted;
-  }, [teams, myTeamIds, sort]);
+    return teams
+      .filter((t) => !myTeamIds.has(t.id))
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [teams, myTeamIds]);
 
   const shown = filtered.slice(0, visible);
   const hasMore = visible < filtered.length;
@@ -99,22 +83,6 @@ export function TeamsBrowse({
         <span className="text-xs text-muted-foreground">
           {filtered.length} {filtered.length === 1 ? "team" : "teams"}
         </span>
-      </div>
-
-      {/* Sort row — use the header search (⌘K) for find-by-name. */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs uppercase tracking-wider text-muted-foreground">
-          Sort
-        </span>
-        <Select
-          value={sort}
-          onValueChange={(v) => setSort(v as Sort)}
-          options={[
-            { value: "name-asc", label: "Name A–Z" },
-            { value: "members-desc", label: "Most members" },
-            { value: "recent", label: "Recently active" },
-          ]}
-        />
       </div>
 
       {/* Grid */}

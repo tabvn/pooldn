@@ -43,7 +43,7 @@ builder.mutationFields((t) => ({
           extensions: { code: "FORBIDDEN" },
         });
       }
-      return ctx.prisma.user.update({
+      const updated = await ctx.prisma.user.update({
         ...query,
         where: { id },
         data: {
@@ -51,6 +51,21 @@ builder.mutationFields((t) => ({
           banReason: args.reason ?? null,
         },
       });
+      // Round-47 — best-effort email notice. Fire-and-forget; a mail
+      // delivery failure must not roll back the ban.
+      void (async () => {
+        try {
+          const { sendBanNotice } = await import("@/lib/services/email.service");
+          await sendBanNotice({
+            to: target.email,
+            name: target.name,
+            reason: args.reason ?? null,
+          });
+        } catch (e) {
+          console.warn("[banUser] email send failed:", e);
+        }
+      })();
+      return updated;
     },
   }),
 

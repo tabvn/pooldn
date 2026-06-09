@@ -71,6 +71,9 @@ export function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [recent, setRecent] = useState<string[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
+  const [kindFilter, setKindFilter] = useState<
+    "ALL" | "COMPETITION" | "TEAM" | "PLAYER" | "VENUE" | "POST"
+  >("ALL");
   const [run, { data, loading }] = useLazyQuery(GlobalSearchQuery);
 
   // Hydrate recent + watch cmd+k from anywhere.
@@ -115,13 +118,22 @@ export function GlobalSearch() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  const hits = data?.search ?? [];
+  const rawHits = data?.search ?? [];
+  const hits =
+    kindFilter === "ALL" ? rawHits : rawHits.filter((r) => r.kind === kindFilter);
   const grouped = hits.reduce<Record<string, Hit[]>>((acc, r) => {
     acc[r.kind] = acc[r.kind] ?? [];
     acc[r.kind].push(r);
     return acc;
   }, {});
   const flatOrder: Hit[] = KIND_ORDER.flatMap((k) => grouped[k] ?? []);
+
+  // Per-kind counts off the unfiltered set (so the chip badge shows the
+  // total available, not just what's visible right now).
+  const kindCounts = rawHits.reduce<Record<string, number>>((acc, r) => {
+    acc[r.kind] = (acc[r.kind] ?? 0) + 1;
+    return acc;
+  }, {});
 
   // Reset active index whenever the result set changes.
   useEffect(() => {
@@ -165,7 +177,10 @@ export function GlobalSearch() {
   }
 
   return (
-    <div ref={containerRef} className="relative w-[360px] max-w-full">
+    <div
+      ref={containerRef}
+      className="relative w-full sm:w-[420px] md:max-w-[520px]"
+    >
       <div className="relative">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
         <input
@@ -178,9 +193,9 @@ export function GlobalSearch() {
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onInputKey}
-          placeholder="Search PoolDN…"
+          placeholder="Search competitions, teams, players…"
           data-testid="global-search-input"
-          className="w-full rounded-md border border-border bg-background pl-8 pr-12 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          className="w-full rounded-full border border-border bg-background pl-8 pr-12 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
           aria-autocomplete="list"
           aria-controls="global-search-listbox"
           aria-expanded={open}
@@ -194,11 +209,58 @@ export function GlobalSearch() {
       </div>
       {open ? (
         <div
-          className="absolute left-0 right-0 top-full mt-1 z-50 max-h-[70vh] overflow-y-auto rounded-md border border-border bg-card shadow-lg"
+          className="absolute left-0 right-0 top-full mt-2 z-50 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-card shadow-xl"
           data-testid="global-search-results"
           id="global-search-listbox"
           role="listbox"
         >
+          {/* Filter chips — visible while there's a real query in flight or
+              we already have results. Skip on the empty/recent state. */}
+          {q.trim().length >= 2 && rawHits.length > 0 ? (
+            <div className="sticky top-0 z-10 flex items-center gap-1 overflow-x-auto border-b border-border bg-card px-2 py-2">
+              {(
+                [
+                  ["ALL", "All", rawHits.length],
+                  ["COMPETITION", "Competitions", kindCounts.COMPETITION ?? 0],
+                  ["TEAM", "Teams", kindCounts.TEAM ?? 0],
+                  ["PLAYER", "Players", kindCounts.PLAYER ?? 0],
+                  ["VENUE", "Venues", kindCounts.VENUE ?? 0],
+                  ["POST", "Posts", kindCounts.POST ?? 0],
+                ] as const
+              )
+                .filter(([k, , n]) => k === "ALL" || n > 0)
+                .map(([k, label, n]) => {
+                  const active = kindFilter === k;
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setKindFilter(k)}
+                      data-testid={`global-search-chip-${k.toLowerCase()}`}
+                      className={
+                        "inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors " +
+                        (active
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-secondary/40 text-muted-foreground hover:text-foreground")
+                      }
+                    >
+                      {label}
+                      <span
+                        className={
+                          "rounded-full px-1.5 py-0.5 text-[10px] " +
+                          (active
+                            ? "bg-primary-foreground/20 text-primary-foreground"
+                            : "bg-secondary text-muted-foreground")
+                        }
+                      >
+                        {n}
+                      </span>
+                    </button>
+                  );
+                })}
+            </div>
+          ) : null}
+
           {q.trim().length < 2 ? (
             <RecentList
               recent={recent}

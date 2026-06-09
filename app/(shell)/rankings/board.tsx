@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@apollo/client/react";
 import { Avatar } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CountryFlag } from "@/components/ui/country-flag";
+import { RatingBadge } from "@/components/ui/rating-badge";
 import { RankingsQuery } from "@/lib/graphql/operations/rankings.operations";
 
 const PAGE = 50;
@@ -95,7 +95,7 @@ export function RankingsBoard() {
                   {u.city ? <span> · {u.city.name}</span> : null}
                 </div>
               </div>
-              <Badge variant="neutral" size="sm">Lv {u.level}</Badge>
+              <RatingBadge rating={u.rating} size="sm" />
               <span className="font-mono text-sm font-bold text-primary tabular-nums">
                 {u.rating}
               </span>

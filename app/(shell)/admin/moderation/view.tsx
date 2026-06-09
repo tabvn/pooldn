@@ -57,24 +57,56 @@ export function BannedAdmin() {
         description="Locked-out users and banned teams. Unban to restore; delete a team to remove it permanently."
       />
       <div className="p-4 md:p-8 max-w-5xl">
-        <Tabs defaultValue="users">
-          <TabsList data-testid="moderation-tabs">
-            <TabsTrigger value="users" data-testid="moderation-tab-users">
-              Users
-            </TabsTrigger>
-            <TabsTrigger value="teams" data-testid="moderation-tab-teams">
-              Teams
-            </TabsTrigger>
-          </TabsList>
-          <TabsPanel value="users">
-            <BannedUsersTable />
-          </TabsPanel>
-          <TabsPanel value="teams">
-            <BannedTeamsTable />
-          </TabsPanel>
-        </Tabs>
+        <ModerationTabs />
       </div>
     </div>
+  );
+}
+
+function ModerationTabs() {
+  // Hit both queries with `first: 1` just to get the head count for the tab
+  // labels. The full tab body queries the actual page when activated.
+  const usersHead = useQuery(BannedUsersQuery, {
+    variables: { first: 1 },
+    fetchPolicy: "cache-and-network",
+  });
+  const teamsHead = useQuery(BannedTeamsQuery, {
+    variables: { first: 1 },
+    fetchPolicy: "cache-and-network",
+  });
+  const usersAny = (usersHead.data?.bannedUsers ?? []).length > 0;
+  const teamsAny = (teamsHead.data?.bannedTeams ?? []).length > 0;
+  return (
+    <Tabs defaultValue="users">
+      <TabsList data-testid="moderation-tabs">
+        <TabsTrigger value="users" data-testid="moderation-tab-users">
+          <ShieldOff className="size-3.5" />
+          Banned users
+          {usersAny ? (
+            <span
+              aria-hidden
+              className="ml-1 inline-block size-1.5 rounded-full bg-destructive"
+            />
+          ) : null}
+        </TabsTrigger>
+        <TabsTrigger value="teams" data-testid="moderation-tab-teams">
+          <ShieldOff className="size-3.5" />
+          Banned teams
+          {teamsAny ? (
+            <span
+              aria-hidden
+              className="ml-1 inline-block size-1.5 rounded-full bg-destructive"
+            />
+          ) : null}
+        </TabsTrigger>
+      </TabsList>
+      <TabsPanel value="users" className="mt-4">
+        <BannedUsersTable />
+      </TabsPanel>
+      <TabsPanel value="teams" className="mt-4">
+        <BannedTeamsTable />
+      </TabsPanel>
+    </Tabs>
   );
 }
 

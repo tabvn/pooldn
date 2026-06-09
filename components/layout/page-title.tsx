@@ -22,10 +22,13 @@ export function PageTitle({
     <section
       className={cn(
         "relative flex flex-col gap-3 border-b border-border px-4 md:px-8 py-6 md:py-8 overflow-hidden",
-        // Round-45 — when there's no banner image, fall back to a subtle
-        // brand gradient instead of a flat band. A small decorative ring
-        // sits at the top-right for visual hierarchy.
-        bannerUrl ? "" : "bg-card/40 bg-gradient-to-br from-primary/15 via-card/40 to-info/10",
+        // No-banner: deep teal → card → soft lime accent. Matches the
+        // CompetitionCard fallback so the card → detail transition reads
+        // continuous, and avoids the red/dark-purple look that the dicebear
+        // glass placeholder sometimes produces.
+        bannerUrl
+          ? ""
+          : "bg-gradient-to-br from-teal-950 via-card/80 to-primary/15",
         className,
       )}
       style={

@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { CompetitionAutocomplete } from "@/components/competition/competition-autocomplete";
 import { PageTitle } from "@/components/layout/page-title";
 import { useToast } from "@/components/ui/toast";
 import type { ResultOf } from "@graphql-typed-document-node/core";
@@ -28,16 +30,31 @@ export function SubmissionsList() {
   const [resolveFor, setResolveFor] = useState<string | null>(null);
   const [scoreHome, setScoreHome] = useState<number>(0);
   const [scoreAway, setScoreAway] = useState<number>(0);
+  const [competitionFilter, setCompetitionFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
 
-  const submissions = data?.matchScoreSubmissions ?? [];
+  const submissions = (data?.matchScoreSubmissions ?? []) as Submission[];
+
+  const filtered = submissions.filter((s) => {
+    if (
+      competitionFilter &&
+      s.match.matchday.competition.id !== competitionFilter
+    )
+      return false;
+    if (statusFilter && s.status !== statusFilter) return false;
+    return true;
+  });
+
   // Group by match id for compact display.
   const byMatch = new Map<string, Submission[]>();
-  for (const s of submissions as Submission[]) {
+  for (const s of filtered) {
     const arr = byMatch.get(s.match.id) ?? [];
     arr.push(s);
     byMatch.set(s.match.id, arr);
   }
   const matches = Array.from(byMatch.entries());
+  const conflictCount = submissions.filter((s) => s.status === "CONFLICT")
+    .length;
 
   async function onResolve(matchId: string) {
     try {
@@ -63,12 +80,63 @@ export function SubmissionsList() {
         title="Score submissions"
         eyebrow={<span>Admin · Captain submissions</span>}
         meta={
-          <Badge variant="neutral" size="sm">
-            {submissions.length} total
-          </Badge>
+          <>
+            <Badge variant="neutral" size="sm">
+              {submissions.length} total
+            </Badge>
+            {conflictCount > 0 ? (
+              <Badge variant="warning" size="sm">
+                {conflictCount} in conflict
+              </Badge>
+            ) : null}
+          </>
         }
       />
       <div className="p-8 space-y-4">
+        {/* Filter bar */}
+        <div className="flex flex-wrap items-end gap-3 rounded-md border border-border bg-card/40 px-3 py-3">
+          <div className="space-y-1.5 min-w-[16rem]">
+            <Label className="text-xs">Competition</Label>
+            <CompetitionAutocomplete
+              value={competitionFilter}
+              onChange={setCompetitionFilter}
+              placeholder="All competitions"
+            />
+          </div>
+          <div className="space-y-1.5 min-w-[10rem]">
+            <Label className="text-xs">Status</Label>
+            <Select
+              value={statusFilter}
+              onValueChange={setStatusFilter}
+              placeholder="All statuses"
+              options={[
+                { value: "", label: "All statuses" },
+                { value: "CONFLICT", label: "Conflict" },
+                { value: "PENDING", label: "Pending" },
+                { value: "AUTO_APPROVED", label: "Auto-approved" },
+                { value: "APPROVED", label: "Approved" },
+                { value: "REJECTED", label: "Rejected" },
+              ]}
+            />
+          </div>
+          {(competitionFilter || statusFilter) ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setCompetitionFilter("");
+                setStatusFilter("");
+              }}
+            >
+              Clear filters
+            </Button>
+          ) : null}
+          <span className="ml-auto text-xs text-muted-foreground">
+            {matches.length}{" "}
+            {matches.length === 1 ? "match" : "matches"} shown
+          </span>
+        </div>
+
         {loading && submissions.length === 0 ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : matches.length === 0 ? (
