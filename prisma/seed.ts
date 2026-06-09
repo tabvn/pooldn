@@ -1271,23 +1271,33 @@ async function main() {
   // Round-31 — community posts so the feed isn't empty.
   const da = allPlayers.slice(0, 4);
   if (da.length >= 2) {
+    // Round-47 — every seeded community post is scoped to Da Nang so the
+    // default header city filter (Da Nang) has content out of the box.
     await prisma.communityPost.createMany({
       data: [
         {
           authorId: da[0]!.id,
+          cityId: daNang.id,
           body: "Anyone up for a #ladder this weekend? 🎱",
           tags: ["ladder"],
         },
         {
           authorId: da[1]!.id,
+          cityId: daNang.id,
           body: "Big shoutout to @" + da[0]!.username + " for the clutch win.",
         },
         {
           authorId: da[0]!.id,
+          cityId: daNang.id,
           body: "League standings looking spicy. Final stretch incoming.",
         },
       ],
       skipDuplicates: true,
+    });
+    // Backfill any older seeded posts that pre-date the cityId column.
+    await prisma.communityPost.updateMany({
+      where: { cityId: null },
+      data: { cityId: daNang.id },
     });
   }
 

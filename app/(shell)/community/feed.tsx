@@ -5,15 +5,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@apollo/client/react";
 import type { ResultOf } from "@graphql-typed-document-node/core";
-import { Flame, Hash, ImagePlus, Loader2, MapPin, X } from "lucide-react";
+import { Flame, Hash, ImagePlus, Loader2, X } from "lucide-react";
 import { QuoteCard } from "@/components/community/quote-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
-import { CitiesQuery } from "@/lib/graphql/operations/competition.operations";
 import {
   CommunityFeedQuery,
   CreatePostMutation,
@@ -29,9 +27,13 @@ const MAX_IMAGES = 4;
 export function CommunityFeed({
   signedIn,
   initialTag,
+  cityId,
 }: {
   signedIn: boolean;
   initialTag: string | null;
+  /** SSR-resolved from the header city cookie. The header's CitySelector
+   *  is the only city control now — the feed reflects that scope. */
+  cityId: string | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -48,7 +50,6 @@ export function CommunityFeed({
     const qs = sp.toString();
     router.replace(`/community${qs ? `?${qs}` : ""}`);
   }
-  const [cityId, setCityId] = useState<string>("");
   const [mode, setMode] = useState<"latest" | "trending">("latest");
   const [body, setBody] = useState("");
   const [draftImages, setDraftImages] = useState<string[]>([]);
@@ -57,9 +58,6 @@ export function CommunityFeed({
   const { data: viewerData } = useQuery(ViewerQuery, { errorPolicy: "ignore" });
   const viewer = viewerData?.viewer ?? null;
   const isAdmin = viewer?.role === "SUPER_ADMIN";
-
-  const citiesQuery = useQuery(CitiesQuery, { errorPolicy: "ignore" });
-  const cities = citiesQuery.data?.cities ?? [];
 
   const [createPost, { loading: posting }] = useMutation(CreatePostMutation);
 
@@ -82,7 +80,7 @@ export function CommunityFeed({
     variables: {
       first: PAGE,
       tag: tag ?? undefined,
-      cityId: cityId || undefined,
+      cityId: cityId ?? undefined,
     },
     skip: mode !== "latest",
     fetchPolicy: "cache-and-network",
@@ -145,7 +143,10 @@ export function CommunityFeed({
         variables: {
           input: {
             body: trimmed,
-            cityId: cityId || null,
+            // New posts inherit the header city scope so the feed and the
+            // composer stay consistent — "post into the city you're
+            // viewing". The composer's own location switcher is gone.
+            cityId: cityId ?? null,
             imageUrls: draftImages,
             quotedPostId: quotedPost?.id ?? null,
           },
@@ -205,17 +206,6 @@ export function CommunityFeed({
             <Hash className="size-3" /> {tag} <X className="size-3" />
           </Badge>
         ) : null}
-        <div className="ml-auto inline-flex items-center gap-2 text-xs text-muted-foreground">
-          <MapPin className="size-3" />
-          <Select
-            value={cityId}
-            onValueChange={setCityId}
-            options={[
-              { value: "", label: "All cities" },
-              ...cities.map((c) => ({ value: c.id, label: c.name })),
-            ]}
-          />
-        </div>
       </div>
 
       {/* Composer */}
