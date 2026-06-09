@@ -10,7 +10,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Flag,
-  Inbox,
+  Gavel,
+  Lightbulb,
+  Mail,
   MapPin,
   ShieldCheck,
   Trophy,
@@ -279,41 +281,45 @@ type AdminItem = {
   icon: React.ReactNode;
 };
 
+// Round-47 — icon size bumped from 3.5 → 5 to match the main NAV. Also
+// diversified the glyphs: Security and Moderation were both ShieldCheck;
+// Feedback and Outbox were both Inbox. Pick distinct, semantically
+// appropriate icons so a quick glance disambiguates them.
 const ADMIN_ITEMS: AdminItem[] = [
   {
     href: "/admin/feedback",
     label: "Feedback",
-    icon: <Inbox className="size-3.5" />,
+    icon: <Lightbulb className="size-5" />,
   },
   {
     href: "/admin/reports",
     label: "Reports",
-    icon: <Flag className="size-3.5" />,
+    icon: <Flag className="size-5" />,
   },
   {
     href: "/admin/score-submissions",
     label: "Score submissions",
-    icon: <Trophy className="size-3.5" />,
+    icon: <Trophy className="size-5" />,
   },
   {
     href: "/admin/locations",
     label: "Locations",
-    icon: <MapPin className="size-3.5" />,
+    icon: <MapPin className="size-5" />,
   },
   {
     href: "/admin/moderation",
     label: "Moderation",
-    icon: <ShieldCheck className="size-3.5" />,
+    icon: <Gavel className="size-5" />,
   },
   {
     href: "/admin/security",
     label: "Security log",
-    icon: <ShieldCheck className="size-3.5" />,
+    icon: <ShieldCheck className="size-5" />,
   },
   {
     href: "/admin/outbox",
     label: "Email outbox",
-    icon: <Inbox className="size-3.5" />,
+    icon: <Mail className="size-5" />,
   },
 ];
 
