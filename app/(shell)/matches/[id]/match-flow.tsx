@@ -68,6 +68,12 @@ export function MatchFlow({ id }: { id: string }) {
   });
   const [submitScore, { loading: scoreSubmitting, error: scoreSubmitError }] =
     useMutation(SubmitMatchScoreMutation);
+  // Round-32 — board photos collected before submission. Held locally; the
+  // mutation persists them into MatchScoreSubmission.boardImageUrls.
+  // MUST be declared with all other hooks BEFORE any early return — moving
+  // it later breaks the rules-of-hooks contract once `match` resolves and
+  // a previously-skipped render path adds a new hook to the order.
+  const [draftBoardImages, setDraftBoardImages] = useState<string[]>([]);
 
   const {
     register,
@@ -226,10 +232,6 @@ export function MatchFlow({ id }: { id: string }) {
       );
     }
   }
-
-  // Round-32 — board photos collected before submission. Held locally; the
-  // mutation persists them into MatchScoreSubmission.boardImageUrls.
-  const [draftBoardImages, setDraftBoardImages] = useState<string[]>([]);
 
   async function onCaptainSubmitScore() {
     try {
