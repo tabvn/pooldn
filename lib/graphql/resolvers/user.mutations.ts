@@ -192,6 +192,118 @@ builder.mutationFields((t) => ({
     },
   }),
 
+  requestPasswordReset: t.boolean({
+    description:
+      "Anonymous-callable. Issue a PASSWORD_RESET token + email the link. ALWAYS returns true so the endpoint doesn't leak which emails are registered.",
+    args: { email: t.arg.string({ required: true }) },
+    resolve: async (_root, args, ctx) => {
+      const email = String(args.email).trim().toLowerCase();
+      // Rate-limit: 5/hr per (ip + email). Both scopes; if either is
+      // tripped we fail closed. This is the right tradeoff — abusers
+      // can grind one but not the other.
+      const { consumeAll, describeWait } = await import(
+        "@/lib/security/rate-limit"
+      );
+      const { getClientIp } = await import("@/lib/security/client-ip");
+      const { logSecurityEvent } = await import("@/lib/security/audit");
+      const { RESET_REQUEST_RULE } = await import(
+        "@/lib/graphql/resolvers/auth.mutations"
+      );
+      const ip = getClientIp(ctx.request);
+      const emailHash = (await import("node:crypto"))
+        .createHash("sha256")
+        .update(email)
+        .digest("hex")
+        .slice(0, 16);
+      const rl = await consumeAll(RESET_REQUEST_RULE, [
+        `ip:${ip}`,
+        `email:${emailHash}`,
+      ]);
+      if (!rl.ok) {
+        logSecurityEvent(ctx.prisma, ctx.request, {
+          kind: "RATE_LIMITED",
+          identifier: email,
+          note: "reset-request",
+        });
+        const { pretty, retryAfterSec } = describeWait(rl.resetAt);
+        throw new GraphQLError(
+          `Too many attempts — try again in ${pretty}.`,
+          { extensions: { code: "RATE_LIMITED", retryAfterSec } },
+        );
+      }
+      logSecurityEvent(ctx.prisma, ctx.request, {
+        kind: "PASSWORD_RESET_REQUEST",
+        identifier: email,
+      });
+      // Look up — but always return true regardless. Anti-enumeration.
+      const u = await ctx.prisma.user.findUnique({
+        where: { email },
+        select: { id: true, name: true, email: true, isActive: true },
+      });
+      if (u && u.isActive) {
+        const { issueEmailToken } = await import(
+          "@/lib/services/email-token.service"
+        );
+        const { token } = await issueEmailToken(ctx.prisma, {
+          userId: u.id,
+          purpose: "PASSWORD_RESET",
+          ttlMs: 60 * 60 * 1000,
+        });
+        const { sendPasswordReset } = await import(
+          "@/lib/services/email.service"
+        );
+        // Fire-and-forget — never block the response on the mail server.
+        void sendPasswordReset({
+          to: u.email,
+          name: u.name ?? "there",
+          token,
+        }).catch((e) => console.warn("[requestPasswordReset] send failed:", e));
+      }
+      return true;
+    },
+  }),
+
+  resetPassword: t.boolean({
+    description:
+      "Consume a PASSWORD_RESET token and set the new password. The token is single-use and time-limited.",
+    args: {
+      token: t.arg.string({ required: true }),
+      newPassword: t.arg.string({ required: true }),
+    },
+    resolve: async (_root, args, ctx) => {
+      const next = String(args.newPassword);
+      if (next.length < 8) {
+        throw new GraphQLError("Password must be at least 8 characters", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const { consumeEmailToken } = await import(
+        "@/lib/services/email-token.service"
+      );
+      const r = await consumeEmailToken(
+        ctx.prisma,
+        String(args.token),
+        "PASSWORD_RESET",
+      );
+      if (!r) {
+        throw new GraphQLError("Reset link is invalid or expired", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const hashed = await bcrypt.hash(next, BCRYPT_ROUNDS);
+      await ctx.prisma.user.update({
+        where: { id: r.userId },
+        data: { password: hashed },
+      });
+      const { logSecurityEvent } = await import("@/lib/security/audit");
+      logSecurityEvent(ctx.prisma, ctx.request, {
+        kind: "PASSWORD_RESET_REDEEM",
+        userId: r.userId,
+      });
+      return true;
+    },
+  }),
+
   verifyEmailToken: t.boolean({
     description:
       "Redeem a verification token from an outbound email. If the token has a pending email change, the user's email is swapped; otherwise we just flip emailVerified=true.",

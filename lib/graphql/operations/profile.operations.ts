@@ -97,6 +97,18 @@ export const VerifyEmailTokenMutation = graphql(/* GraphQL */ `
   }
 `);
 
+export const RequestPasswordResetMutation = graphql(/* GraphQL */ `
+  mutation RequestPasswordReset($email: String!) {
+    requestPasswordReset(email: $email)
+  }
+`);
+
+export const ResetPasswordMutation = graphql(/* GraphQL */ `
+  mutation ResetPassword($token: String!, $newPassword: String!) {
+    resetPassword(token: $token, newPassword: $newPassword)
+  }
+`);
+
 export const ChangeEmailMutation = graphql(/* GraphQL */ `
   mutation ChangeEmail($newEmail: String!, $currentPassword: String!) {
     changeEmail(newEmail: $newEmail, currentPassword: $currentPassword) {

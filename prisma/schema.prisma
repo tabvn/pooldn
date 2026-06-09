@@ -222,6 +222,7 @@ model User {
   digestRuns              DigestRun[]
   emailTokens             EmailToken[]
   ratingHistory           PlayerRatingHistory[]
+  securityEvents          SecurityEvent[]
   rescheduleRequests      MatchRescheduleRequest[] @relation("RescheduleRequestedBy")
   rescheduleReviews       MatchRescheduleRequest[] @relation("RescheduleReviewedBy")
 
@@ -1030,6 +1031,34 @@ model EmailToken {
 
   @@index([userId, purpose])
   @@map("email_tokens")
+}
+
+/**
+ * Round-47 — auth + security audit log. One row per relevant attempt
+ * (login ok/fail, password-reset request, rate-limit trip, ban evasion).
+ * Kept thin on purpose so it can grow into the on-call dashboard later.
+ * `userId` is null for unauthenticated events.
+ */
+model SecurityEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// "LOGIN_OK" | "LOGIN_FAIL" | "REGISTER" | "PASSWORD_RESET_REQUEST"
+  /// | "PASSWORD_RESET_REDEEM" | "RATE_LIMITED"
+  kind      String
+  /// Identifier the request claimed (email / username). Useful for
+  /// post-hoc enumeration analysis. Null for events without one.
+  identifier String?
+  ip        String?
+  country   String?
+  /// Free-form context (rule name, error code, etc.).
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([kind, createdAt])
+  @@index([ip, createdAt])
+  @@map("security_events")
 }
 
 /**
