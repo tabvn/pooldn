@@ -15,6 +15,7 @@ import {
   redirectUriFor,
   type FacebookIdentity,
 } from "@/lib/auth/facebook";
+import { appOrigin } from "@/lib/auth/origin";
 
 export const runtime = "nodejs";
 
@@ -95,7 +96,7 @@ async function resolveUser(
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const origin = url.origin;
+  const origin = appOrigin(request);
 
   if (!facebookConfigured()) return fail(origin, "facebook_unconfigured");
 

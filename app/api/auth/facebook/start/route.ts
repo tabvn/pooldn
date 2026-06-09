@@ -5,6 +5,7 @@ import {
   randomToken,
   redirectUriFor,
 } from "@/lib/auth/facebook";
+import { appOrigin } from "@/lib/auth/origin";
 
 export const runtime = "nodejs";
 
@@ -18,7 +19,7 @@ function safeNext(raw: string | null): string {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const origin = url.origin;
+  const origin = appOrigin(request);
 
   if (!facebookConfigured()) {
     return NextResponse.redirect(

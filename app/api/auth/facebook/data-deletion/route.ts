@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appOrigin } from "@/lib/auth/origin";
 
 export const runtime = "nodejs";
 
@@ -8,8 +9,7 @@ export const runtime = "nodejs";
  * just forwards there for anyone who hits it directly.
  */
 function to(request: Request) {
-  const origin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
-  return NextResponse.redirect(new URL("/data-deletion", origin));
+  return NextResponse.redirect(new URL("/data-deletion", appOrigin(request)));
 }
 
 export const GET = to;

@@ -6,6 +6,7 @@ import {
   randomToken,
   redirectUriFor,
 } from "@/lib/auth/google";
+import { appOrigin } from "@/lib/auth/origin";
 
 export const runtime = "nodejs";
 
@@ -20,7 +21,7 @@ function safeNext(raw: string | null): string {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const origin = url.origin;
+  const origin = appOrigin(request);
 
   if (!googleConfigured()) {
     return NextResponse.redirect(

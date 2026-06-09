@@ -15,6 +15,7 @@ import {
   verifyIdToken,
   type GoogleIdentity,
 } from "@/lib/auth/google";
+import { appOrigin } from "@/lib/auth/origin";
 
 export const runtime = "nodejs";
 
@@ -105,7 +106,7 @@ async function resolveUser(
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const origin = url.origin;
+  const origin = appOrigin(request);
 
   if (!googleConfigured()) return fail(origin, "google_unconfigured");
 
