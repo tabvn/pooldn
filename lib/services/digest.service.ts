@@ -155,7 +155,7 @@ function renderDigestHtml(
       <table style="width:100%;border-collapse:collapse;">${list}</table>
       <p style="font-size:11px;color:#aaa;margin-top:24px;">
         You can mute categories from your
-        <a href="https://pooldn.app/settings/notifications" style="color:#666;">notification settings</a>.
+        <a href="${escape(appUrl())}/settings/notifications" style="color:#666;">notification settings</a>.
       </p>
     </div>
   `;
@@ -166,4 +166,9 @@ function escape(s: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function appUrl(): string {
+  const u = process.env.NEXT_PUBLIC_APP_URL ?? "https://pooldn.thebaycity.dev";
+  return u.replace(/\/+$/, "");
 }

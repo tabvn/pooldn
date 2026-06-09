@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { HttpLink, ApolloLink } from "@apollo/client";
 import { setContext } from "@apollo/client/link/context";
 import {
@@ -7,15 +7,30 @@ import {
   registerApolloClient,
 } from "@apollo/client-integration-nextjs";
 
-const GRAPHQL_URL =
-  process.env.NEXT_PUBLIC_GRAPHQL_URL ?? "http://localhost:3000/api/graphql";
+// SSR loopback: always hit 127.0.0.1 so we don't bounce back through a
+// Cloudflare tunnel. Port preference:
+//   1. host header port when the request came in on localhost:NNNN directly
+//   2. process.env.PORT (set when starting via `PORT=NNNN next start`)
+//   3. 3000 (Next.js default)
+async function resolveLoopbackUrl(): Promise<string> {
+  const host = (await headers()).get("host");
+  let port: string | undefined;
+  if (host && /^(localhost|127\.0\.0\.1)(:|$)/.test(host)) {
+    const m = host.match(/:(\d+)$/);
+    if (m) port = m[1];
+  }
+  port = port ?? process.env.PORT ?? "3000";
+  return `http://127.0.0.1:${port}/api/graphql`;
+}
 
-// Forward the request's cookie header so authenticated RSC reads (e.g. the
-// shell layout's viewer query) see the signed-in user.
-const forwardCookies = setContext(async (_, prev) => {
-  const cookieHeader = (await cookies()).toString();
+const perRequestContext = setContext(async (_, prev) => {
+  const [cookieHeader, uri] = await Promise.all([
+    cookies().then((c) => c.toString()),
+    resolveLoopbackUrl(),
+  ]);
   return {
     ...prev,
+    uri,
     headers: {
       ...(prev?.headers ?? {}),
       ...(cookieHeader ? { cookie: cookieHeader } : {}),
@@ -27,11 +42,8 @@ export const { getClient, query, PreloadQuery } = registerApolloClient(() => {
   return new ApolloClient({
     cache: new InMemoryCache(),
     link: ApolloLink.from([
-      forwardCookies,
-      new HttpLink({
-        uri: GRAPHQL_URL,
-        fetchOptions: { cache: "no-store" },
-      }),
+      perRequestContext,
+      new HttpLink({ fetchOptions: { cache: "no-store" } }),
     ]),
   });
 });

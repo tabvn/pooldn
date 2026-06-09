@@ -12,8 +12,9 @@ import { ToastProvider } from "@/components/ui/toast";
 import { ConfirmDialogProvider } from "@/components/ui/confirm-dialog";
 import { SSELink } from "./sse-link";
 
-const GRAPHQL_URL =
-  process.env.NEXT_PUBLIC_GRAPHQL_URL ?? "/api/graphql";
+// Always relative — the browser is on the same origin that served the page,
+// so this works for localhost, custom ports, and tunnel hostnames alike.
+const GRAPHQL_URL = "/api/graphql";
 
 /**
  * Round-44 — refresh link.
