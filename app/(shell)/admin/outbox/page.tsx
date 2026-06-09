@@ -3,7 +3,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageTitle } from "@/components/layout/page-title";
 import { LocalDateTime } from "@/components/ui/local-datetime";
-import { getOutbox } from "@/lib/services/email.service";
+// Round-47 — import from the slim outbox module (not email.service) so the
+// RSC bundle for this page never pulls nodemailer into the static graph.
+// Recurring fix for the "new admin route hangs on first compile" symptom.
+import { getOutbox } from "@/lib/services/email-outbox";
 
 export const dynamic = "force-dynamic";
 

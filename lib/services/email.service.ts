@@ -12,6 +12,9 @@
 
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
+import { pushOutbox, type OutboxEntry } from "./email-outbox";
+
+export { getOutbox, type OutboxEntry } from "./email-outbox";
 
 // Project standardized on NEXT_PUBLIC_APP_URL for absolute off-site links
 // (see .env.example "Public origin"). Fall back to legacy APP_URL or
@@ -84,35 +87,6 @@ async function ensureVerified(t: Transporter): Promise<boolean> {
     return verifiedOk!;
   })();
   return verifyPromise;
-}
-
-// ── Dev outbox ──────────────────────────────────────────────────────────
-// In-memory ring buffer of the last N emails (real + faked). Always
-// captured, never gated on env, so anyone with the admin link can read
-// the most-recent outbound message — invaluable for the
-// "where did my reset link go?" moment R45 calls out.
-const OUTBOX_MAX = 50;
-export type OutboxEntry = {
-  id: string;
-  to: string;
-  subject: string;
-  html: string;
-  text: string;
-  /** "SENT" | "QUEUED" | "FAILED" — outcome of the actual transport attempt. */
-  status: "SENT" | "QUEUED" | "FAILED";
-  /** Reason on FAILED, or "no-smtp" on QUEUED. */
-  note?: string;
-  at: number;
-};
-const outbox: OutboxEntry[] = [];
-
-function pushOutbox(entry: OutboxEntry) {
-  outbox.unshift(entry);
-  if (outbox.length > OUTBOX_MAX) outbox.length = OUTBOX_MAX;
-}
-
-export function getOutbox(): readonly OutboxEntry[] {
-  return outbox;
 }
 
 // ── Send ────────────────────────────────────────────────────────────────
