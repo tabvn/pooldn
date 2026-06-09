@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAppShell } from "./app-shell";
 import { CitySelector } from "./city-selector";
@@ -57,12 +58,31 @@ export function Header({
         <GlobalSearch />
       </div>
       <div className="flex items-center gap-2 md:gap-3 ml-auto">
-        {signedIn ? <NotificationBell signedIn={signedIn} /> : null}
-        <ViewerMenu
-          viewerName={viewerName}
-          viewerUsername={viewerUsername}
-          viewerAvatarUrl={viewerAvatarUrl}
-        />
+        {signedIn ? (
+          <>
+            <NotificationBell signedIn={signedIn} />
+            <ViewerMenu
+              viewerName={viewerName}
+              viewerUsername={viewerUsername}
+              viewerAvatarUrl={viewerAvatarUrl}
+            />
+          </>
+        ) : (
+          // Round-47 — Figma guest header: explicit Log In + Create Account
+          // CTAs, not just the small text link the ViewerMenu used to render.
+          <>
+            <Link href="/sign-in">
+              <Button size="sm" data-testid="header-login">
+                Log In
+              </Button>
+            </Link>
+            <Link href="/sign-up">
+              <Button size="sm" variant="outline" data-testid="header-signup">
+                Create Account
+              </Button>
+            </Link>
+          </>
+        )}
       </div>
     </header>
   );

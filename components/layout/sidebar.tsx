@@ -213,22 +213,32 @@ export function Sidebar() {
         ) : null}
       </nav>
 
-      {/* Mobile app promo — hidden when collapsed (no space) */}
+      {/* Round-47 — Mobile app promo redesigned to match Figma:
+          - 8-ball sits in its own raised dark tile above the title,
+            instead of inline next to it
+          - Tighter lockup, lime title color
+          - Hidden when sidebar is collapsed (no space for it) */}
       {!collapsed ? (
         <div
-          className="mt-auto overflow-hidden rounded-xl p-4 text-white shadow-lg"
+          className="mt-auto overflow-hidden rounded-xl p-4 shadow-lg"
           style={{
             background:
               "linear-gradient(135deg, #9810fa 0%, #4a106e 55%, #1c2280 100%)",
           }}
         >
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="inline-flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-black">
+          <div className="mb-3 inline-flex size-12 items-center justify-center rounded-lg bg-black/30 ring-1 ring-white/10">
+            <span className="relative inline-flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground font-black text-sm">
+              <span
+                aria-hidden
+                className="absolute inset-0 rounded-full ring-2 ring-primary/30"
+              />
               8
             </span>
-            <span className="text-sm font-bold">PoolDN Mobile App</span>
           </div>
-          <p className="text-xs text-white/80 leading-snug">
+          <div className="text-sm font-bold text-primary">
+            PoolDN Mobile App
+          </div>
+          <p className="mt-1 text-xs text-white/80 leading-snug">
             Coming Soon
             <br />
             on Android and iOS

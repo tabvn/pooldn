@@ -209,7 +209,7 @@ export function GlobalSearch() {
       </div>
       {open ? (
         <div
-          className="absolute left-0 right-0 top-full mt-2 z-50 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-card shadow-xl"
+          className="absolute left-0 right-0 top-full mt-2 z-[60] max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-card shadow-xl"
           data-testid="global-search-results"
           id="global-search-listbox"
           role="listbox"

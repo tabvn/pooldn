@@ -1,26 +1,30 @@
-export function SocialButtons() {
+export function SocialButtons({ next }: { next?: string } = {}) {
+  const googleHref =
+    next && next !== "/"
+      ? `/api/auth/google/start?next=${encodeURIComponent(next)}`
+      : "/api/auth/google/start";
+  const facebookHref =
+    next && next !== "/"
+      ? `/api/auth/facebook/start?next=${encodeURIComponent(next)}`
+      : "/api/auth/facebook/start";
   return (
     <div className="space-y-3">
-      <button
-        type="button"
-        disabled
-        aria-label="Continue with Google (coming soon)"
-        title="Coming soon"
-        className="flex h-11 w-full items-center justify-center gap-3 rounded-lg bg-white text-sm font-semibold text-gray-900 opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+      <a
+        href={googleHref}
+        aria-label="Continue with Google"
+        className="flex h-11 w-full items-center justify-center gap-3 rounded-lg bg-white text-sm font-semibold text-gray-900 transition hover:opacity-90"
       >
         <GoogleIcon />
         Continue with Google
-      </button>
-      <button
-        type="button"
-        disabled
-        aria-label="Continue with Facebook (coming soon)"
-        title="Coming soon"
-        className="flex h-11 w-full items-center justify-center gap-3 rounded-lg bg-[#1877F2] text-sm font-semibold text-white opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+      </a>
+      <a
+        href={facebookHref}
+        aria-label="Continue with Facebook"
+        className="flex h-11 w-full items-center justify-center gap-3 rounded-lg bg-[#1877F2] text-sm font-semibold text-white transition hover:opacity-90"
       >
         <FacebookIcon />
         Continue with Facebook
-      </button>
+      </a>
     </div>
   );
 }

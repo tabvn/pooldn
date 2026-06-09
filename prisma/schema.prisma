@@ -175,6 +175,8 @@ model User {
   cityId        String?
   emailVerified Boolean  @default(false)
   isActive      Boolean  @default(true)
+  // Facebook user id (OAuth) — lets the Data Deletion callback find the user.
+  facebookId    String?  @unique
   // Round-46 — admin-managed lockout. When `bannedAt` is set the user can't
   // access ANY page or call ANY mutation; they only see the "your account
   // is banned" screen. `banReason` is shown on that screen verbatim.

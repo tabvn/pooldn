@@ -29,10 +29,12 @@ export function DropdownMenuContent({
 }: MenuPrimitive.Popup.Props) {
   return (
     <MenuPrimitive.Portal>
-      <MenuPrimitive.Positioner sideOffset={6} align="end">
+      <MenuPrimitive.Positioner sideOffset={6} align="end" className="z-50">
         <MenuPrimitive.Popup
           className={cn(
-            "min-w-48 overflow-hidden rounded-lg border border-border bg-card p-1 shadow-2xl",
+            // Round-47 — z-50 so the portaled popup paints above the sticky
+            // header (z-30) and the global-search dropdown (z-50, in-header).
+            "z-50 min-w-48 overflow-hidden rounded-lg border border-border bg-card p-1 shadow-2xl",
             "outline-none",
             className,
           )}

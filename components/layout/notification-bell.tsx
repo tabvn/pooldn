@@ -95,9 +95,9 @@ export function NotificationBell({ signedIn }: { signedIn: boolean }) {
         )}
       </PopoverPrimitive.Trigger>
       <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Positioner sideOffset={8} align="end">
+        <PopoverPrimitive.Positioner sideOffset={8} align="end" className="z-50">
           <PopoverPrimitive.Popup
-            className="w-[min(360px,calc(100vw-1.5rem))] rounded-xl border border-border bg-card text-card-foreground shadow-xl outline-none"
+            className="z-50 w-[min(360px,calc(100vw-1.5rem))] rounded-xl border border-border bg-card text-card-foreground shadow-xl outline-none"
             data-testid="notification-popover"
           >
             <div className="flex items-center justify-between border-b border-border px-4 py-3">

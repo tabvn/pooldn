@@ -526,7 +526,7 @@ builder.mutationFields((t) => ({
           { extensions: { code: "BAD_USER_INPUT" } },
         );
       }
-      const { bergerPairings } = await import(
+      const { bergerPairings, assignVenuesWithCap } = await import(
         "@/lib/services/scheduling.service"
       );
       const rounds = bergerPairings(teamIds);
@@ -542,10 +542,26 @@ builder.mutationFields((t) => ({
         matchdayCount: rounds.length,
       });
 
+      // Round-47 — venue assignment + max-games-per-venue cap. Default
+      // to the home team's homeVenue; flip home/away when the cap would
+      // be exceeded so the match plays at the away team's venue.
+      const teams = await ctx.prisma.team.findMany({
+        where: { id: { in: teamIds } },
+        select: { id: true, homeVenueId: true },
+      });
+      const homeVenueByTeam = new Map<string, string | null>(
+        teams.map((t) => [t.id, t.homeVenueId ?? null]),
+      );
+      const scheduled = assignVenuesWithCap(
+        rounds,
+        homeVenueByTeam,
+        competition.maxGamesPerVenuePerMatchday ?? null,
+      );
+
       // One transaction: bulk-create matchdays + matches + notifications.
       return ctx.prisma.$transaction(async (tx) => {
         for (let i = 0; i < rounds.length; i++) {
-          const round = rounds[i];
+          const round = scheduled[i]!;
           const scheduledDate = new Date(planned[i]!.scheduledDate);
           const md = await tx.matchday.create({
             data: {
@@ -558,10 +574,11 @@ builder.mutationFields((t) => ({
           });
           if (round.length > 0) {
             await tx.match.createMany({
-              data: round.map(([home, away]) => ({
+              data: round.map((m) => ({
                 matchdayId: md.id,
-                homeTeamId: home,
-                awayTeamId: away,
+                homeTeamId: m.home,
+                awayTeamId: m.away,
+                venueId: m.venueId,
                 scheduledAt: scheduledDate,
                 status: "SCHEDULED",
               })),

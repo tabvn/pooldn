@@ -80,6 +80,11 @@ export function Avatar({
         <img
           src={resolved}
           alt={alt ?? fallback ?? "avatar"}
+          // Round-47 — Google (lh3.googleusercontent.com) returns 403 when
+          // the Referer header is the dev origin. no-referrer makes the
+          // browser omit the header so the image loads. Harmless for
+          // self-hosted /uploads and dicebear placeholders.
+          referrerPolicy="no-referrer"
           className="size-full object-cover"
         />
       ) : (

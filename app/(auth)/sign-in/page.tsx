@@ -59,6 +59,26 @@ function SignInForm() {
   const toast = useToast();
   const searchParams = useSearchParams();
   const nextHref = searchParams.get("next") ?? "/";
+  const authError = searchParams.get("authError");
+  const authErrorMessage = authError
+    ? ({
+        google_unconfigured:
+          "Google sign-in isn't configured yet. Add the OAuth credentials and try again.",
+        google_denied: "Google sign-in was cancelled.",
+        google_state: "Your sign-in session expired. Please try again.",
+        google_email_unverified:
+          "Your Google email isn't verified. Verify it with Google, then retry.",
+        account_suspended: "This account has been suspended.",
+        google_failed: "Google sign-in failed. Please try again.",
+        facebook_unconfigured:
+          "Facebook sign-in isn't configured yet. Add the OAuth credentials and try again.",
+        facebook_denied: "Facebook sign-in was cancelled.",
+        facebook_state: "Your sign-in session expired. Please try again.",
+        facebook_no_email:
+          "Facebook didn't share an email for your account. Please use Google or email sign-up, or grant email permission and retry.",
+        facebook_failed: "Facebook sign-in failed. Please try again.",
+      }[authError] ?? "Sign-in failed. Please try again.")
+    : null;
   const [login, { error, loading: loggingIn }] = useMutation(LoginMutation);
   const [lockOut, setLockOut] = useState<LockOut | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -106,7 +126,12 @@ function SignInForm() {
     <>
       <WelcomeHeading subtitle="Join the Community" />
       <div className="w-full rounded-2xl border border-white/5 bg-card p-6 shadow-2xl">
-        <SocialButtons />
+        {authErrorMessage ? (
+          <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {authErrorMessage}
+          </div>
+        ) : null}
+        <SocialButtons next={nextHref} />
         <OrDivider />
 
         <form onSubmit={onSubmit} className="space-y-4">
