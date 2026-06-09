@@ -7,9 +7,14 @@ import { randomUUID } from "node:crypto";
  * Tiny filesystem-backed storage abstraction. The shape mirrors what an S3/R2
  * client looks like (`put`, `delete`, `publicUrl`) so swapping the dev impl
  * for object storage later is a drop-in.
+ *
+ * Files live OUTSIDE `public/` because Next.js's production server snapshots
+ * the public folder at startup — anything written after `next start` would
+ * 404. We serve uploads through a tiny route handler at `app/uploads/...`
+ * instead.
  */
 export const UPLOADS_PUBLIC_PREFIX = "/uploads";
-const UPLOADS_ROOT = join(process.cwd(), "public", "uploads");
+export const UPLOADS_ROOT = join(process.cwd(), "uploads");
 
 export type UploadKind =
   | "avatar"

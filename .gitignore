@@ -102,3 +102,6 @@ Desktop.ini
 # ── Local scratch ─────────────────────────────────────────────────────────
 /tmp
 *.local
+
+# user uploads (served via app/uploads/[...path]/route.ts)
+/uploads/
