@@ -268,6 +268,11 @@ const ADMIN_ITEMS: AdminItem[] = [
     label: "Security log",
     icon: <ShieldCheck className="size-3.5" />,
   },
+  {
+    href: "/admin/outbox",
+    label: "Email outbox",
+    icon: <Inbox className="size-3.5" />,
+  },
 ];
 
 function AdminSubmenu({

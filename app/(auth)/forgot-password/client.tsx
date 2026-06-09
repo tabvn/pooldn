@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "@apollo/client/react";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, KeyRound, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +25,31 @@ export function ForgotPasswordClient() {
   return <RequestForm />;
 }
 
+function PanelHeading({
+  icon,
+  title,
+  hint,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  hint: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 pb-1">
+      <span
+        aria-hidden
+        className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary"
+      >
+        {icon}
+      </span>
+      <div className="space-y-0.5">
+        <h2 className="text-base font-semibold text-white">{title}</h2>
+        <p className="text-xs text-mist-400">{hint}</p>
+      </div>
+    </div>
+  );
+}
+
 function RequestForm() {
   const toast = useToast();
   const [request, { loading }] = useMutation(RequestPasswordResetMutation);
@@ -39,34 +64,52 @@ function RequestForm() {
       await request({ variables: { email: trimmed } });
       setSent(true);
     } catch (err) {
-      // Server always returns true, so a thrown error here means a network
-      // failure — keep the message generic.
       toast.error("Could not send reset link", err);
     }
   }
 
   if (sent) {
     return (
-      <div
-        className="space-y-2 rounded-md border border-success/30 bg-success/10 px-3 py-3 text-sm text-success"
-        data-testid="forgot-password-sent"
-      >
-        <p className="inline-flex items-center gap-1.5 font-semibold">
-          <CheckCircle2 className="size-4" /> Check your inbox
-        </p>
-        <p className="text-success/90">
-          If an account exists for <strong>{email}</strong>, we just sent
-          a reset link. It expires in 60 minutes.
+      <div className="space-y-3">
+        <PanelHeading
+          icon={<CheckCircle2 className="size-5" />}
+          title="Check your inbox"
+          hint="If an account exists for that address, the link will arrive in a moment."
+        />
+        <div
+          className="rounded-lg border border-success/30 bg-success/10 px-3 py-3 text-sm text-success"
+          data-testid="forgot-password-sent"
+        >
+          We sent a reset link to{" "}
+          <strong className="font-mono">{email}</strong>. It expires in
+          60 minutes.
+        </div>
+        <p className="text-xs text-mist-400">
+          Didn&apos;t receive it? Check spam, or{" "}
+          <button
+            type="button"
+            onClick={() => setSent(false)}
+            className="font-semibold text-primary hover:underline"
+          >
+            try a different address
+          </button>
+          .
         </p>
       </div>
     );
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3" data-testid="forgot-password-form">
-      <p className="text-sm text-mist-400">
-        Enter the email on your PoolDN account and we'll send a reset link.
-      </p>
+    <form
+      onSubmit={onSubmit}
+      className="space-y-4"
+      data-testid="forgot-password-form"
+    >
+      <PanelHeading
+        icon={<Mail className="size-5" />}
+        title="Forgot your password?"
+        hint="We'll email a link to the address on file. The link expires in 60 minutes."
+      />
       <div className="space-y-1.5">
         <Label htmlFor="email">Email</Label>
         <Input
@@ -93,6 +136,9 @@ function ResetForm({ token }: { token: string }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
 
+  const tooShort = password.length > 0 && password.length < 8;
+  const mismatch = confirm.length > 0 && confirm !== password;
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (password.length < 8) {
@@ -105,10 +151,7 @@ function ResetForm({ token }: { token: string }) {
     }
     try {
       await reset({ variables: { token, newPassword: password } });
-      toast.success(
-        "Password updated",
-        "Sign in with your new password.",
-      );
+      toast.success("Password updated", "Sign in with your new password.");
       router.push("/sign-in");
     } catch (err) {
       toast.error("Could not reset password", err);
@@ -116,8 +159,16 @@ function ResetForm({ token }: { token: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3" data-testid="reset-password-form">
-      <p className="text-sm text-mist-400">Pick a new password — at least 8 characters.</p>
+    <form
+      onSubmit={onSubmit}
+      className="space-y-4"
+      data-testid="reset-password-form"
+    >
+      <PanelHeading
+        icon={<KeyRound className="size-5" />}
+        title="Set a new password"
+        hint="Use at least 8 characters. We'll sign you in after the change."
+      />
       <div className="space-y-1.5">
         <Label htmlFor="password">New password</Label>
         <Input
@@ -127,7 +178,11 @@ function ResetForm({ token }: { token: string }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="new-password"
+          invalid={tooShort}
         />
+        {tooShort ? (
+          <p className="text-xs text-destructive">At least 8 characters.</p>
+        ) : null}
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="confirm">Confirm new password</Label>
@@ -138,9 +193,18 @@ function ResetForm({ token }: { token: string }) {
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           autoComplete="new-password"
+          invalid={mismatch}
         />
+        {mismatch ? (
+          <p className="text-xs text-destructive">Passwords don&apos;t match.</p>
+        ) : null}
       </div>
-      <Button type="submit" block loading={loading}>
+      <Button
+        type="submit"
+        block
+        loading={loading}
+        disabled={tooShort || mismatch || !password || !confirm}
+      >
         Reset password
       </Button>
     </form>

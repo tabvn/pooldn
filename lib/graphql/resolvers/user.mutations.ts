@@ -252,12 +252,23 @@ builder.mutationFields((t) => ({
         const { sendPasswordReset } = await import(
           "@/lib/services/email.service"
         );
-        // Fire-and-forget — never block the response on the mail server.
-        void sendPasswordReset({
+        // Round-45 — await so we can record delivery status, but the
+        // response stays `true` regardless (anti-enumeration). The send
+        // function itself never throws — failures land in the dev outbox
+        // and an error-level log line for triage.
+        const r = await sendPasswordReset({
           to: u.email,
           name: u.name ?? "there",
           token,
-        }).catch((e) => console.warn("[requestPasswordReset] send failed:", e));
+        });
+        if (!r.ok) {
+          logSecurityEvent(ctx.prisma, ctx.request, {
+            kind: "RATE_LIMITED",
+            userId: u.id,
+            identifier: email,
+            note: `email-delivery-failed: ${r.note ?? "unknown"}`,
+          });
+        }
       }
       return true;
     },

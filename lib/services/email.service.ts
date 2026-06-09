@@ -29,13 +29,18 @@ const SMTP_SECURE = (process.env.SMTP_SECURE ?? "true") === "true";
 
 let transporter: Transporter | null = null;
 let warned = false;
+// Round-45 — boot verification result. We probe the transporter once on
+// first use so a misconfigured Gmail App Password fails LOUDLY instead of
+// silently dropping every reset email. Set null until probed; once probed
+// it stays decided for the process lifetime.
+let verifiedOk: boolean | null = null;
+let verifyPromise: Promise<boolean> | null = null;
 
 function getTransporter(): Transporter | null {
   if (!SMTP_USER || !SMTP_PASSWORD) {
     if (!warned) {
-      // Single warning per process — don't spam the dev console.
       console.warn(
-        "[email] SMTP_USER / SMTP_PASSWORD not set — outgoing emails will be logged, not sent.",
+        "[email] SMTP_USER / SMTP_PASSWORD not set — outgoing emails are logged, not sent. Use the dev outbox to inspect them.",
       );
       warned = true;
     }
@@ -51,6 +56,67 @@ function getTransporter(): Transporter | null {
   return transporter;
 }
 
+/**
+ * Round-45 — one-shot SMTP credential probe. Called on the first send;
+ * the result is cached. If it fails, we log loudly (this is the symptom
+ * R45 says was hidden) and subsequent sends still go to the outbox so
+ * the dev flow keeps working.
+ */
+async function ensureVerified(t: Transporter): Promise<boolean> {
+  if (verifiedOk !== null) return verifiedOk;
+  if (verifyPromise) return verifyPromise;
+  verifyPromise = (async () => {
+    try {
+      await t.verify();
+      console.info(
+        `[email] SMTP verified — ${SMTP_USER}@${SMTP_HOST}:${SMTP_PORT}`,
+      );
+      verifiedOk = true;
+    } catch (e) {
+      console.error(
+        `[email] SMTP verify FAILED for ${SMTP_USER}@${SMTP_HOST}:${SMTP_PORT}.`,
+        "Gmail requires a 16-char App Password (https://myaccount.google.com/apppasswords).",
+        "Falling back to the dev outbox; emails are NOT being delivered.",
+        e,
+      );
+      verifiedOk = false;
+    }
+    return verifiedOk!;
+  })();
+  return verifyPromise;
+}
+
+// ── Dev outbox ──────────────────────────────────────────────────────────
+// In-memory ring buffer of the last N emails (real + faked). Always
+// captured, never gated on env, so anyone with the admin link can read
+// the most-recent outbound message — invaluable for the
+// "where did my reset link go?" moment R45 calls out.
+const OUTBOX_MAX = 50;
+export type OutboxEntry = {
+  id: string;
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  /** "SENT" | "QUEUED" | "FAILED" — outcome of the actual transport attempt. */
+  status: "SENT" | "QUEUED" | "FAILED";
+  /** Reason on FAILED, or "no-smtp" on QUEUED. */
+  note?: string;
+  at: number;
+};
+const outbox: OutboxEntry[] = [];
+
+function pushOutbox(entry: OutboxEntry) {
+  outbox.unshift(entry);
+  if (outbox.length > OUTBOX_MAX) outbox.length = OUTBOX_MAX;
+}
+
+export function getOutbox(): readonly OutboxEntry[] {
+  return outbox;
+}
+
+// ── Send ────────────────────────────────────────────────────────────────
+
 export type EmailMessage = {
   to: string;
   subject: string;
@@ -60,28 +126,60 @@ export type EmailMessage = {
 };
 
 /**
- * Send an email. Returns `{ ok: true }` on success, throws on transport
- * failure. In dev (no SMTP env), logs the message and returns `ok: true`
- * — callers don't need to special-case the dev fallback.
+ * Send an email. Returns `{ ok, messageId? }`. Never throws — failures
+ * are logged at error level AND captured in the dev outbox so callers
+ * (which fire-and-forget) don't need to special-case mailer flakiness.
+ * Throwing here would have meant: silent in prod, exception in dev, both
+ * harder to triage than a single capture in the outbox.
  */
-export async function send(msg: EmailMessage): Promise<{ ok: true; messageId?: string }> {
+export async function send(
+  msg: EmailMessage,
+): Promise<{ ok: boolean; messageId?: string; note?: string }> {
   const t = getTransporter();
   const fallbackText =
     msg.text ?? msg.html.replace(/<[^>]+>/g, "").replace(/\s+\n/g, "\n").trim();
-  if (!t) {
-    console.info(
-      `[email:DEV] to=${msg.to}\nsubject=${msg.subject}\n${fallbackText}\n`,
-    );
-    return { ok: true };
-  }
-  const info = await t.sendMail({
-    from: `"${FROM_NAME}" <${SMTP_USER}>`,
+  const baseEntry = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     to: msg.to,
     subject: msg.subject,
     html: msg.html,
     text: fallbackText,
-  });
-  return { ok: true, messageId: info.messageId };
+    at: Date.now(),
+  };
+  if (!t) {
+    console.info(
+      `[email:DEV] to=${msg.to}\nsubject=${msg.subject}\n${fallbackText}\n`,
+    );
+    pushOutbox({ ...baseEntry, status: "QUEUED", note: "no-smtp" });
+    return { ok: true, note: "no-smtp" };
+  }
+  // First-use verification. If the creds are bad, log loudly and route
+  // every subsequent send through the outbox so dev flows still complete.
+  const okCreds = await ensureVerified(t);
+  if (!okCreds) {
+    pushOutbox({
+      ...baseEntry,
+      status: "QUEUED",
+      note: "smtp-verify-failed",
+    });
+    return { ok: false, note: "smtp-verify-failed" };
+  }
+  try {
+    const info = await t.sendMail({
+      from: `"${FROM_NAME}" <${SMTP_USER}>`,
+      to: msg.to,
+      subject: msg.subject,
+      html: msg.html,
+      text: fallbackText,
+    });
+    pushOutbox({ ...baseEntry, status: "SENT" });
+    return { ok: true, messageId: info.messageId };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "send failed";
+    console.error(`[email] send to=${msg.to} failed:`, message);
+    pushOutbox({ ...baseEntry, status: "FAILED", note: message });
+    return { ok: false, note: message };
+  }
 }
 
 // ── Templates ───────────────────────────────────────────────────────────
