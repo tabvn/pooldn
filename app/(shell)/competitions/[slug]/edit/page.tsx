@@ -1,10 +1,10 @@
 import { notFound, redirect } from "next/navigation";
 import { requireViewer } from "@/lib/auth/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ImageUpload } from "@/components/ui/image-upload";
 import { getClient } from "@/lib/apollo/client";
 import { CompetitionEditableQuery } from "@/lib/graphql/operations/competition.operations";
 import { NewCompetitionForm } from "@/app/(shell)/competitions/new/form";
+import { CompetitionBannerUpload } from "./banner-upload";
 
 export default async function EditCompetitionPage({
   params,
@@ -34,12 +34,10 @@ export default async function EditCompetitionPage({
             <CardTitle>Banner</CardTitle>
           </CardHeader>
           <CardContent>
-            <ImageUpload
-              kind="competition-banner"
-              ownerId={c.id}
-              shape="wide"
-              fallback={c.name}
-              value={c.bannerUrl ?? null}
+            <CompetitionBannerUpload
+              competitionId={c.id}
+              name={c.name}
+              bannerUrl={c.bannerUrl ?? null}
             />
           </CardContent>
         </Card>
