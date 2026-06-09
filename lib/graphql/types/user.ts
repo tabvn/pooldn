@@ -20,6 +20,23 @@ export const UserType = builder.prismaObject("User", {
     banReason: t.exposeString("banReason", { nullable: true }),
     rating: t.exposeInt("rating"),
     level: t.exposeInt("level"),
+    // Round-47 — recent ELO data points (newest last) for a sparkline /
+    // "form" line on the profile. Capped at 20 entries by default so the
+    // payload stays tiny.
+    ratingHistory: t.field({
+      type: ["Int"],
+      args: { limit: t.arg.int() },
+      resolve: async (u, args, ctx) => {
+        const take = Math.min(Math.max(args.limit ?? 20, 2), 100);
+        const rows = await ctx.prisma.playerRatingHistory.findMany({
+          where: { userId: u.id },
+          orderBy: { createdAt: "desc" },
+          take,
+          select: { rating: true },
+        });
+        return rows.map((r) => r.rating).reverse();
+      },
+    }),
     // Round-X — player landing surfaces.
     rank: t.int({
       nullable: true,

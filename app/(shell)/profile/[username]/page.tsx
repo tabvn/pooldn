@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { LocalDateTime } from "@/components/ui/local-datetime";
 import { RatingBadge } from "@/components/ui/rating-badge";
+import { Sparkline } from "@/components/ui/sparkline";
 import { pointsToNextTier, tierFromRating } from "@/lib/rating/tier";
 import { BanUserButton } from "@/components/admin/ban-user-button";
 import { FollowButton } from "@/components/follow-button";
@@ -150,6 +151,47 @@ export default async function ProfilePage({
             <CardContent>
               <div className="space-y-3">
                 <RatingBadge rating={user.rating} variant="hero" />
+                {(() => {
+                  const history = user.ratingHistory ?? [];
+                  if (history.length < 2) return null;
+                  const first = history[0]!;
+                  const last = history[history.length - 1]!;
+                  const swing = last - first;
+                  return (
+                    <div
+                      className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/40 px-3 py-2"
+                      data-testid="rating-trend"
+                    >
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                          Form · last {history.length}
+                        </div>
+                        <div
+                          className={
+                            "font-mono text-sm font-bold tabular-nums " +
+                            (swing > 0
+                              ? "text-success"
+                              : swing < 0
+                                ? "text-destructive"
+                                : "text-muted-foreground")
+                          }
+                        >
+                          {swing > 0 ? "+" : ""}
+                          {swing} pts
+                        </div>
+                      </div>
+                      <Sparkline
+                        data={history as ReadonlyArray<number>}
+                        width={140}
+                        height={36}
+                        stroke={
+                          swing >= 0 ? "rgb(34 197 94)" : "rgb(239 68 68)"
+                        }
+                        fill={swing >= 0 ? "rgb(34 197 94)" : "rgb(239 68 68)"}
+                      />
+                    </div>
+                  );
+                })()}
                 {(() => {
                   const tier = tierFromRating(user.rating);
                   const remaining = pointsToNextTier(user.rating);

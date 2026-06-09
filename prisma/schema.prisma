@@ -221,6 +221,7 @@ model User {
   notificationPreferences NotificationPreference[]
   digestRuns              DigestRun[]
   emailTokens             EmailToken[]
+  ratingHistory           PlayerRatingHistory[]
   rescheduleRequests      MatchRescheduleRequest[] @relation("RescheduleRequestedBy")
   rescheduleReviews       MatchRescheduleRequest[] @relation("RescheduleReviewedBy")
 
@@ -1029,4 +1030,27 @@ model EmailToken {
 
   @@index([userId, purpose])
   @@map("email_tokens")
+}
+
+/**
+ * Round-47 — per-player ELO history. One row appended on every
+ * applyMatchResult call so the profile can render a sparkline ("form")
+ * without scanning the whole match log. `delta` is the signed swing
+ * (winner > 0, loser < 0); `rating` is the post-update value.
+ */
+model PlayerRatingHistory {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating     Int
+  delta      Int
+  /// "WIN" | "LOSS" — kept as a flat string so we don't add another enum
+  /// for a tiny derived flag.
+  outcome    String
+  opponentId String?
+  matchId    String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("player_rating_history")
 }

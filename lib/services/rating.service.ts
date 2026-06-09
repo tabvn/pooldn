@@ -34,6 +34,7 @@ export async function applyMatchResult(
   prisma: PrismaClient,
   winnerId: string,
   loserId: string,
+  matchId?: string,
 ) {
   const [w, l] = await Promise.all([
     prisma.user.findUniqueOrThrow({
@@ -48,6 +49,8 @@ export async function applyMatchResult(
   const eW = expected(w.rating, l.rating);
   const wNext = Math.round(w.rating + K * (1 - eW));
   const lNext = Math.round(l.rating + K * (0 - (1 - eW)));
+  const wDelta = wNext - w.rating;
+  const lDelta = lNext - l.rating;
   await Promise.all([
     prisma.user.update({
       where: { id: winnerId },
@@ -56,6 +59,28 @@ export async function applyMatchResult(
     prisma.user.update({
       where: { id: loserId },
       data: { rating: lNext, level: levelFromRating(lNext) },
+    }),
+    // Round-47 — append a history row per side. Keep the same tx so the
+    // history + user.rating stay consistent if one write fails.
+    prisma.playerRatingHistory.create({
+      data: {
+        userId: winnerId,
+        rating: wNext,
+        delta: wDelta,
+        outcome: "WIN",
+        opponentId: loserId,
+        matchId: matchId ?? null,
+      },
+    }),
+    prisma.playerRatingHistory.create({
+      data: {
+        userId: loserId,
+        rating: lNext,
+        delta: lDelta,
+        outcome: "LOSS",
+        opponentId: winnerId,
+        matchId: matchId ?? null,
+      },
     }),
   ]);
 }

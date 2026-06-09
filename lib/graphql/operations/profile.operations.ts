@@ -20,6 +20,7 @@ export const ProfileByUsernameQuery = graphql(/* GraphQL */ `
       followingCount
       bannedAt
       banReason
+      ratingHistory(limit: 20)
       playerCompStats {
         id
         matchesPlayed

@@ -168,11 +168,18 @@ function EmailSection({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const newEmail = email.trim();
     try {
-      await save({ variables: { newEmail: email.trim(), currentPassword: password } });
+      await save({ variables: { newEmail, currentPassword: password } });
       setOpen(false);
       setEmail("");
       setPassword("");
+      // Round-47 — changeEmail now issues a verify link to the NEW address
+      // and only swaps once the user clicks it. Tell them that explicitly.
+      toast.success(
+        "Check your inbox",
+        `We sent a confirm link to ${newEmail}. Your email switches once you click it.`,
+      );
       await onSaved();
     } catch (err) {
       toast.error("Could not update email", err);
@@ -182,7 +189,10 @@ function EmailSection({
   async function onResend() {
     try {
       await resend();
-      toast.success("Verification email queued");
+      toast.success(
+        "Verification email sent",
+        `Check ${currentEmail} for the confirm link.`,
+      );
     } catch (err) {
       toast.error("Could not resend", err);
     }
