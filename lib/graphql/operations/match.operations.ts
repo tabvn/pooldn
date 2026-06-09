@@ -46,6 +46,7 @@ export const MatchDetailQuery = graphql(/* GraphQL */ `
         blockType
         homeWon
         isWalkover
+        breakAndRun
         homePlayer
         awayPlayer
         homePlayerRef {

@@ -168,6 +168,10 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
         matchesPlayed
         framesWon
         framesPlayed
+        singlesWon
+        doublesWon
+        brWon
+        mvpScore
         user {
           id
           name
@@ -224,6 +228,10 @@ export const CompetitionPlayersQuery = graphql(/* GraphQL */ `
         matchesPlayed
         framesWon
         framesPlayed
+        singlesWon
+        doublesWon
+        brWon
+        mvpScore
         isMvp
         user {
           id

@@ -26,6 +26,10 @@ builder.prismaObject("PlayerCompStat", {
     matchesPlayed: t.exposeInt("matchesPlayed"),
     framesWon: t.exposeInt("framesWon"),
     framesPlayed: t.exposeInt("framesPlayed"),
+    singlesWon: t.exposeInt("singlesWon"),
+    doublesWon: t.exposeInt("doublesWon"),
+    brWon: t.exposeInt("brWon"),
+    mvpScore: t.exposeInt("mvpScore"),
     isMvp: t.exposeBoolean("isMvp"),
     winRate: t.float({
       nullable: true,

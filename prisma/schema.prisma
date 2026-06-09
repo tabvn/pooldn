@@ -655,6 +655,10 @@ model MatchFrame {
   // Round-20 — per-frame walkover (e.g. an absent doubles partner). The
   // present side is awarded the frame; the UI surfaces a "Walkover" chip.
   isWalkover    Boolean      @default(false)
+  // Round-47 — "break & run" flag (Figma MVP formula). When the winner
+  // breaks the rack and runs out without letting the opponent shoot, set
+  // this on the frame. Gated at the UI level on competition.breakAndRunRule.
+  breakAndRun   Boolean      @default(false)
   homePlayer    String?
   awayPlayer    String?
   // Direct references to the picked players; falls back to homePlayer /
@@ -787,11 +791,20 @@ model PlayerCompStat {
   matchesPlayed Int         @default(0)
   framesWon     Int         @default(0)
   framesPlayed Int         @default(0)
+  // Round-47 — Figma MVP formula breakdown. `singlesWon` counts frames
+  // won where blockType=SINGLES; `doublesWon` covers DOUBLES + SCOTCH_DOUBLES;
+  // `brWon` counts frames won where breakAndRun=true (subset of frames-won).
+  // `mvpScore` = framesPlayed + singlesWon*3 + doublesWon*2 + brWon*1.
+  singlesWon    Int         @default(0)
+  doublesWon    Int         @default(0)
+  brWon         Int         @default(0)
+  mvpScore      Int         @default(0)
   isMvp         Boolean     @default(false)
 
   @@unique([competitionId, userId])
   @@index([userId])
   @@index([isMvp])
+  @@index([mvpScore])
   @@map("player_comp_stats")
 }
 

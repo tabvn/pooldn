@@ -27,6 +27,10 @@ export const ProfileByUsernameQuery = graphql(/* GraphQL */ `
         framesWon
         framesPlayed
         winRate
+        singlesWon
+        doublesWon
+        brWon
+        mvpScore
         isMvp
         competition {
           id

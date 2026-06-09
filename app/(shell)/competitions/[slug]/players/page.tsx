@@ -26,8 +26,12 @@ export default async function PlayersPage({
   const c = data?.competition;
   if (!c) return null;
 
+  // Round-47 — sort by Figma MVP score (appearances + singlesWon*3 +
+  // doublesWon*2 + brWon), MVP-flagged row pinned to top. The recompute
+  // is server-side; we just respect its ordering decision here.
   const players = [...c.playerStats].sort((a, b) => {
     if (a.isMvp !== b.isMvp) return a.isMvp ? -1 : 1;
+    if (b.mvpScore !== a.mvpScore) return b.mvpScore - a.mvpScore;
     return b.framesWon - a.framesWon;
   });
 
@@ -49,6 +53,15 @@ export default async function PlayersPage({
             <TableHead className="text-right">Frames Won</TableHead>
             <TableHead className="text-right">Frames Played</TableHead>
             <TableHead className="text-right">Win %</TableHead>
+            <TableHead className="text-right" title="Singles wins">S</TableHead>
+            <TableHead className="text-right" title="Doubles wins">D</TableHead>
+            <TableHead className="text-right" title="Break & Run wins">B&amp;R</TableHead>
+            <TableHead
+              className="text-right"
+              title="MVP score = appearances + singles*3 + doubles*2 + B&R*1"
+            >
+              MVP score
+            </TableHead>
             <TableHead className="text-right">MVP</TableHead>
           </TableRow>
         </TableHeader>
@@ -90,6 +103,18 @@ export default async function PlayersPage({
                 <TableCell className="text-right">{p.framesWon}</TableCell>
                 <TableCell className="text-right">{p.framesPlayed}</TableCell>
                 <TableCell className="text-right">{pct}%</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {p.singlesWon}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {p.doublesWon}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {p.brWon}
+                </TableCell>
+                <TableCell className="text-right font-mono font-bold tabular-nums text-primary">
+                  {p.mvpScore}
+                </TableCell>
                 <TableCell className="text-right">
                   {p.isMvp ? <Badge variant="primary">MVP</Badge> : null}
                 </TableCell>

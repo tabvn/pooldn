@@ -102,6 +102,7 @@ builder.prismaObject("MatchFrame", {
     }),
     homeWon: t.exposeBoolean("homeWon", { nullable: true }),
     isWalkover: t.exposeBoolean("isWalkover"),
+    breakAndRun: t.exposeBoolean("breakAndRun"),
     homePlayer: t.exposeString("homePlayer", { nullable: true }),
     awayPlayer: t.exposeString("awayPlayer", { nullable: true }),
     homePlayerRef: t.relation("homePlayerRef", { nullable: true }),
@@ -125,6 +126,10 @@ export const RecordFrameInput = builder.inputType("RecordFrameInput", {
     homeWon: t.boolean({ required: true }),
     homePlayer: t.string(),
     awayPlayer: t.string(),
+    // Round-47 — Break & Run flag for the winning side. Captains tick
+    // this when the winner cleared the rack on their break without the
+    // opponent taking a shot. Feeds the Figma MVP formula.
+    breakAndRun: t.boolean(),
   }),
 });
 

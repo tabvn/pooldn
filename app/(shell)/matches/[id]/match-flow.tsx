@@ -157,6 +157,9 @@ export function MatchFlow({ id }: { id: string }) {
     homePlayer: string | null,
     awayPlayer: string | null,
     homeWon: boolean,
+    /** Round-47 — preserve the existing B&R flag on a winner-swap; the
+     *  separate B&R toggle below sets it explicitly. */
+    breakAndRun: boolean = false,
   ) {
     await recordFrame({
       variables: {
@@ -166,10 +169,34 @@ export function MatchFlow({ id }: { id: string }) {
           homeWon,
           homePlayer,
           awayPlayer,
+          breakAndRun,
         },
       },
     });
     void frameId;
+    await refetch();
+  }
+
+  /** Round-47 — flip the B&R flag on an already-decided frame. */
+  async function toggleBreakAndRun(
+    frameNumber: number,
+    homePlayer: string | null,
+    awayPlayer: string | null,
+    homeWon: boolean,
+    next: boolean,
+  ) {
+    await recordFrame({
+      variables: {
+        input: {
+          matchId,
+          frameNumber,
+          homeWon,
+          homePlayer,
+          awayPlayer,
+          breakAndRun: next,
+        },
+      },
+    });
     await refetch();
   }
 
@@ -417,6 +444,9 @@ export function MatchFlow({ id }: { id: string }) {
                       completed={completed}
                       homeTeamName={match.homeTeam?.name}
                       awayTeamName={match.awayTeam?.name}
+                      breakAndRunRule={
+                        !!match.matchday.competition.breakAndRunRule
+                      }
                       onPickWinner={(homeWon) =>
                         pickWinner(
                           f?.id ?? "",
@@ -424,10 +454,20 @@ export function MatchFlow({ id }: { id: string }) {
                           f?.homePlayer ?? null,
                           f?.awayPlayer ?? null,
                           homeWon,
+                          f?.breakAndRun ?? false,
                         )
                       }
                       onWalkover={(homeWon) =>
                         walkoverFrame(s.frameNumber, homeWon)
+                      }
+                      onToggleBreakAndRun={(next) =>
+                        toggleBreakAndRun(
+                          s.frameNumber,
+                          f?.homePlayer ?? null,
+                          f?.awayPlayer ?? null,
+                          f?.homeWon ?? false,
+                          next,
+                        )
                       }
                     />
                   );
@@ -1123,8 +1163,10 @@ function LineupSlot({
   completed,
   homeTeamName,
   awayTeamName,
+  breakAndRunRule,
   onPickWinner,
   onWalkover,
+  onToggleBreakAndRun,
 }: {
   frameNumber: number;
   type: string;
@@ -1134,6 +1176,7 @@ function LineupSlot({
         frameNumber: number;
         homeWon: boolean | null;
         isWalkover?: boolean | null;
+        breakAndRun?: boolean | null;
         homePlayer: string | null;
         awayPlayer: string | null;
       }
@@ -1141,11 +1184,14 @@ function LineupSlot({
   completed: boolean;
   homeTeamName: string | null | undefined;
   awayTeamName: string | null | undefined;
+  breakAndRunRule: boolean;
   onPickWinner: (homeWon: boolean) => void;
   onWalkover?: (homeWon: boolean) => void;
+  onToggleBreakAndRun?: (next: boolean) => void;
 }) {
   const decided = frame && frame.homeWon !== null;
   const isWalkover = !!frame?.isWalkover;
+  const isBreakAndRun = !!frame?.breakAndRun;
   return (
     <li data-testid={`lineup-slot-${frameNumber}`}>
       <div className="rounded-xl border border-border bg-background overflow-hidden">
@@ -1160,6 +1206,35 @@ function LineupSlot({
             {isWalkover ? (
               <Badge variant="warning" size="sm">
                 Walkover
+              </Badge>
+            ) : null}
+            {/* Round-47 — Break & Run toggle. Visible only when the comp's
+                rule is on AND the frame has a winner (B&R is a property of
+                the winning shot). Captains click to flip; the back-end
+                re-records the frame with the new value. */}
+            {breakAndRunRule && decided && !isWalkover && !completed ? (
+              <button
+                type="button"
+                onClick={() => onToggleBreakAndRun?.(!isBreakAndRun)}
+                data-testid={`br-toggle-${frameNumber}`}
+                aria-pressed={isBreakAndRun}
+                className={
+                  "rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider transition-colors " +
+                  (isBreakAndRun
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-secondary/40 text-muted-foreground hover:text-foreground")
+                }
+                title={
+                  isBreakAndRun
+                    ? "Break & Run — winner cleared the rack on the break"
+                    : "Mark as Break & Run"
+                }
+              >
+                B&amp;R
+              </button>
+            ) : breakAndRunRule && decided && isBreakAndRun ? (
+              <Badge variant="primary" size="sm">
+                B&amp;R
               </Badge>
             ) : null}
             {!frame ? (

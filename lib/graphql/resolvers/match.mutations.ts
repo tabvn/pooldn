@@ -77,6 +77,7 @@ builder.mutationFields((t) => ({
           homeWon: args.input.homeWon,
           homePlayer: args.input.homePlayer ?? null,
           awayPlayer: args.input.awayPlayer ?? null,
+          breakAndRun: args.input.breakAndRun ?? false,
         },
         create: {
           matchId: match.id,
@@ -84,6 +85,7 @@ builder.mutationFields((t) => ({
           homeWon: args.input.homeWon,
           homePlayer: args.input.homePlayer ?? null,
           awayPlayer: args.input.awayPlayer ?? null,
+          breakAndRun: args.input.breakAndRun ?? false,
         },
       });
       // Live: notify everyone watching this match. Standings don't move on

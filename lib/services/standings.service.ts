@@ -1,26 +1,132 @@
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 
 /**
- * Round-18 — MVP is the player with the highest frames-won percentage in
- * the competition (must have played at least one frame). Ties broken by
- * raw frames-won, then by lower frames-played (more efficient). Sets
- * `PlayerCompStat.isMvp` on the winning row, clears it on the rest.
+ * Round-47 — Figma MVP formula. For each player who appeared in any
+ * MatchFrame of this competition we recompute:
+ *
+ *   appearances   = framesPlayed (every frame they were on either side)
+ *   singlesWon    = frames they won where blockType=SINGLES
+ *   doublesWon    = frames they won where blockType in (DOUBLES, SCOTCH_DOUBLES)
+ *   brWon         = frames they won where breakAndRun=true
+ *   mvpScore      = appearances + singlesWon*3 + doublesWon*2 + brWon*1
+ *
+ * The single MVP is the highest mvpScore. Ties broken by raw framesWon,
+ * then by fewer framesPlayed (more efficient). PlayerCompStat rows for
+ * players who haven't appeared remain at zero — they won't win MVP.
  */
 export async function recomputeMvp(
   prisma: PrismaClient,
   competitionId: string,
 ): Promise<void> {
+  // Pull every frame on a completed match in the competition. For each
+  // frame we know homePlayerId / awayPlayerId (single-player blocks) and
+  // the free-text duo labels (doubles). We attribute to the picked
+  // player(s) on each side; rows without a userId reference can't move
+  // PlayerCompStat — they only affect the team's frames-won count, not
+  // the per-player MVP score.
+  const frames = await prisma.matchFrame.findMany({
+    where: {
+      match: {
+        status: "COMPLETED",
+        matchday: { competitionId },
+      },
+      homeWon: { not: null },
+    },
+    select: {
+      homeWon: true,
+      blockType: true,
+      breakAndRun: true,
+      homePlayerId: true,
+      awayPlayerId: true,
+    },
+  });
+
+  type Agg = {
+    framesPlayed: number;
+    singlesWon: number;
+    doublesWon: number;
+    brWon: number;
+  };
+  const byUser = new Map<string, Agg>();
+  const get = (id: string): Agg => {
+    let a = byUser.get(id);
+    if (!a) {
+      a = { framesPlayed: 0, singlesWon: 0, doublesWon: 0, brWon: 0 };
+      byUser.set(id, a);
+    }
+    return a;
+  };
+  for (const f of frames) {
+    const isSingles = f.blockType === "SINGLES";
+    const isDoubles =
+      f.blockType === "DOUBLES" || f.blockType === "SCOTCH_DOUBLES";
+    if (f.homePlayerId) {
+      const a = get(f.homePlayerId);
+      a.framesPlayed += 1;
+      if (f.homeWon) {
+        if (isSingles) a.singlesWon += 1;
+        if (isDoubles) a.doublesWon += 1;
+        if (f.breakAndRun) a.brWon += 1;
+      }
+    }
+    if (f.awayPlayerId) {
+      const a = get(f.awayPlayerId);
+      a.framesPlayed += 1;
+      if (f.homeWon === false) {
+        if (isSingles) a.singlesWon += 1;
+        if (isDoubles) a.doublesWon += 1;
+        if (f.breakAndRun) a.brWon += 1;
+      }
+    }
+  }
+
+  // Write the breakdown back to PlayerCompStat. Use updateMany scoped to
+  // the (competition, user) pair — the row may not exist yet for players
+  // who just made their first appearance, so upsert.
+  const writes: Promise<unknown>[] = [];
+  for (const [userId, agg] of byUser) {
+    const mvpScore =
+      agg.framesPlayed +
+      agg.singlesWon * 3 +
+      agg.doublesWon * 2 +
+      agg.brWon * 1;
+    writes.push(
+      prisma.playerCompStat.upsert({
+        where: { competitionId_userId: { competitionId, userId } },
+        update: {
+          singlesWon: agg.singlesWon,
+          doublesWon: agg.doublesWon,
+          brWon: agg.brWon,
+          mvpScore,
+        },
+        create: {
+          competitionId,
+          userId,
+          singlesWon: agg.singlesWon,
+          doublesWon: agg.doublesWon,
+          brWon: agg.brWon,
+          mvpScore,
+        },
+      }),
+    );
+  }
+  await Promise.all(writes);
+
+  // Pick MVP: highest mvpScore, tiebreak by framesWon then fewer framesPlayed.
   const stats = await prisma.playerCompStat.findMany({
     where: { competitionId },
-    select: { id: true, framesWon: true, framesPlayed: true },
+    select: {
+      id: true,
+      framesWon: true,
+      framesPlayed: true,
+      mvpScore: true,
+    },
   });
   const eligible = stats.filter((s) => s.framesPlayed > 0);
   let mvpId: string | null = null;
   if (eligible.length > 0) {
     const sorted = [...eligible].sort((a, b) => {
-      const winA = a.framesWon / a.framesPlayed;
-      const winB = b.framesWon / b.framesPlayed;
-      if (winB !== winA) return winB - winA;
+      if (b.mvpScore !== a.mvpScore) return b.mvpScore - a.mvpScore;
       if (b.framesWon !== a.framesWon) return b.framesWon - a.framesWon;
       return a.framesPlayed - b.framesPlayed;
     });
