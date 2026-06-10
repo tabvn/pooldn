@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -63,14 +63,20 @@ const STEP_ROSTER_CAPTAIN = 2 as const;
 const STEP_MESSAGE = 3 as const;
 const STEP_REVIEW = 4 as const;
 
-export function ApplyForm({ slug }: { slug: string }) {
+export function ApplyForm({
+  slug,
+  initialTeamId,
+}: {
+  slug: string;
+  initialTeamId?: string | null;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [step, setStep] = useState<StepIndex>(STEP_TEAM);
   const compQuery = useQuery(CompetitionHeaderQuery, { variables: { slug } });
   const teamsQuery = useQuery(TeamsListQuery);
   const viewerQuery = useQuery(ViewerQuery, { errorPolicy: "ignore" });
-  const [selectedTeamId, setSelectedTeamId] = useState<string>("");
+  const [selectedTeamId, setSelectedTeamId] = useState<string>(initialTeamId ?? "");
   const teamDetailQuery = useQuery(TeamDetailQuery, {
     variables: { slug: teamForSlug(teamsQuery.data?.teams, selectedTeamId) ?? "" },
     skip: !selectedTeamId,
@@ -131,6 +137,22 @@ export function ApplyForm({ slug }: { slug: string }) {
     setValue("playerUserIds", []);
     setValue("rosterCaptainUserId", "");
   }
+
+  // Round-49 — pre-select the team when the captain landed here via an
+  // invite accept link (?teamId=…). Wait for the viewer's team list to
+  // load so we can verify they actually captain that team — admins skip
+  // the check (they can apply on anyone's behalf).
+  useEffect(() => {
+    if (!initialTeamId || watchedTeamId) return;
+    if (!teamsQuery.data) return;
+    const inViewerTeams = teams.some((t) => t.id === initialTeamId);
+    if (inViewerTeams || isAdmin) {
+      setValue("teamId", initialTeamId, { shouldValidate: true });
+    }
+    // Intentional: run when the deps below change. We don't want to
+    // re-seed if the captain manually picks a different team.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTeamId, teamsQuery.data, isAdmin]);
 
   const togglePlayer = (id: string) => {
     const cur = new Set(selectedPlayers);
@@ -233,6 +255,48 @@ export function ApplyForm({ slug }: { slug: string }) {
   const visibleSteps = STEPS.filter(
     (_, i) => !isStepDisabled(i as StepIndex),
   );
+
+  // Round-49 — Apply-gate panel. Replaces the silent server-side redirect
+  // when the captain hits this page via an invite link but can't actually
+  // file an application right now (comp not open yet, already approved,
+  // declined and the row's still PENDING, etc).
+  const gate = computeApplyGate({
+    competitionStatus: competition?.status ?? null,
+    viewerCanApply: competition?.viewerCanApply ?? false,
+    isAdmin,
+    application: competition?.myTeamApplication ?? null,
+  });
+  if (competition && gate) {
+    return (
+      <div className="p-8 max-w-2xl mx-auto">
+        <Card>
+          <CardHeader>
+            <CardTitle>{gate.title}</CardTitle>
+            <p className="text-sm text-muted-foreground">{gate.description}</p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-start gap-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+              <AlertCircle className="mt-0.5 size-4 text-warning" />
+              <div className="space-y-1">
+                <div className="font-medium">{gate.detail}</div>
+                {gate.hint ? (
+                  <div className="text-xs text-muted-foreground">{gate.hint}</div>
+                ) : null}
+              </div>
+            </div>
+          </CardContent>
+          <CardFooter className="justify-end gap-2">
+            <Link href={`/competitions/${slug}`}>
+              <Button variant="ghost">
+                <ArrowLeft className="size-4" />
+                Back to competition
+              </Button>
+            </Link>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
@@ -653,4 +717,84 @@ function teamForSlug(
   id: string,
 ): string | undefined {
   return teams?.find((t) => t.id === id)?.slug;
+}
+
+/**
+ * Round-49 — decides whether the captain can actually file an application
+ * right now. Returns a description object when the form should NOT render
+ * (and the gating panel should), or null when the form is fine to show.
+ *
+ * INVITED rows are deliberately allowed through — applyToCompetition's
+ * resurrection path will flip them to PENDING on submit.
+ */
+function computeApplyGate(args: {
+  competitionStatus: string | null;
+  viewerCanApply: boolean;
+  isAdmin: boolean;
+  application: { status: string; team: { name: string; slug: string } } | null;
+}): {
+  title: string;
+  description: string;
+  detail: string;
+  hint?: string;
+} | null {
+  const { competitionStatus, viewerCanApply, isAdmin, application } = args;
+  if (isAdmin) return null;
+
+  // 1) Already engaged states — block re-entry with a clear status read.
+  if (application) {
+    switch (application.status) {
+      case "APPROVED":
+        return {
+          title: "You're already in",
+          description: "Your team has been confirmed for this competition.",
+          detail: `${application.team.name} is approved.`,
+          hint: "Open the team page to manage your roster.",
+        };
+      case "PENDING":
+        return {
+          title: "Application already submitted",
+          description: "The organizer is reviewing your application.",
+          detail: `${application.team.name} has a pending application — wait for the organizer's decision.`,
+          hint: "We'll notify you here as soon as they respond.",
+        };
+      case "WAITLISTED":
+        return {
+          title: "You're on the waitlist",
+          description: "The organizer has waitlisted your application.",
+          detail: `${application.team.name} is currently waitlisted.`,
+          hint: "If a slot opens, the organizer can still approve you.",
+        };
+      // INVITED / CANCELLED / REJECTED → fall through; the form's
+      // resurrection path will reset and re-submit cleanly.
+    }
+  }
+
+  // 2) Competition-state gates.
+  if (competitionStatus !== "OPEN_FOR_APPLICATIONS") {
+    const label = (competitionStatus ?? "draft").toLowerCase().replace(/_/g, " ");
+    return {
+      title: "Applications aren't open yet",
+      description: "You can't submit an application right now.",
+      detail: `This competition is currently ${label}.`,
+      hint:
+        application?.status === "INVITED"
+          ? "Your invitation is saved — accept again once the organizer opens applications."
+          : "Check back once the organizer opens applications.",
+    };
+  }
+
+  // 3) Permission gates from the server resolver. If the comp is OPEN but
+  // viewerCanApply is false, the viewer isn't on the invite list for an
+  // INVITE_ONLY comp (and isn't an admin) — surface that explicitly.
+  if (!viewerCanApply) {
+    return {
+      title: "This competition is invite-only",
+      description: "Only invited teams can submit an application.",
+      detail: "Your team isn't on the organizer's invite list.",
+      hint: "Ask the organizer to send you an invite from the Applications page.",
+    };
+  }
+
+  return null;
 }
