@@ -46,16 +46,15 @@ export default async function CompetitionLayout({
       label: "Applications",
     });
   }
-  // Round-30 — captaincy is per-team via team.captainId. PLAYERs who created
-  // a team are captains of THAT team without a global role change, so anyone
-  // who isn't a pure spectator (VIEWER) or an organizer/admin gets the CTA;
-  // the server-side check on applyToCompetition enforces "must be a captain
-  // of the chosen team" definitively.
-  const canApply =
-    !!viewer &&
-    (viewer.role === "TEAM_CAPTAIN" || viewer.role === "PLAYER") &&
-    c.status === "OPEN_FOR_APPLICATIONS";
+  // Round-48 (wizard) — single source of truth for "should the apply CTA
+  // render?". Server-computed on Competition.viewerCanApply, which returns
+  // true iff viewer is signed in (not VIEWER), status is OPEN_FOR_APPLICATIONS,
+  // AND (applicationMode is OPEN OR viewer captains a team on the INVITE_ONLY
+  // list). The applyToCompetition mutation enforces the same rule, so the
+  // gate and the action can't drift.
+  const canApply = c.viewerCanApply;
   const isOpen = c.status === "OPEN_FOR_APPLICATIONS";
+  const isInviteOnly = c.applicationMode === "INVITE_ONLY";
 
   return (
     <div className="flex flex-col">
@@ -89,6 +88,16 @@ export default async function CompetitionLayout({
               <Link href={`/sign-in?next=/competitions/${slug}/apply`}>
                 <Button>Sign in to apply</Button>
               </Link>
+            ) : viewer && isOpen && isInviteOnly ? (
+              // Signed-in viewer but their team isn't on the invite list.
+              // Hide the apply path entirely and explain why — matches the
+              // server gate so they can't sneak past via the direct URL.
+              <span
+                className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-muted-foreground"
+                data-testid="invite-only-badge"
+              >
+                Invite only
+              </span>
             ) : null}
           </div>
         }

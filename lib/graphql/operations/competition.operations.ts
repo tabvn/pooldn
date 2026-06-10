@@ -108,6 +108,8 @@ export const CompetitionHeaderQuery = graphql(/* GraphQL */ `
       minPlayersPerTeam
       maxPlayersPerTeam
       requiresHomeVenue
+      applicationMode
+      viewerCanApply
       isFollowing
       followerCount
       myTeamApplication {

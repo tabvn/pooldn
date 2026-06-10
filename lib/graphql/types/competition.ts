@@ -114,6 +114,36 @@ builder.prismaObject("Competition", {
       "maxGamesPerVenuePerMatchday",
       { nullable: true },
     ),
+    /**
+     * Round-48 (wizard) — server-computed gate the apply CTA reads. True iff
+     *  - viewer is signed in and not the read-only VIEWER role,
+     *  - competition.status === OPEN_FOR_APPLICATIONS,
+     *  - AND (applicationMode === OPEN OR the viewer captains a team in
+     *    invitedTeamIds — the INVITE_ONLY pre-list).
+     * Single source of truth so the UI gate and the applyToCompetition
+     * server check can never drift.
+     */
+    viewerCanApply: t.boolean({
+      resolve: async (c, _args, ctx) => {
+        if (!ctx.viewer) return false;
+        if (ctx.viewer.role === "VIEWER") return false;
+        if (c.status !== "OPEN_FOR_APPLICATIONS") return false;
+        if (c.applicationMode === "OPEN") return true;
+        // INVITE_ONLY — does the viewer captain any of the invited teams?
+        const invited = Array.isArray(c.invitedTeamIds)
+          ? (c.invitedTeamIds as unknown[]).map(String)
+          : [];
+        if (invited.length === 0) return false;
+        const match = await ctx.prisma.team.findFirst({
+          where: {
+            id: { in: invited },
+            captainId: ctx.viewer.id,
+          },
+          select: { id: true },
+        });
+        return !!match;
+      },
+    }),
     blocks: t.relation("blocks", {
       query: () => ({ orderBy: { order: "asc" } }),
     }),
