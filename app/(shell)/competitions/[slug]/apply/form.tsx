@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery } from "@apollo/client/react";
-import { ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/toast";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +25,6 @@ import {
   TeamsListQuery,
   TeamDetailQuery,
 } from "@/lib/graphql/operations/team.operations";
-import { VenuesListQuery } from "@/lib/graphql/operations/venue.operations";
 import { ApplyToCompetitionMutation } from "@/lib/graphql/operations/competition-mutations.operations";
 import {
   CompetitionHeaderQuery,
@@ -34,29 +34,42 @@ import { RosterConflictsQuery } from "@/lib/graphql/operations/roster.operations
 
 const schema = z.object({
   teamId: z.string().min(1, "Pick a team"),
-  venueId: z.string().optional(),
   playerUserIds: z.array(z.string()),
+  rosterCaptainUserId: z.string().optional(),
   message: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
 
-type StepIndex = 0 | 1 | 2 | 3;
+// Round-48 — five steps. The Roster Captain step is rendered only when the
+// team captain isn't in the selected roster (auto-detected); the navigation
+// helpers skip past it transparently when not applicable.
+type StepIndex = 0 | 1 | 2 | 3 | 4;
 const STEPS = [
   { title: "Choose team", desc: "Select the team you want to enter." },
   { title: "Roster", desc: "Pick the players who will compete." },
+  {
+    title: "Roster Captain",
+    desc:
+      "Since you're not participating, select a player to act as captain for this competition (manage lineups and confirm results).",
+  },
   { title: "Message", desc: "Optional note to the organizer." },
   { title: "Review & Send", desc: "Confirm everything and send to the organizer." },
 ] as const;
 
+const STEP_TEAM = 0 as const;
+const STEP_ROSTER = 1 as const;
+const STEP_ROSTER_CAPTAIN = 2 as const;
+const STEP_MESSAGE = 3 as const;
+const STEP_REVIEW = 4 as const;
+
 export function ApplyForm({ slug }: { slug: string }) {
   const router = useRouter();
   const toast = useToast();
-  const [step, setStep] = useState<StepIndex>(0);
+  const [step, setStep] = useState<StepIndex>(STEP_TEAM);
   const compQuery = useQuery(CompetitionHeaderQuery, { variables: { slug } });
   const teamsQuery = useQuery(TeamsListQuery);
   const viewerQuery = useQuery(ViewerQuery, { errorPolicy: "ignore" });
-  const venuesQuery = useQuery(VenuesListQuery, { variables: {} });
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
   const teamDetailQuery = useQuery(TeamDetailQuery, {
     variables: { slug: teamForSlug(teamsQuery.data?.teams, selectedTeamId) ?? "" },
@@ -73,7 +86,12 @@ export function ApplyForm({ slug }: { slug: string }) {
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { teamId: "", venueId: "", playerUserIds: [], message: "" },
+    defaultValues: {
+      teamId: "",
+      playerUserIds: [],
+      rosterCaptainUserId: "",
+      message: "",
+    },
   });
 
   const competition = compQuery.data?.competition;
@@ -87,8 +105,8 @@ export function ApplyForm({ slug }: { slug: string }) {
   const teams = isAdmin
     ? allTeams
     : allTeams.filter((t) => t.captain?.id === viewerId);
-  const venues = venuesQuery.data?.venues ?? [];
-  const roster = teamDetailQuery.data?.team?.members ?? [];
+  const team = teamDetailQuery.data?.team;
+  const roster = team?.members ?? [];
   const conflictsQuery = useQuery(RosterConflictsQuery, {
     variables: {
       competitionId: competition?.id ?? "",
@@ -105,32 +123,86 @@ export function ApplyForm({ slug }: { slug: string }) {
   const maxPlayers = competition?.maxPlayersPerTeam ?? (roster.length || 99);
   const watchedTeamId = watch("teamId");
   const selectedPlayers = watch("playerUserIds") ?? [];
+  const watchedRosterCaptain = watch("rosterCaptainUserId") ?? "";
 
   // Sync the local team id used to drive the roster fetch
   if (watchedTeamId !== selectedTeamId) {
     setSelectedTeamId(watchedTeamId);
     setValue("playerUserIds", []);
+    setValue("rosterCaptainUserId", "");
   }
 
   const togglePlayer = (id: string) => {
     const cur = new Set(selectedPlayers);
     cur.has(id) ? cur.delete(id) : cur.add(id);
-    setValue("playerUserIds", Array.from(cur), { shouldValidate: true });
+    const next = Array.from(cur);
+    setValue("playerUserIds", next, { shouldValidate: true });
+    // If the previously-chosen Roster Captain got unchecked, clear them
+    // so the Review step shows the empty state and the next-step guard
+    // forces a re-pick.
+    if (watchedRosterCaptain && !cur.has(watchedRosterCaptain)) {
+      setValue("rosterCaptainUserId", "");
+    }
   };
 
+  // Round-48 — Roster Captain is required when the team captain isn't in
+  // the playing roster. The corresponding step appears only in that case.
+  const teamCaptainId = team?.captain?.id ?? null;
+  const captainIsPlaying = Boolean(
+    teamCaptainId && selectedPlayers.includes(teamCaptainId),
+  );
+  const needsRosterCaptain = Boolean(
+    teamCaptainId && selectedPlayers.length > 0 && !captainIsPlaying,
+  );
+
+  // Round-48 — block submission when the competition gates on a home venue
+  // and the selected team doesn't have one set.
+  const requiresHomeVenue = Boolean(competition?.requiresHomeVenue);
+  const homeVenueMissing = requiresHomeVenue && !team?.homeVenue;
+
+  const rosterPlayers = useMemo(
+    () =>
+      roster.filter((m) => selectedPlayers.includes(m.user.id)).map((m) => m.user),
+    [roster, selectedPlayers],
+  );
+
+  function isStepDisabled(s: StepIndex) {
+    // Hide Roster Captain step when not needed; navigation skips past it.
+    return s === STEP_ROSTER_CAPTAIN && !needsRosterCaptain;
+  }
+
   function nextStep() {
-    if (step === 0 && !watchedTeamId) return;
-    setStep((s) => (Math.min(s + 1, 3) as StepIndex));
+    if (step === STEP_TEAM) {
+      if (!watchedTeamId) return;
+      if (homeVenueMissing) return;
+    }
+    if (step === STEP_ROSTER) {
+      if (selectedPlayers.length < minPlayers) return;
+    }
+    if (step === STEP_ROSTER_CAPTAIN && needsRosterCaptain && !watchedRosterCaptain) {
+      return;
+    }
+    let next: StepIndex = Math.min(step + 1, STEP_REVIEW) as StepIndex;
+    while (isStepDisabled(next) && next < STEP_REVIEW) {
+      next = (next + 1) as StepIndex;
+    }
+    setStep(next);
   }
   function prevStep() {
-    setStep((s) => (Math.max(s - 1, 0) as StepIndex));
+    let prev: StepIndex = Math.max(step - 1, STEP_TEAM) as StepIndex;
+    while (isStepDisabled(prev) && prev > STEP_TEAM) {
+      prev = (prev - 1) as StepIndex;
+    }
+    setStep(prev);
   }
 
   const onSubmit = handleSubmit(async (values) => {
     // Gate the actual mutation to the Review step — pressing Enter inside
     // an earlier-step input must not skip ahead.
-    if (step !== 3) return;
+    if (step !== STEP_REVIEW) return;
     if (!competition) return;
+    if (homeVenueMissing) return;
+    if (needsRosterCaptain && !values.rosterCaptainUserId) return;
     try {
       const result = await apply({
         variables: {
@@ -139,6 +211,7 @@ export function ApplyForm({ slug }: { slug: string }) {
             teamId: values.teamId,
             message: values.message || null,
             playerUserIds: values.playerUserIds,
+            rosterCaptainUserId: values.rosterCaptainUserId || null,
           },
         },
       });
@@ -157,6 +230,9 @@ export function ApplyForm({ slug }: { slug: string }) {
 
   const selectedTeam = teams.find((t) => t.id === watchedTeamId);
   const watchedMessage = watch("message");
+  const visibleSteps = STEPS.filter(
+    (_, i) => !isStepDisabled(i as StepIndex),
+  );
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
@@ -166,31 +242,36 @@ export function ApplyForm({ slug }: { slug: string }) {
             Apply to {competition?.name ?? "competition"}
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Step {step + 1} of {STEPS.length} · {STEPS[step].desc}
+            Step {visibleSteps.findIndex((s) => s.title === STEPS[step].title) + 1}{" "}
+            of {visibleSteps.length} · {STEPS[step].desc}
           </p>
           <ol
             className="mt-3 flex items-center gap-2"
             aria-label="Apply progress"
           >
-            {STEPS.map((s, i) => (
-              <li key={s.title} className="flex-1">
-                <div
-                  className={
-                    "h-1.5 rounded-full transition-colors " +
-                    (i <= step ? "bg-primary" : "bg-secondary")
-                  }
-                  // Avoid the word "Team" in the aria-label so it doesn't
-                  // collide with getByLabel("Team") in the apply tests.
-                  aria-label={`Step ${i + 1}${i === step ? " (current)" : ""}`}
-                />
-              </li>
-            ))}
+            {visibleSteps.map((s, i) => {
+              const myStepIndex = STEPS.findIndex((x) => x.title === s.title);
+              const currentVisibleIndex = visibleSteps.findIndex(
+                (x) => x.title === STEPS[step].title,
+              );
+              return (
+                <li key={s.title} className="flex-1">
+                  <div
+                    className={
+                      "h-1.5 rounded-full transition-colors " +
+                      (i <= currentVisibleIndex ? "bg-primary" : "bg-secondary")
+                    }
+                    aria-label={`Step ${i + 1}${myStepIndex === step ? " (current)" : ""}`}
+                  />
+                </li>
+              );
+            })}
           </ol>
         </CardHeader>
         <CardContent>
           <form id="apply" onSubmit={onSubmit} className="space-y-5">
-            {/* Step 1 — Team selector + optional home venue */}
-            {step === 0 ? (
+            {/* Step 1 — Team selector + requiresHomeVenue gate */}
+            {step === STEP_TEAM ? (
               <>
                 <div className="space-y-1.5">
                   <Label htmlFor="teamId">Team</Label>
@@ -217,29 +298,47 @@ export function ApplyForm({ slug }: { slug: string }) {
                     </p>
                   ) : null}
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="venueId">Home venue</Label>
-                  <select
-                    id="venueId"
-                    {...register("venueId")}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+
+                {/* Home venue display when the team has one — informational. */}
+                {team?.homeVenue ? (
+                  <div className="rounded-md border border-border bg-background px-3 py-2 text-sm">
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                      Home venue
+                    </div>
+                    <div className="font-medium">
+                      {team.homeVenue.name} · {team.homeVenue.city.name}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Round-48 — required-home-venue gate (Figma verbatim copy). */}
+                {homeVenueMissing && team ? (
+                  <div
+                    role="alert"
+                    data-testid="home-venue-required"
+                    className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-3 text-sm text-destructive"
                   >
-                    <option value="">— optional —</option>
-                    {venues.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.name} · {v.city.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-muted-foreground">
-                    Pick where your team typically plays.
-                  </p>
-                </div>
+                    <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                    <div className="space-y-1">
+                      <div className="font-semibold">
+                        This competition requires each team to have a home venue.
+                      </div>
+                      <Link
+                        href={`/teams/${team.slug}/manage`}
+                        target="_blank"
+                        rel="noopener"
+                        className="inline-flex items-center gap-1 text-xs font-medium underline"
+                      >
+                        Set a home venue for {team.name} →
+                      </Link>
+                    </div>
+                  </div>
+                ) : null}
               </>
             ) : null}
 
             {/* Step 2 — Roster */}
-            {step === 1 ? (
+            {step === STEP_ROSTER ? (
               <div className="space-y-1.5">
                 <Label>Select roster</Label>
                 <p className="text-xs text-muted-foreground">
@@ -259,6 +358,7 @@ export function ApplyForm({ slug }: { slug: string }) {
                       const checked = selectedPlayers.includes(m.user.id);
                       const conflict = conflictMap.get(m.user.id);
                       const disabled = Boolean(conflict);
+                      const isCaptain = m.user.id === teamCaptainId;
                       return (
                         <li key={m.id}>
                           <label
@@ -293,7 +393,18 @@ export function ApplyForm({ slug }: { slug: string }) {
                               fallback={m.user.name}
                             />
                             <div className="flex flex-col">
-                              <span className="font-semibold">{m.user.name}</span>
+                              <span className="font-semibold">
+                                {m.user.name}
+                                {isCaptain ? (
+                                  <Badge
+                                    variant="primary"
+                                    size="sm"
+                                    className="ml-2"
+                                  >
+                                    Captain
+                                  </Badge>
+                                ) : null}
+                              </span>
                               <span className="text-xs text-muted-foreground">
                                 @{m.user.username}
                                 {m.user.nationality
@@ -330,8 +441,61 @@ export function ApplyForm({ slug }: { slug: string }) {
               </div>
             ) : null}
 
-            {/* Step 3 — Message */}
-            {step === 2 ? (
+            {/* Step 3 — Roster Captain (conditional). */}
+            {step === STEP_ROSTER_CAPTAIN ? (
+              <div className="space-y-3" data-testid="roster-captain-step">
+                <Label>Select a Roster Captain</Label>
+                <p className="text-xs text-muted-foreground">
+                  Since you're not participating, select a player to act as
+                  captain for this competition (manage lineups and confirm
+                  results).
+                </p>
+                <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  {rosterPlayers.map((u) => {
+                    const checked = watchedRosterCaptain === u.id;
+                    return (
+                      <li key={u.id}>
+                        <label
+                          className={
+                            "flex items-center gap-3 rounded-md border bg-background px-3 py-2 text-sm transition-colors cursor-pointer " +
+                            (checked
+                              ? "border-primary/60 bg-primary/5"
+                              : "border-border hover:border-primary/30")
+                          }
+                        >
+                          <input
+                            type="radio"
+                            name="rosterCaptainUserId"
+                            value={u.id}
+                            checked={checked}
+                            onChange={() =>
+                              setValue("rosterCaptainUserId", u.id, {
+                                shouldValidate: true,
+                              })
+                            }
+                            className="size-4 accent-primary"
+                          />
+                          <Avatar
+                            size="sm"
+                            src={u.avatarUrl ?? undefined}
+                            fallback={u.name}
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-semibold">{u.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              @{u.username}
+                            </span>
+                          </div>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
+
+            {/* Step 4 — Message */}
+            {step === STEP_MESSAGE ? (
               <div className="space-y-1.5">
                 <Label htmlFor="message">Message to organizer (optional)</Label>
                 <Input id="message" {...register("message")} />
@@ -341,8 +505,8 @@ export function ApplyForm({ slug }: { slug: string }) {
               </div>
             ) : null}
 
-            {/* Step 4 — Review & Send */}
-            {step === 3 ? (
+            {/* Step 5 — Review & Send */}
+            {step === STEP_REVIEW ? (
               <div className="space-y-3" data-testid="apply-review">
                 <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
                   <div className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -377,7 +541,7 @@ export function ApplyForm({ slug }: { slug: string }) {
                 <ReviewRow
                   label="Team"
                   value={selectedTeam?.name ?? "—"}
-                  onEdit={() => setStep(0)}
+                  onEdit={() => setStep(STEP_TEAM)}
                 />
                 <ReviewRow
                   label="Roster"
@@ -386,12 +550,22 @@ export function ApplyForm({ slug }: { slug: string }) {
                       ? "Will use the full team roster"
                       : `${selectedPlayers.length} players selected`
                   }
-                  onEdit={() => setStep(1)}
+                  onEdit={() => setStep(STEP_ROSTER)}
                 />
+                {needsRosterCaptain ? (
+                  <ReviewRow
+                    label="Roster Captain"
+                    value={
+                      rosterPlayers.find((u) => u.id === watchedRosterCaptain)
+                        ?.name ?? "Not selected"
+                    }
+                    onEdit={() => setStep(STEP_ROSTER_CAPTAIN)}
+                  />
+                ) : null}
                 <ReviewRow
                   label="Message"
                   value={watchedMessage ? watchedMessage : "—"}
-                  onEdit={() => setStep(2)}
+                  onEdit={() => setStep(STEP_MESSAGE)}
                 />
                 <p className="mt-2 rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-info-foreground">
                   Hit <strong>Confirm &amp; Send</strong> to deliver your
@@ -412,17 +586,23 @@ export function ApplyForm({ slug }: { slug: string }) {
           <Button
             type="button"
             variant="ghost"
-            disabled={step === 0}
+            disabled={step === STEP_TEAM}
             onClick={prevStep}
             iconBefore={<ArrowLeft className="size-4" />}
           >
             Back
           </Button>
-          {step < 3 ? (
+          {step < STEP_REVIEW ? (
             <Button
               type="button"
               onClick={nextStep}
-              disabled={step === 0 && !watchedTeamId}
+              disabled={
+                (step === STEP_TEAM && (!watchedTeamId || homeVenueMissing)) ||
+                (step === STEP_ROSTER && selectedPlayers.length < minPlayers) ||
+                (step === STEP_ROSTER_CAPTAIN &&
+                  needsRosterCaptain &&
+                  !watchedRosterCaptain)
+              }
               iconAfter={<ArrowRight className="size-4" />}
             >
               Next
@@ -432,6 +612,7 @@ export function ApplyForm({ slug }: { slug: string }) {
               form="apply"
               type="submit"
               loading={isSubmitting || applying}
+              disabled={homeVenueMissing || (needsRosterCaptain && !watchedRosterCaptain)}
               iconAfter={<Check className="size-4" />}
             >
               Confirm &amp; Send

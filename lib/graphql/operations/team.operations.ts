@@ -13,6 +13,14 @@ export const TeamsListQuery = graphql(/* GraphQL */ `
         name
         username
       }
+      homeVenue {
+        id
+        name
+        city {
+          id
+          name
+        }
+      }
       members {
         id
       }
@@ -74,6 +82,15 @@ export const TeamDetailQuery = graphql(/* GraphQL */ `
         name
         username
         avatarUrl
+      }
+      homeVenue {
+        id
+        slug
+        name
+        city {
+          id
+          name
+        }
       }
       members {
         id

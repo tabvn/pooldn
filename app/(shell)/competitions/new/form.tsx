@@ -160,6 +160,10 @@ const schema = z.object({
       "Structure must contain at least one game block",
     ),
   breakAndRunRule: z.boolean(),
+  // Round-48 — apply-time gate. When ON the apply form blocks any team
+  // whose Team.homeVenueId is null, with Figma copy "This competition
+  // requires each team to have a home venue."
+  requiresHomeVenue: z.boolean(),
 })
   // End date can't precede start date when both are set.
   .refine(
@@ -196,7 +200,14 @@ const FIELDS_BY_STEP: Record<StepIndex, (keyof FormInput)[]> = {
     "prizePool",
     "currency",
   ],
-  1: ["minTeams", "maxTeams", "minPlayersPerTeam", "maxPlayersPerTeam", "raceToFrames"],
+  1: [
+    "minTeams",
+    "maxTeams",
+    "minPlayersPerTeam",
+    "maxPlayersPerTeam",
+    "raceToFrames",
+    "requiresHomeVenue",
+  ],
   2: [
     "cityId",
     "schedulingType",
@@ -234,6 +245,7 @@ export type WizardInitial = {
   prizePool?: string | null;
   currency: string;
   breakAndRunRule: boolean;
+  requiresHomeVenue: boolean;
   maxGamesPerVenuePerMatchday?: number | null;
   blocks: Array<{
     type: "SINGLES" | "DOUBLES" | "SCOTCH_DOUBLES";
@@ -290,6 +302,7 @@ export function NewCompetitionForm({
           prizePool: initial.prizePool ?? "",
           currency: initial.currency,
           breakAndRunRule: initial.breakAndRunRule,
+          requiresHomeVenue: initial.requiresHomeVenue,
           maxGamesPerVenuePerMatchday:
             initial.maxGamesPerVenuePerMatchday ?? undefined,
           structureItems:
@@ -317,6 +330,7 @@ export function NewCompetitionForm({
           matchdayCount: 6,
           matchdayStartTime: "19:00",
           matchdayEndTime: "23:00",
+          requiresHomeVenue: false,
           structureItems: [
             { uid: "s-default-1", kind: "GAME", type: "SINGLES", games: 3 },
             { uid: "s-default-2", kind: "BREAK", durationMin: 10 },
@@ -428,6 +442,7 @@ export function NewCompetitionForm({
             currency: values.currency,
             schedulingType: values.schedulingType,
             breakAndRunRule: values.breakAndRunRule,
+            requiresHomeVenue: values.requiresHomeVenue,
             maxGamesPerVenuePerMatchday:
               values.maxGamesPerVenuePerMatchday ?? null,
             blocks,
@@ -669,6 +684,26 @@ export function NewCompetitionForm({
                 {...register("raceToFrames")}
               />
             </Field>
+            {/* Round-48 — applicant-side gate. */}
+            <div className="rounded-xl border border-border bg-card p-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 accent-primary"
+                  {...register("requiresHomeVenue")}
+                />
+                <span>
+                  <span className="block font-semibold">
+                    Require each team to have a home venue
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    When on, the apply form blocks any team that hasn't set a
+                    home venue. Captains see the exact message
+                    "This competition requires each team to have a home venue."
+                  </span>
+                </span>
+              </label>
+            </div>
           </Section>
         )}
 
@@ -895,6 +930,10 @@ export function NewCompetitionForm({
                 value={`${v.minPlayersPerTeam}${v.maxPlayersPerTeam ? ` – ${v.maxPlayersPerTeam}` : "+"}`}
               />
               <Row label="Race to" value={`${v.raceToFrames} frames`} />
+              <Row
+                label="Home venue required"
+                value={v.requiresHomeVenue ? "Yes" : "No"}
+              />
             </ReviewGroup>
 
             <ReviewGroup title="Schedule" onEdit={() => setStep(2)}>

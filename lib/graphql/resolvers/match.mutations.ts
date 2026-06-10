@@ -6,6 +6,7 @@ import {
   SubmitMatchResultInput,
 } from "../types/match";
 import { ensure, requireUser } from "@/lib/casl/guard";
+import { findCaptainSide } from "@/lib/auth/match-actor";
 import { recomputeStandings } from "@/lib/services/standings.service";
 import { scaffoldMatchFramesFromStructure } from "@/lib/services/match-frame-scaffold";
 import { NotificationService } from "@/lib/services/notification.service";
@@ -229,12 +230,11 @@ builder.mutationFields((t) => ({
               members: { select: { userId: true } },
             },
           },
-          matchday: { select: { competitionId: true, competition: { select: { slug: true } } } },
+          matchday: { select: { competitionId: true, competition: { select: { id: true, slug: true } } } },
         },
       });
-      let side: "home" | "away" | null = null;
-      if (match.homeTeam?.captainId === ctx.viewer.id) side = "home";
-      else if (match.awayTeam?.captainId === ctx.viewer.id) side = "away";
+      // Round-48 — accept Team Captain OR per-competition Roster Captain.
+      const side = await findCaptainSide(ctx, match, ctx.viewer.id);
       if (!side && ctx.viewer.role !== "SUPER_ADMIN") {
         throw new GraphQLError("Only a captain may submit a lineup", {
           extensions: { code: "FORBIDDEN" },
@@ -358,16 +358,16 @@ builder.mutationFields((t) => ({
           homeTeam: { select: { captainId: true } },
           awayTeam: { select: { captainId: true } },
           matchday: {
-            select: { competition: { select: { organizerId: true } } },
+            select: { competition: { select: { id: true, organizerId: true } } },
           },
         },
       });
       const isOrganizer =
         match.matchday.competition.organizerId === ctx.viewer.id;
-      const isCaptain =
-        match.homeTeam?.captainId === ctx.viewer.id ||
-        match.awayTeam?.captainId === ctx.viewer.id;
       const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
+      // Round-48 — Team Captain or per-competition Roster Captain.
+      const isCaptain =
+        (await findCaptainSide(ctx, match, ctx.viewer.id)) !== null;
       if (!isOrganizer && !isCaptain && !isAdmin) {
         throw new GraphQLError("Only a captain or organizer may mark a walkover", {
           extensions: { code: "FORBIDDEN" },
@@ -523,9 +523,9 @@ builder.mutationFields((t) => ({
           },
         },
       });
+      // Round-48 — Team Captain or per-competition Roster Captain.
       const isCaptain =
-        match.homeTeam?.captainId === ctx.viewer.id ||
-        match.awayTeam?.captainId === ctx.viewer.id;
+        (await findCaptainSide(ctx, match, ctx.viewer.id)) !== null;
       if (!isCaptain && ctx.viewer.role !== "SUPER_ADMIN") {
         throw new GraphQLError("Only a participating captain may request a reschedule", {
           extensions: { code: "FORBIDDEN" },
@@ -703,15 +703,13 @@ builder.mutationFields((t) => ({
         include: {
           homeTeam: { select: { captainId: true, name: true } },
           awayTeam: { select: { captainId: true, name: true } },
-          matchday: { select: { competition: { select: { slug: true } } } },
+          matchday: { select: { competition: { select: { id: true, slug: true } } } },
         },
       });
-      const side =
-        match.homeTeam?.captainId === ctx.viewer.id
-          ? "HOME"
-          : match.awayTeam?.captainId === ctx.viewer.id
-            ? "AWAY"
-            : null;
+      // Round-48 — Team Captain or per-competition Roster Captain.
+      const sideLower = await findCaptainSide(ctx, match, ctx.viewer.id);
+      const side: "HOME" | "AWAY" | null =
+        sideLower === "home" ? "HOME" : sideLower === "away" ? "AWAY" : null;
       if (!side && ctx.viewer.role !== "SUPER_ADMIN") {
         throw new GraphQLError("Only a captain may request a lineup edit", {
           extensions: { code: "FORBIDDEN" },
@@ -781,7 +779,7 @@ builder.mutationFields((t) => ({
         include: {
           homeTeam: { select: { captainId: true } },
           awayTeam: { select: { captainId: true } },
-          matchday: { select: { competition: { select: { slug: true } } } },
+          matchday: { select: { competition: { select: { id: true, slug: true } } } },
         },
       });
       if (!match.lineupEditRequestedAt) {
@@ -790,11 +788,11 @@ builder.mutationFields((t) => ({
         });
       }
       // Only the OTHER captain (not the requester) can approve.
+      // Round-48 — captain check accepts Team Captain OR per-comp Roster Captain.
       const requester = match.lineupEditRequestedById;
+      const actorSide = await findCaptainSide(ctx, match, ctx.viewer.id);
       const isOtherCaptain =
-        (match.homeTeam?.captainId === ctx.viewer.id ||
-          match.awayTeam?.captainId === ctx.viewer.id) &&
-        ctx.viewer.id !== requester;
+        actorSide !== null && ctx.viewer.id !== requester;
       if (!isOtherCaptain && ctx.viewer.role !== "SUPER_ADMIN") {
         throw new GraphQLError("Only the other captain may approve", {
           extensions: { code: "FORBIDDEN" },
@@ -849,7 +847,7 @@ builder.mutationFields((t) => ({
         include: {
           homeTeam: { select: { captainId: true } },
           awayTeam: { select: { captainId: true } },
-          matchday: { select: { competition: { select: { slug: true } } } },
+          matchday: { select: { competition: { select: { id: true, slug: true } } } },
         },
       });
       if (!match.lineupEditRequestedAt) {
@@ -857,11 +855,11 @@ builder.mutationFields((t) => ({
           extensions: { code: "INVALID_TRANSITION" },
         });
       }
+      // Round-48 — captain check accepts Team Captain OR per-comp Roster Captain.
       const requester = match.lineupEditRequestedById;
+      const actorSide = await findCaptainSide(ctx, match, ctx.viewer.id);
       const isOtherCaptain =
-        (match.homeTeam?.captainId === ctx.viewer.id ||
-          match.awayTeam?.captainId === ctx.viewer.id) &&
-        ctx.viewer.id !== requester;
+        actorSide !== null && ctx.viewer.id !== requester;
       if (!isOtherCaptain && ctx.viewer.role !== "SUPER_ADMIN") {
         throw new GraphQLError("Only the other captain may reject", {
           extensions: { code: "FORBIDDEN" },

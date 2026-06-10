@@ -46,6 +46,7 @@ export const CompetitionEditableQuery = graphql(/* GraphQL */ `
       minPlayersPerTeam
       maxPlayersPerTeam
       breakAndRunRule
+      requiresHomeVenue
       maxGamesPerVenuePerMatchday
       pointsWin
       pointsDraw
@@ -93,6 +94,7 @@ export const CompetitionHeaderQuery = graphql(/* GraphQL */ `
       maxTeams
       minPlayersPerTeam
       maxPlayersPerTeam
+      requiresHomeVenue
       isFollowing
       followerCount
       myTeamApplication {

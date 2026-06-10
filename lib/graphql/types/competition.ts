@@ -47,6 +47,7 @@ builder.prismaObject("Competition", {
     pointsLoss: t.exposeInt("pointsLoss"),
     isPublic: t.exposeBoolean("isPublic"),
     breakAndRunRule: t.exposeBoolean("breakAndRunRule"),
+    requiresHomeVenue: t.exposeBoolean("requiresHomeVenue"),
     maxGamesPerVenuePerMatchday: t.exposeInt(
       "maxGamesPerVenuePerMatchday",
       { nullable: true },
@@ -80,6 +81,10 @@ builder.prismaObject("CompetitionApplication", {
     submittedAt: t.expose("submittedAt", { type: "DateTime" }),
     reviewedAt: t.expose("reviewedAt", { type: "DateTime", nullable: true }),
     applicationPlayers: t.relation("applicationPlayers"),
+    // Round-48 — per-competition Roster Captain (set only when the Team
+    // Captain isn't in this application's roster). The match flow allows
+    // this user to act with the same authority as the Team Captain.
+    rosterCaptain: t.relation("rosterCaptain", { nullable: true }),
   }),
 });
 
@@ -124,6 +129,7 @@ export const CreateCompetitionInput = builder.inputType(
       currency: t.string({ defaultValue: "VND" }),
       schedulingType: t.field({ type: SchedulingTypeEnum }),
       breakAndRunRule: t.boolean({ defaultValue: false }),
+      requiresHomeVenue: t.boolean({ defaultValue: false }),
       maxGamesPerVenuePerMatchday: t.int(),
       blocks: t.field({ type: [MatchFormatBlockInput] }),
     }),
@@ -138,6 +144,11 @@ export const ApplyToCompetitionInput = builder.inputType(
       teamId: t.id({ required: true }),
       message: t.string(),
       playerUserIds: t.idList({ defaultValue: [] }),
+      // Round-48 — when the Team Captain isn't in playerUserIds, they MUST
+      // nominate one of the roster players to be the Roster Captain. The
+      // resolver enforces: rosterCaptainUserId ∈ playerUserIds and is
+      // required iff captain ∉ playerUserIds.
+      rosterCaptainUserId: t.id(),
     }),
   },
 );

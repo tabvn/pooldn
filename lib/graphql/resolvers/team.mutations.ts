@@ -10,6 +10,9 @@ const UpdateTeamInput = builder.inputType("UpdateTeamInput", {
     description: t.string(),
     logoUrl: t.string(),
     isActive: t.boolean(),
+    // Round-48 — captain manages the team's home venue from the manage page.
+    // Passing null clears the home venue; omitting leaves it untouched.
+    homeVenueId: t.id(),
   }),
 });
 
@@ -175,6 +178,12 @@ builder.mutationFields((t) => ({
           logoUrl:
             args.input.logoUrl === null ? null : args.input.logoUrl ?? undefined,
           isActive: args.input.isActive ?? undefined,
+          homeVenueId:
+            args.input.homeVenueId === null
+              ? null
+              : args.input.homeVenueId
+                ? String(args.input.homeVenueId)
+                : undefined,
         },
       });
     },

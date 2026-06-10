@@ -43,6 +43,24 @@ async function loadCaptainContext(
   let forTeamId: string | null = null;
   if (match.homeTeam?.captainId === viewerId) forTeamId = match.homeTeam.id;
   else if (match.awayTeam?.captainId === viewerId) forTeamId = match.awayTeam.id;
+  // Round-48 — also accept the per-competition Roster Captain. A team's
+  // application can nominate someone other than the Team Captain to manage
+  // match flow for that competition; they should be able to submit scores
+  // for the team they captain.
+  if (!forTeamId) {
+    const teamIds = [match.homeTeam?.id, match.awayTeam?.id].filter(
+      (id): id is string => Boolean(id),
+    );
+    const rcApp = await prisma.competitionApplication.findFirst({
+      where: {
+        competitionId: match.matchday.competition.id,
+        rosterCaptainUserId: viewerId,
+        teamId: { in: teamIds },
+      },
+      select: { teamId: true },
+    });
+    if (rcApp) forTeamId = rcApp.teamId;
+  }
   if (!forTeamId && viewerRole !== "SUPER_ADMIN") {
     throw new GraphQLError("Only a participating captain may submit a score", {
       extensions: { code: "FORBIDDEN" },

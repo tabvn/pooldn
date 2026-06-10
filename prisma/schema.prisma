@@ -121,6 +121,9 @@ enum NotificationType {
   MATCH_SCHEDULED
   MATCH_RESULT_RECORDED
   ROSTER_INVITE
+  // Round-48 — fired when a non-playing team captain nominates a player
+  // as the per-competition Roster Captain. Recipient is the chosen player.
+  ROSTER_CAPTAIN_ASSIGNED
   COMMUNITY_LIKE
   COMMUNITY_COMMENT
   COMMUNITY_REPLY
@@ -192,6 +195,7 @@ model User {
   captainedTeams        Team[]             @relation("CaptainedBy")
   teamMemberships       TeamMember[]
   applicationPlayers    ApplicationPlayer[]
+  rosterCaptainOf       CompetitionApplication[] @relation("ApplicationRosterCaptain")
   matchParticipations   MatchParticipant[]
   playerCompStats       PlayerCompStat[]
   notifications         Notification[]
@@ -456,6 +460,10 @@ model Competition {
   rulesUrl            String?
   // Rules
   breakAndRunRule     Boolean           @default(false)
+  // Round-48 — Figma "Team Captain Application" gate: when true, the apply
+  // flow blocks a team whose Team.homeVenueId is null, with the verbatim
+  // copy "This competition requires each team to have a home venue."
+  requiresHomeVenue   Boolean           @default(false)
   // Round-47 — scheduling cap from Figma. When set, the matchday generator
   // refuses to schedule more than this many matches at the same venue on
   // the same matchday. Null = no cap. UI input on the wizard Schedule step.
@@ -524,11 +532,19 @@ model CompetitionApplication {
   submittedAt   DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
+  // Round-48 — per-competition Roster Captain. Set when the Team Captain
+  // is NOT in the application's roster; the nominated player runs match
+  // flow (lineups, score submission) for this competition. NULL when the
+  // Team Captain is playing and acts as captain themselves.
+  rosterCaptainUserId String?
+  rosterCaptain       User?     @relation("ApplicationRosterCaptain", fields: [rosterCaptainUserId], references: [id])
+
   applicationPlayers ApplicationPlayer[]
 
   @@unique([competitionId, teamId])
   @@index([teamId])
   @@index([status])
+  @@index([rosterCaptainUserId])
   @@map("competition_applications")
 }
 

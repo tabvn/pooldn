@@ -33,6 +33,15 @@ export const UpdateTeamMutation = graphql(/* GraphQL */ `
       description
       logoUrl
       isActive
+      homeVenue {
+        id
+        slug
+        name
+        city {
+          id
+          name
+        }
+      }
     }
   }
 `);

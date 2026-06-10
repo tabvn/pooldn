@@ -61,6 +61,7 @@ const UpdateCompetitionInput = builder.inputType("UpdateCompetitionInput", {
     bannerUrl: t.string(),
     schedulingType: t.string(),
     breakAndRunRule: t.boolean(),
+    requiresHomeVenue: t.boolean(),
     maxGamesPerVenuePerMatchday: t.int(),
     blocks: t.field({ type: [MatchFormatBlockInput] }),
   }),
@@ -99,6 +100,7 @@ builder.mutationFields((t) => ({
             currency: i.currency ?? "VND",
             schedulingType: i.schedulingType ?? undefined,
             breakAndRunRule: i.breakAndRunRule ?? false,
+            requiresHomeVenue: i.requiresHomeVenue ?? false,
             maxGamesPerVenuePerMatchday:
               i.maxGamesPerVenuePerMatchday ?? null,
           },
@@ -172,6 +174,7 @@ builder.mutationFields((t) => ({
           currency: i.currency ?? undefined,
           schedulingType: i.schedulingType ?? undefined,
           breakAndRunRule: i.breakAndRunRule ?? undefined,
+          requiresHomeVenue: i.requiresHomeVenue ?? undefined,
           maxGamesPerVenuePerMatchday:
             i.maxGamesPerVenuePerMatchday === null
               ? null
@@ -412,7 +415,37 @@ builder.mutationFields((t) => ({
           extensions: { code: "INVALID_TRANSITION" },
         });
       }
+      // Round-48 — Figma gate "This competition requires each team to have a
+      // home venue." Server-side enforcement runs alongside the apply form's
+      // client-side gate so the rule can't be bypassed by direct API calls.
+      if (competition.requiresHomeVenue && !team.homeVenueId) {
+        throw new GraphQLError(
+          "This competition requires each team to have a home venue.",
+          { extensions: { code: "HOME_VENUE_REQUIRED" } },
+        );
+      }
       const players = (args.input.playerUserIds ?? []).map(String);
+      // Round-48 — per-competition Roster Captain. When the Team Captain is
+      // not in the playing roster, they MUST nominate one of the roster
+      // players to act as captain for this competition (manages lineups +
+      // confirms results). If they ARE playing, this is optional and
+      // ignored (defaults to themselves at runtime).
+      const captainIsPlaying = players.includes(team.captainId);
+      const rosterCaptainUserId = args.input.rosterCaptainUserId
+        ? String(args.input.rosterCaptainUserId)
+        : null;
+      if (!captainIsPlaying && !rosterCaptainUserId) {
+        throw new GraphQLError(
+          "Since you're not participating, select a player to act as captain for this competition (manage lineups and confirm results).",
+          { extensions: { code: "ROSTER_CAPTAIN_REQUIRED" } },
+        );
+      }
+      if (rosterCaptainUserId && !players.includes(rosterCaptainUserId)) {
+        throw new GraphQLError(
+          "The Roster Captain must be one of the players you selected.",
+          { extensions: { code: "ROSTER_CAPTAIN_NOT_IN_ROSTER" } },
+        );
+      }
       // Cross-team roster guard (locks user→team in this competition).
       const app = await ctx.prisma.$transaction(async (tx) => {
         await assertNoCrossTeamRoster(tx, competition.id, team.id, players);
@@ -449,6 +482,7 @@ builder.mutationFields((t) => ({
               message: args.input.message ?? null,
               reviewNote: null,
               reviewedAt: null,
+              rosterCaptainUserId,
               applicationPlayers: playerRows.length
                 ? { create: playerRows }
                 : undefined,
@@ -472,6 +506,7 @@ builder.mutationFields((t) => ({
             competitionId: competition.id,
             teamId: team.id,
             message: args.input.message ?? null,
+            rosterCaptainUserId,
             applicationPlayers: playerRows.length
               ? { create: playerRows }
               : undefined,
@@ -479,7 +514,8 @@ builder.mutationFields((t) => ({
         });
       });
       // Notify the organizer that an application landed.
-      await new NotificationService(ctx.prisma).create({
+      const svc = new NotificationService(ctx.prisma);
+      await svc.create({
         type: "APPLICATION_SUBMITTED",
         title: `${team.name} applied to ${competition.name}`,
         message: "Review the application and decide.",
@@ -491,6 +527,24 @@ builder.mutationFields((t) => ({
         },
         groupKey: `app-${competition.id}`,
       });
+      // Round-48 — tell the chosen Roster Captain they've been nominated.
+      // Only fires when the Team Captain isn't the Roster Captain themselves
+      // (otherwise the captain would be notifying themselves on the same
+      // action they just took).
+      if (rosterCaptainUserId && rosterCaptainUserId !== ctx.viewer.id) {
+        await svc.create({
+          type: "ROSTER_CAPTAIN_ASSIGNED",
+          title: `You're the Roster Captain for ${competition.name}`,
+          message: `${team.name}'s captain nominated you to manage lineups and confirm results for this competition.`,
+          recipients: [rosterCaptainUserId],
+          entity: {
+            type: "APPLICATION",
+            id: competition.id,
+            slug: competition.slug,
+          },
+          groupKey: `roster-captain-${competition.id}-${team.id}`,
+        });
+      }
       return app;
     },
   }),

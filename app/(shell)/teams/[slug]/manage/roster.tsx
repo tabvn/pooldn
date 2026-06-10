@@ -12,6 +12,7 @@ import { PageTitle } from "@/components/layout/page-title";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { InvitePicker } from "@/components/team/invite-picker";
+import { HomeVenueCard } from "@/components/team/home-venue-card";
 import { TeamDetailQuery } from "@/lib/graphql/operations/team.operations";
 import {
   RemoveTeamMemberMutation,
@@ -228,6 +229,19 @@ export function ManageRoster({ slug }: { slug: string }) {
             )}
           </CardContent>
         </Card>
+
+        <HomeVenueCard
+          teamId={team.id}
+          currentVenue={
+            team.homeVenue
+              ? {
+                  id: team.homeVenue.id,
+                  name: team.homeVenue.name,
+                  city: { name: team.homeVenue.city.name },
+                }
+              : null
+          }
+        />
 
         <Card data-testid="invite-card">
           <CardHeader>

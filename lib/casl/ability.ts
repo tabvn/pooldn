@@ -109,6 +109,14 @@ export function defineAbilityFor(actor: AbilityActor): AppAbility {
         OR: [
           { homeTeam: { is: { captainId: actor.id } } },
           { awayTeam: { is: { captainId: actor.id } } },
+          // Round-48 — Roster Captain path: viewer is the nominated
+          // captain on an application in this competition for one of
+          // the match's teams.
+          {
+            matchday: { is: { competition: { is: {
+              applications: { some: { rosterCaptainUserId: actor.id } },
+            } } } },
+          },
         ],
       });
       can("update", "MatchFrame", {
@@ -117,6 +125,11 @@ export function defineAbilityFor(actor: AbilityActor): AppAbility {
             OR: [
               { homeTeam: { is: { captainId: actor.id } } },
               { awayTeam: { is: { captainId: actor.id } } },
+              {
+                matchday: { is: { competition: { is: {
+                  applications: { some: { rosterCaptainUserId: actor.id } },
+                } } } },
+              },
             ],
           },
         },
@@ -162,6 +175,12 @@ export function defineAbilityFor(actor: AbilityActor): AppAbility {
         OR: [
           { homeTeam: { is: { captainId: actor.id } } },
           { awayTeam: { is: { captainId: actor.id } } },
+          // Round-48 — Roster Captain on an application in the match's competition.
+          {
+            matchday: { is: { competition: { is: {
+              applications: { some: { rosterCaptainUserId: actor.id } },
+            } } } },
+          },
         ],
       });
       can("update", "MatchFrame", {
@@ -170,6 +189,11 @@ export function defineAbilityFor(actor: AbilityActor): AppAbility {
             OR: [
               { homeTeam: { is: { captainId: actor.id } } },
               { awayTeam: { is: { captainId: actor.id } } },
+              {
+                matchday: { is: { competition: { is: {
+                  applications: { some: { rosterCaptainUserId: actor.id } },
+                } } } },
+              },
             ],
           },
         },
