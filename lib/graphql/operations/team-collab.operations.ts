@@ -58,6 +58,55 @@ export const MyTeamInvitationsQuery = graphql(/* GraphQL */ `
   }
 `);
 
+export const MyInvitationsInboxQuery = graphql(/* GraphQL */ `
+  query MyInvitationsInbox {
+    myTeamInvitations {
+      id
+      status
+      message
+      token
+      createdAt
+      team {
+        id
+        slug
+        name
+        logoUrl
+      }
+      invitedBy {
+        id
+        name
+        username
+      }
+    }
+    myCompetitionInvitations {
+      id
+      status
+      message
+      submittedAt
+      team {
+        id
+        slug
+        name
+        logoUrl
+      }
+      competition {
+        id
+        slug
+        name
+        bannerUrl
+        status
+        startDate
+        endDate
+        organizer {
+          id
+          name
+          username
+        }
+      }
+    }
+  }
+`);
+
 export const InviteToTeamMutation = graphql(/* GraphQL */ `
   mutation InviteToTeam(
     $teamId: ID!

@@ -525,6 +525,31 @@ builder.queryFields((t) => ({
     },
   }),
 
+  // Round-49 — competition invites for any team the viewer captains.
+  // Drives the unified /invitations inbox alongside myTeamInvitations.
+  myCompetitionInvitations: t.prismaField({
+    type: ["CompetitionApplication"],
+    description:
+      "Pending competition invitations (status=INVITED) for teams the " +
+      "viewer captains.",
+    resolve: async (query, _root, _args, ctx) => {
+      if (!ctx.viewer) return [];
+      const captainTeams = await ctx.prisma.team.findMany({
+        where: { captainId: ctx.viewer.id },
+        select: { id: true },
+      });
+      if (!captainTeams.length) return [];
+      return ctx.prisma.competitionApplication.findMany({
+        ...query,
+        where: {
+          teamId: { in: captainTeams.map((t) => t.id) },
+          status: "INVITED",
+        },
+        orderBy: { submittedAt: "desc" },
+      });
+    },
+  }),
+
   teamInvitations: t.prismaField({
     type: ["TeamInvitation"],
     description: "Pending invitations for a team (captain only).",

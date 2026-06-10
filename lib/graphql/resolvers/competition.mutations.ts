@@ -13,7 +13,11 @@ import { ensure, requireUser } from "@/lib/casl/guard";
 import type { CompetitionStatus } from "@/lib/generated/prisma/enums";
 import { NotificationService } from "@/lib/services/notification.service";
 import { assertNoCrossTeamRoster } from "@/lib/services/roster.service";
-import { sendCompetitionInvite } from "@/lib/services/email.service";
+import {
+  drainEmailQueue,
+  enqueueEmail,
+} from "@/lib/services/email-queue.service";
+import { after } from "next/server";
 
 async function transition(
   ctx: GraphQLContext,
@@ -1043,25 +1047,34 @@ builder.mutationFields((t) => ({
           },
           groupKey: `comp-invite-${competition.id}-${team.id}`,
         });
-        // Email the captain (best-effort — SMTP failures land in the dev
-        // outbox and surface in the security log).
+        // Queue the email — durable, retryable, and (importantly) does not
+        // block the response. The actual SMTP send fires from `after()`
+        // below, with /api/cron/drain-emails as a safety-net retry.
+        // *.local addresses are auto-marked SKIPPED inside enqueueEmail.
         if (team.captain?.email) {
-          await sendCompetitionInvite({
+          await enqueueEmail(ctx.prisma, {
+            template: "competition_invite",
             to: team.captain.email,
-            captainName: team.captain.name,
-            teamName: team.name,
-            competitionName: competition.name,
-            competitionSlug: competition.slug,
-            organizerName: organizer.name,
-            personalNote: note,
-          }).catch((e) => {
-            console.warn(
-              `[inviteTeamsToCompetition] email failed for ${team.captain?.email}:`,
-              e,
-            );
+            payload: {
+              captainName: team.captain.name,
+              teamName: team.name,
+              competitionName: competition.name,
+              competitionSlug: competition.slug,
+              organizerName: organizer.name,
+              personalNote: note,
+            },
           });
         }
       }
+      // Drain on the side after the response goes out. Failures here don't
+      // surface to the caller; the cron picks them up on the next run.
+      after(async () => {
+        try {
+          await drainEmailQueue(ctx.prisma);
+        } catch (e) {
+          console.warn("[inviteTeamsToCompetition] drain failed:", e);
+        }
+      });
       // Round-49 — keep `competition.invitedTeamIds` in sync with the new
       // INVITED rows so an INVITE_ONLY comp's apply form / viewerCanApply
       // gate accepts the invited captain. We union, never remove: revoking
