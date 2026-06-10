@@ -2,6 +2,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const sizeMap = {
+  xs: "size-5 text-[10px]",
   sm: "size-7 text-xs",
   md: "size-10 text-sm",
   lg: "size-14 text-base",

@@ -63,6 +63,42 @@ export const UserType = builder.prismaObject("User", {
         orderBy: { id: "desc" },
       }),
     }),
+    // Round-49 — teams the player belongs to (member or captain). Used by
+    // the rankings list to surface team affiliations on each row. Bounded
+    // by `limit` so a player in many teams doesn't blow up the payload;
+    // `teamsCount` lets the UI render a "+N more" pill.
+    teams: t.prismaField({
+      type: ["Team"],
+      description:
+        "Teams the user belongs to (captain or member), sorted by name.",
+      args: { limit: t.arg.int() },
+      resolve: async (query, u, args, ctx) => {
+        const take = Math.min(Math.max(args.limit ?? 10, 1), 50);
+        return ctx.prisma.team.findMany({
+          ...query,
+          where: {
+            OR: [
+              { captainId: u.id },
+              { members: { some: { userId: u.id } } },
+            ],
+          },
+          orderBy: { name: "asc" },
+          take,
+        });
+      },
+    }),
+    teamsCount: t.int({
+      description: "Total team count for the user (captain + member).",
+      resolve: (u, _args, ctx) =>
+        ctx.prisma.team.count({
+          where: {
+            OR: [
+              { captainId: u.id },
+              { members: { some: { userId: u.id } } },
+            ],
+          },
+        }),
+    }),
     createdAt: t.expose("createdAt", { type: "DateTime" }),
     updatedAt: t.expose("updatedAt", { type: "DateTime" }),
   }),

@@ -48,18 +48,28 @@ builder.queryFields((t) => ({
   rankings: t.prismaField({
     type: ["User"],
     description:
-      "Round-22 — global leaderboard of active players ordered by rating DESC. Cursor-paginated by User.id.",
+      "Round-22 — global leaderboard of active players ordered by rating DESC. Cursor-paginated by User.id. Round-49 — optional teamId filter limits to players on that team (captain or member).",
     args: {
       first: t.arg.int(),
       after: t.arg.id(),
+      teamId: t.arg.id(),
     },
     resolve: (query, _root, args, ctx) => {
       const take = Math.min(Math.max(args.first ?? 50, 1), 200);
+      const teamId = args.teamId ? String(args.teamId) : null;
       return ctx.prisma.user.findMany({
         ...query,
         where: {
           isActive: true,
           role: { in: ["PLAYER", "TEAM_CAPTAIN"] },
+          ...(teamId
+            ? {
+                OR: [
+                  { captainedTeams: { some: { id: teamId } } },
+                  { teamMemberships: { some: { teamId } } },
+                ],
+              }
+            : {}),
         },
         orderBy: [{ rating: "desc" }, { id: "asc" }],
         take,
