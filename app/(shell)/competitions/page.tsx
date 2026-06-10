@@ -1,11 +1,11 @@
 import Link from "next/link";
+import { Plus, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CompetitionCard } from "@/components/competition/competition-card";
-import { PoolhubFilters } from "@/components/competition/poolhub-filters";
+import { CompetitionsFilters } from "@/components/competition/competitions-filters";
 import { getClient } from "@/lib/apollo/client";
 import { getHeaderCityId } from "@/lib/headers/city";
 import {
-  CitiesQuery,
   CompetitionsListQuery,
   MyCompetitionsQuery,
   ViewerQuery,
@@ -29,6 +29,15 @@ const GAME_VALUES: ReadonlySet<GameType> = new Set([
   "TEN_BALL",
   "STRAIGHT_POOL",
 ]);
+
+const STATUS_DOT: Record<string, string> = {
+  DRAFT: "bg-warning",
+  CANCELLED: "bg-destructive",
+  OPEN_FOR_APPLICATIONS: "bg-primary",
+  APPLICATIONS_CLOSED: "bg-warning",
+  ONGOING: "bg-success",
+  COMPLETED: "bg-success/60",
+};
 
 export default async function CompetitionsBrowsePage({
   searchParams,
@@ -57,42 +66,53 @@ export default async function CompetitionsBrowsePage({
   };
 
   const client = getClient();
-  const [{ data }, viewerResult, citiesResult, myCompsResult] =
-    await Promise.all([
-      client.query({ query: CompetitionsListQuery, variables: { filters } }),
-      client.query({ query: ViewerQuery, errorPolicy: "ignore" }),
-      client.query({ query: CitiesQuery, errorPolicy: "ignore" }),
-      client.query({ query: MyCompetitionsQuery, errorPolicy: "ignore" }),
-    ]);
+  const [{ data }, viewerResult, myCompsResult] = await Promise.all([
+    client.query({ query: CompetitionsListQuery, variables: { filters } }),
+    client.query({ query: ViewerQuery, errorPolicy: "ignore" }),
+    client.query({ query: MyCompetitionsQuery, errorPolicy: "ignore" }),
+  ]);
   const competitions = data?.competitions ?? [];
   const viewer = viewerResult.data?.viewer;
-  const cities = citiesResult.data?.cities ?? [];
   const myComps = myCompsResult.data?.myCompetitions ?? [];
   const canCreate = !!viewer;
+  const hasActiveFilters =
+    !!filters.status || !!filters.gameType || !!filters.search;
 
   return (
-    <div className="p-8 space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-semibold">Browse competitions</h1>
-          <p className="text-sm text-muted-foreground">
-            Every public competition, filterable by status, game type, and city.
+    <div className="mx-auto max-w-7xl space-y-8 p-6 md:p-8">
+      {/* Page header */}
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary">
+            <Trophy className="size-3.5" />
+            Poolhub
+          </div>
+          <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
+            Competitions
+          </h1>
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            Every public competition on PoolDN. Filter by what's open, what's
+            running, or the game you play.
           </p>
         </div>
         {canCreate ? (
           <Link href="/competitions/new">
-            <Button>Create competition</Button>
+            <Button size="lg">
+              <Plus className="size-4" />
+              Create competition
+            </Button>
           </Link>
         ) : null}
       </header>
 
+      {/* Your competitions — compact strip; hidden when empty */}
       {myComps.length > 0 ? (
         <section
-          className="rounded-xl border border-primary/30 bg-primary/5 p-4"
+          className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 to-primary/5 p-4"
           data-testid="my-competitions"
         >
           <header className="mb-3 flex items-baseline justify-between">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-primary">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-primary">
               Your competitions
             </h3>
             <span className="text-xs text-muted-foreground">
@@ -108,15 +128,7 @@ export default async function CompetitionsBrowsePage({
                   data-testid={`my-competition-${c.id}`}
                 >
                   <span
-                    className="inline-block size-2 rounded-full"
-                    style={{
-                      backgroundColor:
-                        c.status === "DRAFT"
-                          ? "rgb(245 158 11)"
-                          : c.status === "CANCELLED"
-                            ? "rgb(239 68 68)"
-                            : "rgb(34 197 94)",
-                    }}
+                    className={`inline-block size-2 rounded-full ${STATUS_DOT[c.status] ?? "bg-muted"}`}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-semibold">
@@ -134,12 +146,39 @@ export default async function CompetitionsBrowsePage({
         </section>
       ) : null}
 
-      <PoolhubFilters cities={cities} />
+      {/* Filters */}
+      <CompetitionsFilters resultCount={competitions.length} />
 
+      {/* Results */}
       {competitions.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No competitions match your filters.
-        </p>
+        <div
+          className="rounded-2xl border border-dashed border-border bg-card/50 px-6 py-16 text-center"
+          data-testid="competitions-empty"
+        >
+          <div className="mx-auto mb-3 inline-flex size-12 items-center justify-center rounded-full bg-secondary text-muted-foreground">
+            <Trophy className="size-5" />
+          </div>
+          <h3 className="text-base font-semibold">
+            {hasActiveFilters
+              ? "No competitions match these filters"
+              : "No competitions yet"}
+          </h3>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+            {hasActiveFilters
+              ? "Try clearing a filter — or check back once organizers post new ones."
+              : canCreate
+                ? "Be the first to spin up a competition for your city."
+                : "Check back soon — organizers add new ones every week."}
+          </p>
+          {canCreate && !hasActiveFilters ? (
+            <Link href="/competitions/new" className="mt-4 inline-block">
+              <Button>
+                <Plus className="size-4" />
+                Create one
+              </Button>
+            </Link>
+          ) : null}
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {competitions.map((c) => (
