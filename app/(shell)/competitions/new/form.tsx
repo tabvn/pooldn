@@ -99,7 +99,32 @@ const optionalDate = z.preprocess(
 );
 
 const GAME_BLOCK_TYPES = ["SINGLES", "DOUBLES", "SCOTCH_DOUBLES"] as const;
-const SCHEDULING_TYPES = ["FIXED_DATE", "FLEXIBLE", "AUTO_GENERATED"] as const;
+const SCHEDULING_TYPES = [
+  "FIXED_DATE",
+  "FLEXIBLE",
+  "AUTO_GENERATED",
+  "WEEKLY_ROUNDS",
+  "FIXED_MATCHDAYS",
+] as const;
+const APPLICATION_MODES = ["OPEN", "INVITE_ONLY"] as const;
+const MATCH_VENUE_MODES = ["TEAM_VENUES", "CENTRAL_VENUE"] as const;
+
+// Round-48 (wizard) — Figma "Scheduling Type → Weekly Rounds" weekday list.
+// weekday: 0 = Sun, 1 = Mon, …, 6 = Sat (matches JS Date.getDay()).
+const WEEKDAYS = [
+  { value: 0, label: "Sunday" },
+  { value: 1, label: "Monday" },
+  { value: 2, label: "Tuesday" },
+  { value: 3, label: "Wednesday" },
+  { value: 4, label: "Thursday" },
+  { value: 5, label: "Friday" },
+  { value: 6, label: "Saturday" },
+] as const;
+
+const weekdaySlotSchema = z.object({
+  weekday: z.coerce.number().int().min(0).max(6),
+  time: z.string().regex(/^\d{1,2}:\d{2}$/, "Pick a time"),
+});
 
 // The wizard stores the Structure step as a flat list of UI items (game OR
 // break), serialised into MatchFormatBlock rows at submit time.
@@ -164,6 +189,13 @@ const schema = z.object({
   // whose Team.homeVenueId is null, with Figma copy "This competition
   // requires each team to have a home venue."
   requiresHomeVenue: z.boolean(),
+  // Round-48 (wizard) — Figma "How Participants Apply" + Schedule fields.
+  applicationMode: z.enum(APPLICATION_MODES),
+  invitedTeamIds: z.array(z.string()).optional(),
+  matchVenueMode: z.enum(MATCH_VENUE_MODES),
+  centralVenueId: z.string().optional(),
+  gamesPerOpponent: z.coerce.number().int().min(1).max(4),
+  weekdaySchedule: z.array(weekdaySlotSchema).optional(),
 })
   // End date can't precede start date when both are set.
   .refine(
@@ -177,16 +209,19 @@ const schema = z.object({
 type FormInput = z.input<typeof schema>;
 type FormOutput = z.output<typeof schema>;
 
+// Round-48 (wizard) — Figma stepper. Dropped the standalone "Season preview"
+// step; the generated calendar lives at the bottom of Schedule's summary now
+// (and again on Review & Publish), so it stays visible without being its own
+// page-turn.
 const STEPS = [
   { title: "Basics", desc: "Name, game, format, tournament type, start date and prize." },
   { title: "Participants", desc: "Team and player counts." },
-  { title: "Schedule", desc: "City, scheduling and matchday slots." },
+  { title: "Schedule", desc: "Where, how often and on which weekdays matches are played." },
   { title: "Structure", desc: "Match builder + rules (Break & Run)." },
-  { title: "Season preview", desc: "Review the auto-generated matchday calendar." },
   { title: "Review & Publish", desc: "Confirm everything before you publish." },
 ] as const;
 
-type StepIndex = 0 | 1 | 2 | 3 | 4 | 5;
+type StepIndex = 0 | 1 | 2 | 3 | 4;
 const FIELDS_BY_STEP: Record<StepIndex, (keyof FormInput)[]> = {
   0: [
     "name",
@@ -207,6 +242,8 @@ const FIELDS_BY_STEP: Record<StepIndex, (keyof FormInput)[]> = {
     "maxPlayersPerTeam",
     "raceToFrames",
     "requiresHomeVenue",
+    "applicationMode",
+    "invitedTeamIds",
   ],
   2: [
     "cityId",
@@ -216,12 +253,13 @@ const FIELDS_BY_STEP: Record<StepIndex, (keyof FormInput)[]> = {
     "matchdayStartTime",
     "matchdayEndTime",
     "maxGamesPerVenuePerMatchday",
+    "matchVenueMode",
+    "centralVenueId",
+    "gamesPerOpponent",
+    "weekdaySchedule",
   ],
   3: ["structureItems", "breakAndRunRule"],
-  // Step 4 — Season preview. Schedule fields already validated at step 2;
-  // the preview is read-only over them, so no additional triggers here.
   4: [],
-  5: [],
 };
 
 export type WizardInitial = {
@@ -246,6 +284,12 @@ export type WizardInitial = {
   currency: string;
   breakAndRunRule: boolean;
   requiresHomeVenue: boolean;
+  applicationMode?: string | null;
+  invitedTeamIds?: string[] | null;
+  matchVenueMode?: string | null;
+  centralVenueId?: string | null;
+  gamesPerOpponent?: number | null;
+  weekdaySchedule?: Array<{ weekday: number; time: string }> | null;
   maxGamesPerVenuePerMatchday?: number | null;
   blocks: Array<{
     type: "SINGLES" | "DOUBLES" | "SCOTCH_DOUBLES";
@@ -303,6 +347,13 @@ export function NewCompetitionForm({
           currency: initial.currency,
           breakAndRunRule: initial.breakAndRunRule,
           requiresHomeVenue: initial.requiresHomeVenue,
+          applicationMode: (initial.applicationMode as never) ?? "OPEN",
+          invitedTeamIds: initial.invitedTeamIds ?? [],
+          matchVenueMode:
+            (initial.matchVenueMode as never) ?? "TEAM_VENUES",
+          centralVenueId: initial.centralVenueId ?? "",
+          gamesPerOpponent: initial.gamesPerOpponent ?? 1,
+          weekdaySchedule: initial.weekdaySchedule ?? [],
           maxGamesPerVenuePerMatchday:
             initial.maxGamesPerVenuePerMatchday ?? undefined,
           structureItems:
@@ -331,6 +382,15 @@ export function NewCompetitionForm({
           matchdayStartTime: "19:00",
           matchdayEndTime: "23:00",
           requiresHomeVenue: false,
+          applicationMode: "OPEN",
+          invitedTeamIds: [],
+          matchVenueMode: "TEAM_VENUES",
+          centralVenueId: "",
+          gamesPerOpponent: 1,
+          weekdaySchedule: [
+            { weekday: 2, time: "21:00" },
+            { weekday: 5, time: "21:00" },
+          ],
           structureItems: [
             { uid: "s-default-1", kind: "GAME", type: "SINGLES", games: 3 },
             { uid: "s-default-2", kind: "BREAK", durationMin: 10 },
@@ -351,8 +411,25 @@ export function NewCompetitionForm({
 
   async function nextStep() {
     const ok = await trigger(FIELDS_BY_STEP[step], { shouldFocus: true });
-    if (!ok) return;
-    setStep((s) => (Math.min(s + 1, 5) as StepIndex));
+    if (!ok) {
+      // Round-48 (wizard) — Bug 2 from the round-48 feedback doc: nextStep
+      // used to silently swallow validation failures, stranding users on
+      // steps whose offending field wasn't a focusable input (e.g.
+      // structureItems is an array). Surface the first error as a toast so
+      // the user always sees WHY Next didn't move.
+      const fields = FIELDS_BY_STEP[step];
+      const firstField = fields.find(
+        (f) => form.formState.errors[f as keyof FormInput],
+      );
+      const message = firstField
+        ? (form.formState.errors[firstField as keyof FormInput]?.message as
+            | string
+            | undefined) ?? "Please fix the highlighted fields to continue."
+        : "Please fix the highlighted fields to continue.";
+      toast.error("Can't continue yet", message);
+      return;
+    }
+    setStep((s) => (Math.min(s + 1, 4) as StepIndex));
   }
 
   function prevStep() {
@@ -381,7 +458,7 @@ export function NewCompetitionForm({
     // Guard: Enter inside any earlier-step input must NOT skip Review.
     // Without this the form auto-submits on first Enter and the Review step
     // is never reached.
-    if (step !== 5) return;
+    if (step !== 4) return;
     const blocks = structureItemsToBlocks(values.structureItems);
     try {
       if (isEdit && initial) {
@@ -407,6 +484,16 @@ export function NewCompetitionForm({
               currency: values.currency,
               schedulingType: values.schedulingType,
               breakAndRunRule: values.breakAndRunRule,
+              requiresHomeVenue: values.requiresHomeVenue,
+              applicationMode: values.applicationMode,
+              invitedTeamIds: values.invitedTeamIds ?? [],
+              matchVenueMode: values.matchVenueMode,
+              centralVenueId: values.centralVenueId || null,
+              gamesPerOpponent: values.gamesPerOpponent,
+              weekdaySchedule: (values.weekdaySchedule ?? []).map((w) => ({
+                weekday: w.weekday,
+                time: w.time,
+              })),
               maxGamesPerVenuePerMatchday:
                 values.maxGamesPerVenuePerMatchday ?? null,
               blocks,
@@ -443,6 +530,15 @@ export function NewCompetitionForm({
             schedulingType: values.schedulingType,
             breakAndRunRule: values.breakAndRunRule,
             requiresHomeVenue: values.requiresHomeVenue,
+            applicationMode: values.applicationMode,
+            invitedTeamIds: values.invitedTeamIds ?? [],
+            matchVenueMode: values.matchVenueMode,
+            centralVenueId: values.centralVenueId || null,
+            gamesPerOpponent: values.gamesPerOpponent,
+            weekdaySchedule: (values.weekdaySchedule ?? []).map((w) => ({
+              weekday: w.weekday,
+              time: w.time,
+            })),
             maxGamesPerVenuePerMatchday:
               values.maxGamesPerVenuePerMatchday ?? null,
             blocks,
@@ -490,26 +586,51 @@ export function NewCompetitionForm({
             </span>
           </div>
 
-          {/* Progress dots */}
-          <ol className="flex items-center gap-2" aria-label="Wizard progress">
-            {STEPS.map((s, i) => (
-              <li key={s.title} className="flex-1">
-                <button
-                  type="button"
-                  onClick={() => i < step && setStep(i as StepIndex)}
-                  disabled={i > step}
-                  className={
-                    "block w-full h-1.5 rounded-full transition-colors " +
-                    (i < step
-                      ? "bg-black cursor-pointer"
-                      : i === step
-                        ? "bg-black"
-                        : "bg-black/20")
-                  }
-                  aria-label={`Step ${i + 1}: ${s.title}`}
-                />
-              </li>
-            ))}
+          {/* Round-48 (wizard) — Figma stepper: labeled tabs with a strong
+              lime/black active state, a check on completed steps, and muted
+              chrome for future steps. Past steps clickable so the organizer
+              can hop back. */}
+          <ol
+            className="flex items-stretch gap-1 rounded-lg bg-black/10 p-1"
+            aria-label="Wizard progress"
+            data-testid="wizard-stepper"
+          >
+            {STEPS.map((s, i) => {
+              const isPast = i < step;
+              const isCurrent = i === step;
+              const interactive = isPast;
+              return (
+                <li key={s.title} className="flex-1">
+                  <button
+                    type="button"
+                    onClick={() => interactive && setStep(i as StepIndex)}
+                    disabled={!interactive && !isCurrent}
+                    aria-current={isCurrent ? "step" : undefined}
+                    data-testid={`stepper-${i}`}
+                    className={cn(
+                      "block w-full rounded-md px-3 py-2 text-left transition-colors",
+                      isCurrent
+                        ? "bg-black text-primary shadow-sm"
+                        : isPast
+                          ? "bg-transparent text-black hover:bg-black/10 cursor-pointer"
+                          : "bg-transparent text-black/40 cursor-not-allowed",
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider">
+                      {isPast ? <Check className="size-3" /> : <span>{i + 1}</span>}
+                    </div>
+                    <div
+                      className={cn(
+                        "mt-0.5 text-xs font-bold leading-tight",
+                        isCurrent ? "text-primary" : undefined,
+                      )}
+                    >
+                      {s.title}
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
           </ol>
         </div>
       </header>
@@ -631,6 +752,7 @@ export function NewCompetitionForm({
                 />
               </Field>
             </div>
+            <StepSummary testId="basics-summary" bullets={basicsSummary(v)} />
           </Section>
         )}
 
@@ -704,55 +826,165 @@ export function NewCompetitionForm({
                 </span>
               </label>
             </div>
+
+            {/* Round-48 (wizard) — Figma "How Participants Apply" selector. */}
+            <Field label="How Participants Apply">
+              <Controller
+                control={control}
+                name="applicationMode"
+                render={({ field }) => (
+                  <SegmentedTabs
+                    value={field.value}
+                    onValueChange={(val) => field.onChange(val as never)}
+                    options={[
+                      { value: "OPEN", label: "Any team can apply" },
+                      { value: "INVITE_ONLY", label: "Invite only" },
+                    ]}
+                    testIdPrefix="comp-app-mode"
+                  />
+                )}
+              />
+              <p className="mt-2 rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-info-foreground">
+                {v.applicationMode === "INVITE_ONLY"
+                  ? "Only teams you invite from the competition detail page can apply."
+                  : "Any team captain can submit an application once you publish."}
+              </p>
+            </Field>
+
+            <StepSummary
+              testId="participants-summary"
+              bullets={participantsSummary(v)}
+            />
           </Section>
         )}
 
         {step === 2 && (
           <Section>
+            {/* Where Matches Are Played? — TEAM_VENUES vs CENTRAL_VENUE */}
+            <Field label="Where Matches Are Played?">
+              <Controller
+                control={control}
+                name="matchVenueMode"
+                render={({ field }) => (
+                  <SegmentedTabs
+                    value={field.value}
+                    onValueChange={(val) => field.onChange(val as never)}
+                    options={[
+                      { value: "TEAM_VENUES", label: "Team Venues" },
+                      { value: "CENTRAL_VENUE", label: "Central Venue" },
+                    ]}
+                    testIdPrefix="comp-venue-mode"
+                  />
+                )}
+              />
+              <p className="mt-2 rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-info-foreground">
+                {v.matchVenueMode === "CENTRAL_VENUE"
+                  ? "All matches play at one central venue you pick below."
+                  : "Teams will have games in their home venues."}
+              </p>
+              {v.matchVenueMode === "CENTRAL_VENUE" ? (
+                <div className="mt-3">
+                  <Field label="Central venue">
+                    <Controller
+                      control={control}
+                      name="centralVenueId"
+                      render={({ field }) => (
+                        <Select
+                          value={field.value ?? ""}
+                          onValueChange={field.onChange}
+                          placeholder="Pick a venue"
+                          options={[
+                            {
+                              value: "",
+                              label: (
+                                <span className="text-muted-foreground">
+                                  — pick a venue —
+                                </span>
+                              ),
+                            },
+                            // Pull from cities-with-venues, but we don't load
+                            // venues client-side here — organizer can update
+                            // post-create. Future: VenuesListQuery integration.
+                          ]}
+                        />
+                      )}
+                    />
+                  </Field>
+                </div>
+              ) : null}
+            </Field>
+
+            {/* Games per Opponent — 1 (Only Once) vs 2 (Home & Away) */}
+            <Field label="Games per Opponent">
+              <Controller
+                control={control}
+                name="gamesPerOpponent"
+                render={({ field }) => (
+                  <SegmentedTabs
+                    value={String(field.value)}
+                    onValueChange={(val) => field.onChange(Number(val))}
+                    options={[
+                      { value: "2", label: "Home & Away" },
+                      { value: "1", label: "Only Once" },
+                    ]}
+                    testIdPrefix="comp-games-per-opp"
+                  />
+                )}
+              />
+              <p className="mt-2 rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-info-foreground">
+                {Number(v.gamesPerOpponent) === 2
+                  ? "Each team plays twice (home & away) against every other team."
+                  : "Each team plays each opponent once."}
+              </p>
+            </Field>
+
+            {/* Scheduling Type — Weekly Rounds vs Fixed Match Days */}
+            <Field label="Scheduling Type">
+              <Controller
+                control={control}
+                name="schedulingType"
+                render={({ field }) => (
+                  <SegmentedTabs
+                    value={
+                      field.value === "FIXED_MATCHDAYS"
+                        ? "FIXED_MATCHDAYS"
+                        : "WEEKLY_ROUNDS"
+                    }
+                    onValueChange={(val) => field.onChange(val as never)}
+                    options={[
+                      { value: "WEEKLY_ROUNDS", label: "Weekly Rounds" },
+                      { value: "FIXED_MATCHDAYS", label: "Fixed Match Day(s)" },
+                    ]}
+                    testIdPrefix="comp-sched-type"
+                  />
+                )}
+              />
+              {v.schedulingType === "FIXED_MATCHDAYS" ? (
+                <p className="mt-2 rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-info-foreground">
+                  Each matchday gets a fixed date set after publish. Configure
+                  the count and per-matchday timing in the next phase.
+                </p>
+              ) : (
+                <div className="mt-3">
+                  <Controller
+                    control={control}
+                    name="weekdaySchedule"
+                    render={({ field }) => (
+                      <WeekdayListEditor
+                        value={(field.value ?? []) as Array<{
+                          weekday: number;
+                          time: string;
+                        }>}
+                        onChange={field.onChange}
+                      />
+                    )}
+                  />
+                </div>
+              )}
+            </Field>
+
+            {/* Cadence / cap knobs that still apply regardless of mode. */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <Field label="Scheduling">
-                <Controller
-                  control={control}
-                  name="schedulingType"
-                  render={({ field }) => (
-                    <Select
-                      value={field.value}
-                      onValueChange={(v) =>
-                        field.onChange(v as (typeof SCHEDULING_TYPES)[number])
-                      }
-                      options={SCHEDULING_TYPES.map((v) => ({
-                        value: v,
-                        label: v.replace(/_/g, " ").toLowerCase(),
-                      }))}
-                    />
-                  )}
-                />
-              </Field>
-              <Field label="City (optional)">
-                <Controller
-                  control={control}
-                  name="cityId"
-                  render={({ field }) => (
-                    <Select
-                      value={field.value ?? ""}
-                      onValueChange={field.onChange}
-                      placeholder="— none —"
-                      options={[
-                        {
-                          value: "",
-                          label: (
-                            <span className="text-muted-foreground">— none —</span>
-                          ),
-                        },
-                        ...cities.map((c) => ({
-                          value: c.id,
-                          label: `${c.name}, ${c.country.name}`,
-                        })),
-                      ]}
-                    />
-                  )}
-                />
-              </Field>
               <Field
                 label="Matchdays"
                 hint="How many matchdays the schedule should span."
@@ -766,22 +998,9 @@ export function NewCompetitionForm({
                   {...register("matchdayCount")}
                 />
               </Field>
-              <Field
-                label="End date (optional)"
-                error={errors.endDate?.message}
-              >
+              <Field label="End date (optional)" error={errors.endDate?.message}>
                 <DateInput {...register("endDate")} />
               </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Matchday start">
-                  <Input type="time" {...register("matchdayStartTime")} />
-                </Field>
-                <Field label="Matchday end">
-                  <Input type="time" {...register("matchdayEndTime")} />
-                </Field>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Field
                 label="Max games per venue per matchday (optional)"
                 hint="Cap on matches at the same venue in one matchday. Leave empty for no cap."
@@ -794,10 +1013,12 @@ export function NewCompetitionForm({
                   {...register("maxGamesPerVenuePerMatchday")}
                 />
               </Field>
-              <Field label="Currency">
-                <Input defaultValue="VND" {...register("currency")} />
-              </Field>
             </div>
+
+            <StepSummary
+              testId="schedule-summary"
+              bullets={scheduleSummary(v)}
+            />
           </Section>
         )}
 
@@ -844,6 +1065,10 @@ export function NewCompetitionForm({
                       </span>
                     </label>
                   </div>
+                  <StepSummary
+                    testId="structure-summary"
+                    bullets={structureSummary(v)}
+                  />
                 </div>
               );
             }}
@@ -851,27 +1076,6 @@ export function NewCompetitionForm({
         )}
 
         {step === 4 && (
-          <Section>
-            <SeasonPreviewStep
-              startDate={
-                typeof v.startDate === "string" ? v.startDate : null
-              }
-              endDate={typeof v.endDate === "string" ? v.endDate : null}
-              matchdayCount={Number(v.matchdayCount ?? 0)}
-              matchdayStartTime={
-                typeof v.matchdayStartTime === "string"
-                  ? v.matchdayStartTime
-                  : null
-              }
-              onAdjustMatchdayCount={(n) =>
-                setValue("matchdayCount", n, { shouldValidate: true })
-              }
-              onJumpToSchedule={() => setStep(2)}
-            />
-          </Section>
-        )}
-
-        {step === 5 && (
           <Section>
             <h2 className="text-lg font-semibold mb-2">Review &amp; Publish</h2>
             <p className="text-sm text-muted-foreground mb-4">
@@ -922,6 +1126,14 @@ export function NewCompetitionForm({
 
             <ReviewGroup title="Participants" onEdit={() => setStep(1)}>
               <Row
+                label="How participants apply"
+                value={
+                  v.applicationMode === "INVITE_ONLY"
+                    ? `Invite-only · ${(v.invitedTeamIds ?? []).length} team(s) invited`
+                    : "Any team can apply"
+                }
+              />
+              <Row
                 label="Min / max teams"
                 value={`${v.minTeams}${v.maxTeams ? ` – ${v.maxTeams}` : "+"}`}
               />
@@ -938,6 +1150,20 @@ export function NewCompetitionForm({
 
             <ReviewGroup title="Schedule" onEdit={() => setStep(2)}>
               <Row
+                label="Where matches are played"
+                value={
+                  v.matchVenueMode === "CENTRAL_VENUE"
+                    ? "Central venue"
+                    : "Team venues"
+                }
+              />
+              <Row
+                label="Games per opponent"
+                value={
+                  Number(v.gamesPerOpponent) === 2 ? "Home & Away" : "Only once"
+                }
+              />
+              <Row
                 label="Dates"
                 value={
                   v.startDate
@@ -952,10 +1178,33 @@ export function NewCompetitionForm({
                 value={cities.find((c) => c.id === v.cityId)?.name ?? "—"}
               />
               <Row
-                label="Scheduling"
-                value={String(v.schedulingType ?? "").replace(/_/g, " ").toLowerCase()}
+                label="Scheduling type"
+                value={
+                  v.schedulingType === "FIXED_MATCHDAYS"
+                    ? "Fixed Match Day(s)"
+                    : "Weekly Rounds"
+                }
               />
               <Row label="Matchdays" value={Number(v.matchdayCount ?? 0)} />
+              {((v.weekdaySchedule ?? []) as Array<{
+                weekday: number;
+                time: string;
+              }>).length > 0 ? (
+                <Row
+                  label="Weekday slots"
+                  value={((v.weekdaySchedule ?? []) as Array<{
+                    weekday: number;
+                    time: string;
+                  }>)
+                    .map(
+                      (s) =>
+                        `${WEEKDAY_LABEL[s.weekday] ?? "—"} @ ${formatTimeHuman(
+                          s.time,
+                        )}`,
+                    )
+                    .join(", ")}
+                />
+              ) : null}
               <Row
                 label="Slot"
                 value={
@@ -964,6 +1213,39 @@ export function NewCompetitionForm({
                     : v.matchdayStartTime || "—"
                 }
               />
+            </ReviewGroup>
+
+            {/* Round-48 (wizard) — generated matchday calendar folded into
+                Review (was its own "Season preview" step). */}
+            <ReviewGroup title="Generated calendar" onEdit={() => setStep(2)}>
+              <ol className="space-y-1.5 text-sm">
+                {planMatchdays({
+                  startDate:
+                    typeof v.startDate === "string" ? v.startDate : null,
+                  endDate: typeof v.endDate === "string" ? v.endDate : null,
+                  matchdayCount: Number(v.matchdayCount ?? 0),
+                  matchdayStartTime:
+                    typeof v.matchdayStartTime === "string"
+                      ? v.matchdayStartTime
+                      : null,
+                  weekdaySchedule: (v.weekdaySchedule ?? []) as Array<{
+                    weekday: number;
+                    time: string;
+                  }>,
+                }).map((row) => (
+                  <li
+                    key={row.number}
+                    className="flex items-center justify-between border-b border-border/50 py-1"
+                  >
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Matchday {row.number}
+                    </span>
+                    <span className="font-mono text-xs">
+                      {new Date(row.scheduledDate).toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ol>
             </ReviewGroup>
 
             <ReviewGroup
@@ -1033,7 +1315,7 @@ export function NewCompetitionForm({
           >
             Back
           </Button>
-          {step < 5 ? (
+          {step < 4 ? (
             <Button
               type="button"
               onClick={nextStep}
@@ -1061,13 +1343,232 @@ function Section({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Round-47 — wizard Step 4 "Season preview". Read-only over the Schedule
- * step's inputs, runs the same date-distribution math the post-publish
- * `generateMatchdays` mutation uses, so what the organizer sees here is
- * what they get after Confirm & Publish. Includes a quick "+/-" pair to
- * tune the matchday count without bouncing back to Schedule.
+ * Round-48 — Figma per-step summary card. Same blue-bordered bullet list
+ * shown at the bottom of each Schedule frame; we use it on every step.
  */
-function SeasonPreviewStep({
+function StepSummary({
+  bullets,
+  testId,
+}: {
+  bullets: string[];
+  testId?: string;
+}) {
+  if (bullets.length === 0) return null;
+  return (
+    <div
+      data-testid={testId}
+      className="rounded-md border border-info/40 bg-info/10 px-4 py-3 text-sm text-info-foreground"
+    >
+      <ul className="list-disc space-y-1 pl-5">
+        {bullets.map((b, i) => (
+          <li key={i}>{b}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const WEEKDAY_LABEL: Record<number, string> = {
+  0: "Sunday",
+  1: "Monday",
+  2: "Tuesday",
+  3: "Wednesday",
+  4: "Thursday",
+  5: "Friday",
+  6: "Saturday",
+};
+
+function formatTimeHuman(hhmm: string): string {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+  if (!m) return hhmm;
+  const hr = Number(m[1]);
+  const mins = m[2];
+  const period = hr >= 12 ? "PM" : "AM";
+  const h12 = hr % 12 === 0 ? 12 : hr % 12;
+  return `${h12}:${mins} ${period}`;
+}
+
+/** Round-48 — basics-step summary line (Figma per-step confirmation copy). */
+function basicsSummary(v: FormInput): string[] {
+  const game = GAME_TYPE_TABS.find((g) => g.value === v.gameType)?.label;
+  const type = FORMAT_TABS.find((f) => f.value === v.type)?.label;
+  const tt = TOURNAMENT_TYPES.find((t) => t.value === v.format)?.title;
+  return [
+    v.name ? `Competition: ${v.name}` : "Pick a name for the competition.",
+    `${game ?? v.gameType ?? "—"} · ${type ?? v.type ?? "—"} · ${tt ?? v.format ?? "—"}`,
+    v.prizePool
+      ? `Prize: ${v.prizePool}${v.currency ? ` ${v.currency}` : ""}`
+      : "Prize not yet set.",
+  ];
+}
+
+function participantsSummary(v: FormInput): string[] {
+  const max = v.maxTeams ? `Max ${v.maxTeams}` : "No cap";
+  const min = v.minTeams ?? 2;
+  const minP = v.minPlayersPerTeam ?? 1;
+  const maxP = v.maxPlayersPerTeam ? ` to ${v.maxPlayersPerTeam}` : "+";
+  const mode =
+    v.applicationMode === "INVITE_ONLY"
+      ? `Invite-only: ${(v.invitedTeamIds ?? []).length} team(s) invited.`
+      : "Any team can apply.";
+  return [
+    mode,
+    `${max} participants (min ${min}).`,
+    `Team roster size ${minP}${maxP} players.`,
+    `Race to ${v.raceToFrames ?? "—"} frames per match.`,
+    v.requiresHomeVenue
+      ? "Teams must have a home venue to apply."
+      : "Teams can apply without a home venue.",
+  ];
+}
+
+/** Round-48 — Figma Schedule per-step summary bullets. */
+function scheduleSummary(v: FormInput): string[] {
+  const where =
+    v.matchVenueMode === "CENTRAL_VENUE"
+      ? "All matches will be played at one central venue"
+      : "Each team will play home and away games at Team Venues";
+  const gpo =
+    Number(v.gamesPerOpponent) === 2
+      ? "Games will happen home and away against every other team"
+      : "Each team plays each opponent once";
+  const slots = (v.weekdaySchedule ?? []) as Array<{
+    weekday: number;
+    time: string;
+  }>;
+  const schedLine =
+    v.schedulingType === "FIXED_MATCHDAYS"
+      ? `Fixed match days will be set after publish (${v.matchdayCount ?? "—"} matchdays)`
+      : slots.length
+        ? `Games will happen ${slots
+            .map(
+              (s) =>
+                `every ${WEEKDAY_LABEL[s.weekday] ?? "—"} at ${formatTimeHuman(
+                  s.time,
+                )}`,
+            )
+            .join(" and ")}`
+        : "Add at least one weekday slot to lock the cadence";
+  return [
+    where,
+    gpo,
+    schedLine,
+    "Season Calendar will be generated after teams confirmed",
+  ];
+}
+
+function structureSummary(v: FormInput): string[] {
+  const items = (v.structureItems ?? []) as StructureItem[];
+  const totalGames = items.reduce(
+    (n, it) => n + (it.kind === "GAME" ? Number(it.games) || 0 : 0),
+    0,
+  );
+  const breaks = items.filter((it) => it.kind === "BREAK").length;
+  const parts: string[] = [];
+  for (const it of items) {
+    if (it.kind === "GAME") {
+      parts.push(
+        `${String(it.type).replace("_", " ").toLowerCase()} × ${it.games}`,
+      );
+    }
+  }
+  return [
+    parts.length
+      ? `Match flow: ${parts.join(" → ")}`
+      : "Add at least one game block.",
+    `Total: ${totalGames} game(s)${breaks ? ` and ${breaks} break(s)` : ""}.`,
+    v.breakAndRunRule
+      ? "Break & Run rule is ON — running the rack wins the frame."
+      : "Break & Run rule is OFF.",
+  ];
+}
+
+/**
+ * Round-48 — Figma "Scheduling Type → Weekly Rounds" weekday/time list with
+ * add/remove. weekday is 0–6 matching JS Date.getDay().
+ */
+function WeekdayListEditor({
+  value,
+  onChange,
+}: {
+  value: Array<{ weekday: number; time: string }>;
+  onChange: (next: Array<{ weekday: number; time: string }>) => void;
+}) {
+  function setRow(i: number, patch: Partial<{ weekday: number; time: string }>) {
+    onChange(value.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+  }
+  function removeRow(i: number) {
+    onChange(value.filter((_, idx) => idx !== i));
+  }
+  function addRow() {
+    onChange([...value, { weekday: 1, time: "21:00" }]);
+  }
+  return (
+    <div className="space-y-2" data-testid="weekday-list">
+      {value.length === 0 ? (
+        <p className="rounded-md border border-dashed border-border bg-secondary/30 px-3 py-3 text-xs text-muted-foreground">
+          No weekday slots yet — click <strong>Add Weekday</strong> below.
+        </p>
+      ) : (
+        value.map((row, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2"
+            data-testid={`weekday-row-${i}`}
+          >
+            <span className="text-xs uppercase tracking-wider text-muted-foreground">
+              Every
+            </span>
+            <select
+              value={String(row.weekday)}
+              onChange={(e) =>
+                setRow(i, { weekday: Number(e.target.value) })
+              }
+              className="flex h-9 rounded-md border border-input bg-background px-2 text-sm"
+            >
+              {WEEKDAYS.map((d) => (
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs uppercase tracking-wider text-muted-foreground">
+              at
+            </span>
+            <input
+              type="time"
+              value={row.time}
+              onChange={(e) => setRow(i, { time: e.target.value })}
+              className="flex h-9 rounded-md border border-input bg-background px-2 text-sm"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => removeRow(i)}
+              aria-label={`Remove weekday ${i + 1}`}
+            >
+              ×
+            </Button>
+          </div>
+        ))
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={addRow}
+        data-testid="add-weekday"
+      >
+        + Add Weekday
+      </Button>
+    </div>
+  );
+}
+
+// Legacy season-preview helper (unused after the wizard drop). Kept only to
+// avoid the diff churn; remove on next pass.
+function _SeasonPreviewStepUnused({
   startDate,
   endDate,
   matchdayCount,

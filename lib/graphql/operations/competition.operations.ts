@@ -47,6 +47,19 @@ export const CompetitionEditableQuery = graphql(/* GraphQL */ `
       maxPlayersPerTeam
       breakAndRunRule
       requiresHomeVenue
+      applicationMode
+      invitedTeamIds
+      matchVenueMode
+      centralVenue {
+        id
+        slug
+        name
+      }
+      gamesPerOpponent
+      weekdaySchedule {
+        weekday
+        time
+      }
       maxGamesPerVenuePerMatchday
       pointsWin
       pointsDraw

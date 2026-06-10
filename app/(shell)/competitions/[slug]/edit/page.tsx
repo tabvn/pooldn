@@ -65,6 +65,12 @@ export default async function EditCompetitionPage({
           currency: c.currency,
           breakAndRunRule: c.breakAndRunRule,
           requiresHomeVenue: c.requiresHomeVenue,
+          applicationMode: c.applicationMode,
+          invitedTeamIds: c.invitedTeamIds ?? [],
+          matchVenueMode: c.matchVenueMode,
+          centralVenueId: c.centralVenue?.id ?? null,
+          gamesPerOpponent: c.gamesPerOpponent,
+          weekdaySchedule: c.weekdaySchedule ?? [],
           maxGamesPerVenuePerMatchday: c.maxGamesPerVenuePerMatchday,
           blocks: c.blocks.map((b) => ({
             type: b.type as "SINGLES" | "DOUBLES" | "SCOTCH_DOUBLES",

@@ -74,6 +74,21 @@ enum SchedulingType {
   FIXED_DATE
   FLEXIBLE
   AUTO_GENERATED
+  // Round-48 (wizard) — Figma "Scheduling Type" tabbed selector replaces the
+  // old enum with two modes. We keep the existing values for backwards
+  // compatibility and add WEEKLY_ROUNDS + FIXED_MATCHDAYS for new comps.
+  WEEKLY_ROUNDS
+  FIXED_MATCHDAYS
+}
+
+enum ApplicationMode {
+  OPEN
+  INVITE_ONLY
+}
+
+enum MatchVenueMode {
+  TEAM_VENUES
+  CENTRAL_VENUE
 }
 
 enum FeedbackType {
@@ -301,6 +316,7 @@ model Venue {
 
   matches Match[]
   homeTeams Team[] @relation("VenueHomeTeams")
+  competitionsAsCentralVenue Competition[] @relation("CompetitionCentralVenue")
 
   @@index([cityId])
   @@index([isActive])
@@ -464,6 +480,26 @@ model Competition {
   // flow blocks a team whose Team.homeVenueId is null, with the verbatim
   // copy "This competition requires each team to have a home venue."
   requiresHomeVenue   Boolean           @default(false)
+  // Round-48 (wizard) — Figma "How Participants Apply" tabbed selector.
+  // OPEN     = any team captain can apply (current behavior, default).
+  // INVITE_ONLY = the organizer pre-lists which teams may apply;
+  //               applyToCompetition rejects others. The list lives in
+  //               `invitedTeamIds` (Json) until a richer model is needed.
+  applicationMode     ApplicationMode   @default(OPEN)
+  invitedTeamIds      Json?
+  // Figma "Where Matches Are Played" tabbed selector.
+  // TEAM_VENUES   = each match plays at the home team's home venue.
+  // CENTRAL_VENUE = one neutral venue hosts everything (organizer-picked).
+  matchVenueMode      MatchVenueMode    @default(TEAM_VENUES)
+  centralVenueId      String?
+  centralVenue        Venue?            @relation("CompetitionCentralVenue", fields: [centralVenueId], references: [id], onDelete: SetNull)
+  // Figma "Games per Opponent": 1 = Only Once, 2 = Home & Away.
+  gamesPerOpponent    Int               @default(1)
+  // Figma "Scheduling Type" = Weekly Rounds: a list of (weekday, time)
+  // rows feeding the matchday generator. Example:
+  //   [{"weekday": 2, "time": "21:00"}, {"weekday": 5, "time": "21:00"}]
+  // weekday: 0 = Sun, 1 = Mon, …, 6 = Sat (matches JS Date.getDay()).
+  weekdaySchedule     Json?
   // Round-47 — scheduling cap from Figma. When set, the matchday generator
   // refuses to schedule more than this many matches at the same venue on
   // the same matchday. Null = no cap. UI input on the wizard Schedule step.

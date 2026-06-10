@@ -1,14 +1,39 @@
 import { builder } from "../builder";
 import {
+  ApplicationModeEnum,
   ApplicationStatusEnum,
   CompetitionFormatEnum,
   CompetitionStatusEnum,
   CompetitionTypeEnum,
   GameTypeEnum,
+  MatchVenueModeEnum,
   SchedulingTypeEnum,
 } from "./enums";
 export { SchedulingTypeEnum };
 import { MatchFormatBlockInput } from "./structure";
+
+/**
+ * Round-48 (wizard) — one row of the Figma "Scheduling Type → Weekly Rounds"
+ * builder. weekday = 0 (Sun) … 6 (Sat) matching JS Date.getDay(); time is a
+ * 24h "HH:mm" string. Persisted as Json on Competition.weekdaySchedule.
+ */
+export type WeekdaySlotShape = { weekday: number; time: string };
+
+export const WeekdaySlot = builder
+  .objectRef<WeekdaySlotShape>("WeekdaySlot")
+  .implement({
+    fields: (t) => ({
+      weekday: t.exposeInt("weekday"),
+      time: t.exposeString("time"),
+    }),
+  });
+
+export const WeekdaySlotInput = builder.inputType("WeekdaySlotInput", {
+  fields: (t) => ({
+    weekday: t.int({ required: true }),
+    time: t.string({ required: true }),
+  }),
+});
 
 builder.prismaObject("Competition", {
   fields: (t) => ({
@@ -48,6 +73,43 @@ builder.prismaObject("Competition", {
     isPublic: t.exposeBoolean("isPublic"),
     breakAndRunRule: t.exposeBoolean("breakAndRunRule"),
     requiresHomeVenue: t.exposeBoolean("requiresHomeVenue"),
+    // Round-48 (wizard) — Figma "How Participants Apply" + Schedule fields.
+    applicationMode: t.expose("applicationMode", { type: ApplicationModeEnum }),
+    invitedTeamIds: t.field({
+      type: ["ID"],
+      nullable: true,
+      resolve: (c) => {
+        const v = c.invitedTeamIds as unknown;
+        if (!Array.isArray(v)) return null;
+        return v.map((x) => String(x));
+      },
+    }),
+    matchVenueMode: t.expose("matchVenueMode", { type: MatchVenueModeEnum }),
+    centralVenue: t.relation("centralVenue", { nullable: true }),
+    gamesPerOpponent: t.exposeInt("gamesPerOpponent"),
+    // Stored as JSON of `{weekday: 0–6, time: "HH:mm"}`. We expose as a list
+    // of WeekdaySlot via a JSON-safe shape consumers can map without
+    // re-validation.
+    weekdaySchedule: t.field({
+      type: [WeekdaySlot],
+      nullable: true,
+      resolve: (c) => {
+        const v = c.weekdaySchedule as unknown;
+        if (!Array.isArray(v)) return null;
+        return v
+          .filter((x): x is { weekday: number; time: string } => {
+            return (
+              typeof x === "object" &&
+              x !== null &&
+              "weekday" in x &&
+              "time" in x &&
+              typeof (x as { weekday: unknown }).weekday === "number" &&
+              typeof (x as { time: unknown }).time === "string"
+            );
+          })
+          .map((x) => ({ weekday: x.weekday, time: x.time }));
+      },
+    }),
     maxGamesPerVenuePerMatchday: t.exposeInt(
       "maxGamesPerVenuePerMatchday",
       { nullable: true },
@@ -130,6 +192,13 @@ export const CreateCompetitionInput = builder.inputType(
       schedulingType: t.field({ type: SchedulingTypeEnum }),
       breakAndRunRule: t.boolean({ defaultValue: false }),
       requiresHomeVenue: t.boolean({ defaultValue: false }),
+      // Round-48 (wizard) — Figma fields.
+      applicationMode: t.field({ type: ApplicationModeEnum }),
+      invitedTeamIds: t.idList(),
+      matchVenueMode: t.field({ type: MatchVenueModeEnum }),
+      centralVenueId: t.id(),
+      gamesPerOpponent: t.int({ defaultValue: 1 }),
+      weekdaySchedule: t.field({ type: [WeekdaySlotInput] }),
       maxGamesPerVenuePerMatchday: t.int(),
       blocks: t.field({ type: [MatchFormatBlockInput] }),
     }),

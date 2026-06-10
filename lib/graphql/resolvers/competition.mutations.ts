@@ -5,8 +5,10 @@ import {
   ApplyToCompetitionInput,
   CreateCompetitionInput,
   ReviewApplicationInput,
+  WeekdaySlotInput,
 } from "../types/competition";
 import { MatchFormatBlockInput } from "../types/structure";
+import { ApplicationModeEnum, MatchVenueModeEnum } from "../types/enums";
 import { ensure, requireUser } from "@/lib/casl/guard";
 import type { CompetitionStatus } from "@/lib/generated/prisma/enums";
 import { NotificationService } from "@/lib/services/notification.service";
@@ -62,6 +64,12 @@ const UpdateCompetitionInput = builder.inputType("UpdateCompetitionInput", {
     schedulingType: t.string(),
     breakAndRunRule: t.boolean(),
     requiresHomeVenue: t.boolean(),
+    applicationMode: t.field({ type: ApplicationModeEnum }),
+    invitedTeamIds: t.idList(),
+    matchVenueMode: t.field({ type: MatchVenueModeEnum }),
+    centralVenueId: t.id(),
+    gamesPerOpponent: t.int(),
+    weekdaySchedule: t.field({ type: [WeekdaySlotInput] }),
     maxGamesPerVenuePerMatchday: t.int(),
     blocks: t.field({ type: [MatchFormatBlockInput] }),
   }),
@@ -101,6 +109,19 @@ builder.mutationFields((t) => ({
             schedulingType: i.schedulingType ?? undefined,
             breakAndRunRule: i.breakAndRunRule ?? false,
             requiresHomeVenue: i.requiresHomeVenue ?? false,
+            applicationMode: i.applicationMode ?? "OPEN",
+            invitedTeamIds: Array.isArray(i.invitedTeamIds)
+              ? i.invitedTeamIds.map(String)
+              : undefined,
+            matchVenueMode: i.matchVenueMode ?? "TEAM_VENUES",
+            centralVenueId: i.centralVenueId ? String(i.centralVenueId) : null,
+            gamesPerOpponent: i.gamesPerOpponent ?? 1,
+            weekdaySchedule: Array.isArray(i.weekdaySchedule)
+              ? i.weekdaySchedule.map((w) => ({
+                  weekday: w.weekday,
+                  time: w.time,
+                }))
+              : undefined,
             maxGamesPerVenuePerMatchday:
               i.maxGamesPerVenuePerMatchday ?? null,
           },
@@ -175,6 +196,24 @@ builder.mutationFields((t) => ({
           schedulingType: i.schedulingType ?? undefined,
           breakAndRunRule: i.breakAndRunRule ?? undefined,
           requiresHomeVenue: i.requiresHomeVenue ?? undefined,
+          applicationMode: i.applicationMode ?? undefined,
+          invitedTeamIds: Array.isArray(i.invitedTeamIds)
+            ? i.invitedTeamIds.map(String)
+            : undefined,
+          matchVenueMode: i.matchVenueMode ?? undefined,
+          centralVenueId:
+            i.centralVenueId === null
+              ? null
+              : i.centralVenueId
+                ? String(i.centralVenueId)
+                : undefined,
+          gamesPerOpponent: i.gamesPerOpponent ?? undefined,
+          weekdaySchedule: Array.isArray(i.weekdaySchedule)
+            ? i.weekdaySchedule.map((w) => ({
+                weekday: w.weekday,
+                time: w.time,
+              }))
+            : undefined,
           maxGamesPerVenuePerMatchday:
             i.maxGamesPerVenuePerMatchday === null
               ? null
@@ -423,6 +462,23 @@ builder.mutationFields((t) => ({
           "This competition requires each team to have a home venue.",
           { extensions: { code: "HOME_VENUE_REQUIRED" } },
         );
+      }
+      // Round-48 (wizard) — Figma "How Participants Apply" → INVITE_ONLY.
+      // Reject teams not on the organizer's invited-list. Admins bypass so
+      // they can still apply on a team's behalf when correcting state.
+      if (
+        competition.applicationMode === "INVITE_ONLY" &&
+        ctx.viewer.role !== "SUPER_ADMIN"
+      ) {
+        const invited = Array.isArray(competition.invitedTeamIds)
+          ? (competition.invitedTeamIds as unknown[]).map(String)
+          : [];
+        if (!invited.includes(team.id)) {
+          throw new GraphQLError(
+            "This competition is invite-only — your team isn't on the invite list.",
+            { extensions: { code: "NOT_INVITED" } },
+          );
+        }
       }
       const players = (args.input.playerUserIds ?? []).map(String);
       // Round-48 — per-competition Roster Captain. When the Team Captain is
