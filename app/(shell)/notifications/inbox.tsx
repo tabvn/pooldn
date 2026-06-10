@@ -95,6 +95,11 @@ const ACCENT: Record<NotificationType, Accent> = {
     tone: "bg-primary/15 text-primary",
     border: "border-l-primary",
   },
+  COMPETITION_INVITE: {
+    icon: <Mail className="size-4" />,
+    tone: "bg-primary/15 text-primary",
+    border: "border-l-primary",
+  },
   COMMUNITY_LIKE: {
     icon: <Heart className="size-4" />,
     tone: "bg-primary/15 text-primary",

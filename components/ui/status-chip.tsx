@@ -20,6 +20,7 @@ const applicationVariant: Record<ApplicationStatus, BadgeProps["variant"]> = {
   REJECTED: "danger",
   CANCELLED: "neutral",
   WAITLISTED: "info",
+  INVITED: "primary",
 };
 
 const matchVariant: Record<MatchStatus, BadgeProps["variant"]> = {

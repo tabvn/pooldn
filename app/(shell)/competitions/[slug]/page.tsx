@@ -14,6 +14,7 @@ import { getClient } from "@/lib/apollo/client";
 import { CompetitionOverviewQuery } from "@/lib/graphql/operations/competition.operations";
 import { LiveStandingsListener } from "@/components/live/live-standings-listener";
 import { AboutCard } from "@/components/competition/about-card";
+import { InviteBanner } from "@/components/competition/invite-banner";
 
 export default async function CompetitionOverviewPage({
   params,
@@ -60,6 +61,11 @@ export default async function CompetitionOverviewPage({
 
   return (
     <div className="space-y-8">
+      {/* Round-49 — captain-facing invite banner. Renders one banner per
+          INVITED team the viewer captains, with Accept (routes to the
+          apply form) and Decline (cancels the row). */}
+      <InviteBanner competitionSlug={slug} applications={c.applications} />
+
       {/* Round-48 — "About this competition" surfaced at the top of the
           overview so captains/players see the apply-relevant config
           (type, rules, dates, weekdays, venue mode, application mode)

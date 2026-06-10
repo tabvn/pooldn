@@ -60,6 +60,9 @@ enum ApplicationStatus {
   REJECTED
   CANCELLED
   WAITLISTED
+  // Round-49 — organizer-initiated batch invite. Team captain must accept
+  // (transitions to PENDING via applyToCompetition) or decline (CANCELLED).
+  INVITED
 }
 
 enum MatchStatus {
@@ -139,6 +142,9 @@ enum NotificationType {
   // Round-48 — fired when a non-playing team captain nominates a player
   // as the per-competition Roster Captain. Recipient is the chosen player.
   ROSTER_CAPTAIN_ASSIGNED
+  // Round-49 — fired when an organizer batch-invites a team to a
+  // competition. Recipient is the team captain + every team member.
+  COMPETITION_INVITE
   COMMUNITY_LIKE
   COMMUNITY_COMMENT
   COMMUNITY_REPLY

@@ -13,6 +13,7 @@ import { ensure, requireUser } from "@/lib/casl/guard";
 import type { CompetitionStatus } from "@/lib/generated/prisma/enums";
 import { NotificationService } from "@/lib/services/notification.service";
 import { assertNoCrossTeamRoster } from "@/lib/services/roster.service";
+import { sendCompetitionInvite } from "@/lib/services/email.service";
 
 async function transition(
   ctx: GraphQLContext,
@@ -526,7 +527,10 @@ builder.mutationFields((t) => ({
             },
           },
         });
-        if (existing && (existing.status === "CANCELLED" || existing.status === "REJECTED")) {
+        // Round-49 — INVITED rows are organizer-seeded. Accepting one (i.e.
+        // the captain calling applyToCompetition) flips it to PENDING through
+        // the same resurrection path used for CANCELLED/REJECTED.
+        if (existing && (existing.status === "CANCELLED" || existing.status === "REJECTED" || existing.status === "INVITED")) {
           await tx.applicationPlayer.deleteMany({
             where: { applicationId: existing.id },
           });
@@ -907,6 +911,162 @@ builder.mutationFields((t) => ({
           ...query,
           where: { id: app.id },
         });
+      });
+    },
+  }),
+
+  inviteTeamsToCompetition: t.prismaField({
+    type: ["CompetitionApplication"],
+    description:
+      "Round-49 — organizer batch-invites teams to a competition. Idempotent: " +
+      "an existing INVITED row counts as a re-invite (notification + email " +
+      "fire again); existing PENDING/APPROVED/WAITLISTED rows are skipped " +
+      "untouched. Sends an in-app notification to every team member and an " +
+      "email to the team captain.",
+    args: {
+      competitionId: t.arg.id({ required: true }),
+      teamIds: t.arg.idList({ required: true }),
+      personalNote: t.arg.string(),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const competition = await ctx.prisma.competition.findUniqueOrThrow({
+        where: { id: String(args.competitionId) },
+      });
+      // Only the organizer who owns this competition (or an admin) can fire
+      // invites — anything else would let any organizer spam every team.
+      const isOwner = competition.organizerId === ctx.viewer.id;
+      const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
+      if (!isOwner && !isAdmin) {
+        throw new GraphQLError("Only the competition organizer may invite teams", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+      if (
+        competition.status !== "OPEN_FOR_APPLICATIONS" &&
+        competition.status !== "DRAFT" &&
+        competition.status !== "APPLICATIONS_CLOSED"
+      ) {
+        throw new GraphQLError(
+          "Invites can only be sent while the competition is DRAFT, OPEN_FOR_APPLICATIONS, or APPLICATIONS_CLOSED.",
+          { extensions: { code: "INVALID_TRANSITION" } },
+        );
+      }
+      const ids = Array.from(
+        new Set((args.teamIds ?? []).map((x) => String(x))),
+      ).filter(Boolean);
+      if (!ids.length) {
+        throw new GraphQLError("Pick at least one team to invite.", {
+          extensions: { code: "EMPTY_INVITE_LIST" },
+        });
+      }
+      const teams = await ctx.prisma.team.findMany({
+        where: { id: { in: ids } },
+        include: {
+          captain: { select: { id: true, name: true, email: true } },
+          members: { select: { userId: true } },
+        },
+      });
+      if (teams.length !== ids.length) {
+        const found = new Set(teams.map((t) => t.id));
+        const missing = ids.filter((id) => !found.has(id));
+        throw new GraphQLError(
+          `Unknown team id${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}`,
+          { extensions: { code: "TEAM_NOT_FOUND" } },
+        );
+      }
+      const organizer = await ctx.prisma.user.findUniqueOrThrow({
+        where: { id: competition.organizerId },
+        select: { name: true },
+      });
+      // Process each team: skip ones already on the team-side flow, otherwise
+      // upsert an INVITED row, then fan out notifications + emails. We avoid
+      // a single $transaction so an SMTP hiccup doesn't roll back the whole
+      // batch — emails are best-effort by design.
+      const note = args.personalNote?.trim() || null;
+      const results: { id: string }[] = [];
+      const svc = new NotificationService(ctx.prisma);
+      for (const team of teams) {
+        const existing = await ctx.prisma.competitionApplication.findUnique({
+          where: {
+            competitionId_teamId: {
+              competitionId: competition.id,
+              teamId: team.id,
+            },
+          },
+        });
+        if (
+          existing &&
+          (existing.status === "PENDING" ||
+            existing.status === "APPROVED" ||
+            existing.status === "WAITLISTED")
+        ) {
+          // Team is already engaged — skip silently so a batch with mixed
+          // states still completes for everyone else.
+          continue;
+        }
+        const app =
+          existing
+            ? await ctx.prisma.competitionApplication.update({
+                where: { id: existing.id },
+                data: {
+                  status: "INVITED",
+                  message: note,
+                  reviewNote: null,
+                  reviewedAt: null,
+                },
+              })
+            : await ctx.prisma.competitionApplication.create({
+                data: {
+                  competitionId: competition.id,
+                  teamId: team.id,
+                  status: "INVITED",
+                  message: note,
+                },
+              });
+        results.push(app);
+        // In-app notification to every team member (captain included).
+        const recipients = Array.from(
+          new Set([team.captainId, ...team.members.map((m) => m.userId)]),
+        );
+        await svc.create({
+          type: "COMPETITION_INVITE",
+          title: `${competition.name} invited ${team.name}`,
+          message:
+            note ??
+            `${organizer.name} invited your team to ${competition.name}. Open the competition page to accept or decline.`,
+          recipients,
+          entity: {
+            type: "COMPETITION",
+            id: competition.id,
+            slug: competition.slug,
+          },
+          groupKey: `comp-invite-${competition.id}-${team.id}`,
+        });
+        // Email the captain (best-effort — SMTP failures land in the dev
+        // outbox and surface in the security log).
+        if (team.captain?.email) {
+          await sendCompetitionInvite({
+            to: team.captain.email,
+            captainName: team.captain.name,
+            teamName: team.name,
+            competitionName: competition.name,
+            competitionSlug: competition.slug,
+            organizerName: organizer.name,
+            personalNote: note,
+          }).catch((e) => {
+            console.warn(
+              `[inviteTeamsToCompetition] email failed for ${team.captain?.email}:`,
+              e,
+            );
+          });
+        }
+      }
+      // Re-fetch with the prismaField selection set so downstream resolvers
+      // (team, competition, etc.) get whatever the client asked for.
+      return ctx.prisma.competitionApplication.findMany({
+        ...query,
+        where: { id: { in: results.map((r) => r.id) } },
       });
     },
   }),

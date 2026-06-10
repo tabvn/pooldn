@@ -140,3 +140,25 @@ export const EditApplicationRosterMutation = graphql(/* GraphQL */ `
     }
   }
 `);
+
+export const InviteTeamsToCompetitionMutation = graphql(/* GraphQL */ `
+  mutation InviteTeamsToCompetition(
+    $competitionId: ID!
+    $teamIds: [ID!]!
+    $personalNote: String
+  ) {
+    inviteTeamsToCompetition(
+      competitionId: $competitionId
+      teamIds: $teamIds
+      personalNote: $personalNote
+    ) {
+      id
+      status
+      team {
+        id
+        name
+        slug
+      }
+    }
+  }
+`);

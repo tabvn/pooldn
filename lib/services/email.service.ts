@@ -210,6 +210,30 @@ export async function sendPasswordReset(opts: {
   });
 }
 
+export async function sendCompetitionInvite(opts: {
+  to: string;
+  captainName: string;
+  teamName: string;
+  competitionName: string;
+  competitionSlug: string;
+  organizerName: string;
+  personalNote?: string | null;
+}) {
+  const href = `${APP_URL}/competitions/${encodeURIComponent(opts.competitionSlug)}`;
+  const note = opts.personalNote?.trim()
+    ? `<p style="margin:12px 0 0;padding:12px;border-left:3px solid #84cc16;background:#f7fee7;color:#1a2e05;font-style:italic">${escapeHtml(opts.personalNote)}</p>`
+    : "";
+  return send({
+    to: opts.to,
+    subject: `You're invited: ${opts.competitionName}`,
+    html: shell(
+      `Hi ${escapeHtml(opts.captainName)},`,
+      `<strong>${escapeHtml(opts.organizerName)}</strong> has invited <strong>${escapeHtml(opts.teamName)}</strong> to compete in <strong>${escapeHtml(opts.competitionName)}</strong>. Open the competition page to review the format, dates and prize pool — then accept or decline.${note}`,
+      { href, label: "View competition" },
+    ),
+  });
+}
+
 export async function sendBanNotice(opts: {
   to: string;
   name: string;
