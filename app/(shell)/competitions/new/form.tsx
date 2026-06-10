@@ -1899,29 +1899,56 @@ function TournamentTypeCard({
 }
 
 const DateInput = (() => {
-  // Round-48 — calendar icon moved to the RIGHT edge per user feedback (was
-  // a leading icon, which doubled the visual weight against the native
-  // picker indicator). Bigger icon (size-5) so it reads as a tap target.
-  // `pointer-events-none` keeps the native date picker reachable through
-  // the icon — the input's right-side native indicator is hidden via the
-  // existing globals.css rule (`::-webkit-calendar-picker-indicator`).
+  // Round-48 — Figma date field. ONE calendar icon, at the right edge,
+  // CLICKABLE — opens the native date picker. The native WebKit indicator
+  // is hidden via globals.css; we render our own Lucide icon as a real
+  // button that calls input.showPicker() on click.
   type DateInputProps = React.InputHTMLAttributes<HTMLInputElement>;
   function Inner(
     props: DateInputProps,
-    ref: React.ForwardedRef<HTMLInputElement>,
+    forwardedRef: React.ForwardedRef<HTMLInputElement>,
   ) {
+    const innerRef = React.useRef<HTMLInputElement | null>(null);
+    // Compose RHF's ref with our local ref so we can call .showPicker().
+    const setRef = (node: HTMLInputElement | null) => {
+      innerRef.current = node;
+      if (typeof forwardedRef === "function") forwardedRef(node);
+      else if (forwardedRef) forwardedRef.current = node;
+    };
     return (
       <div className="relative">
         <Input
           type="date"
-          ref={ref}
+          ref={setRef}
           {...props}
-          className={cn("pr-10", props.className)}
+          className={cn("pr-12", props.className)}
         />
-        <CalendarDays
-          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-5 text-muted-foreground"
-          aria-hidden
-        />
+        <button
+          type="button"
+          aria-label="Open date picker"
+          onClick={() => {
+            const el = innerRef.current;
+            if (!el) return;
+            // Modern browsers expose showPicker(); fall back to focusing
+            // the input which still opens the picker on Safari/Firefox.
+            const maybe = el as HTMLInputElement & {
+              showPicker?: () => void;
+            };
+            if (typeof maybe.showPicker === "function") {
+              try {
+                maybe.showPicker();
+                return;
+              } catch {
+                /* fall through to focus */
+              }
+            }
+            el.focus();
+          }}
+          className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center justify-center rounded-md p-1.5 text-primary hover:bg-primary/10 transition-colors"
+          data-testid="date-picker-trigger"
+        >
+          <CalendarDays className="size-5" aria-hidden />
+        </button>
       </div>
     );
   }
