@@ -333,7 +333,19 @@ export function ApplyForm({
           </ol>
         </CardHeader>
         <CardContent>
-          <form id="apply" onSubmit={onSubmit} className="space-y-5">
+          {/* Round-49 — never let the form auto-submit. Pressing Enter in an
+              earlier-step input (or React swapping a type="button" Next slot
+              for a type="submit" Confirm slot mid-click) used to slip past
+              the step guard and fire applyToCompetition. We now block the
+              native submit entirely; only the explicit Confirm & Send
+              onClick below ever invokes onSubmit. */}
+          <form
+            id="apply"
+            onSubmit={(e) => {
+              e.preventDefault();
+            }}
+            className="space-y-5"
+          >
             {/* Step 1 — Team selector + requiresHomeVenue gate */}
             {step === STEP_TEAM ? (
               <>
@@ -673,11 +685,14 @@ export function ApplyForm({
             </Button>
           ) : (
             <Button
-              form="apply"
-              type="submit"
+              type="button"
+              onClick={() => {
+                void onSubmit();
+              }}
               loading={isSubmitting || applying}
               disabled={homeVenueMissing || (needsRosterCaptain && !watchedRosterCaptain)}
               iconAfter={<Check className="size-4" />}
+              data-testid="apply-confirm"
             >
               Confirm &amp; Send
             </Button>
