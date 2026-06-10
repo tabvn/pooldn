@@ -269,6 +269,11 @@ model User {
 
   @@index([cityId])
   @@index([role])
+  // Round-34 — generated tsvector for global search. Managed via raw SQL
+  // migration (round50_restore_search_fts); declared as Unsupported so
+  // Prisma never tries to alter or drop it during migrate dev.
+  searchVector Unsupported("tsvector")?
+
   @@index([isActive])
   @@index([bannedAt])
   @@index([rating])
@@ -340,6 +345,9 @@ model Venue {
   homeTeams Team[] @relation("VenueHomeTeams")
   competitionsAsCentralVenue Competition[] @relation("CompetitionCentralVenue")
 
+  // Round-34 generated tsvector — see User.searchVector for the rationale.
+  searchVector Unsupported("tsvector")?
+
   @@index([cityId])
   @@index([isActive])
   @@map("venues")
@@ -381,6 +389,9 @@ model Team {
   forfeitedMatches Match[]                @relation("ForfeitTeam")
   invitations   TeamInvitation[]
   joinRequests  TeamJoinRequest[]
+
+  // Round-34 generated tsvector — see User.searchVector.
+  searchVector Unsupported("tsvector")?
 
   @@index([captainId])
   @@index([isActive])
@@ -546,6 +557,9 @@ model Competition {
   playerStats  PlayerCompStat[]
   blocks       MatchFormatBlock[]
   rosters      CompetitionRoster[]
+
+  // Round-34 generated tsvector — see User.searchVector.
+  searchVector Unsupported("tsvector")?
 
   @@index([organizerId])
   @@index([cityId])
@@ -1043,6 +1057,9 @@ model CommunityPost {
 
   reactions CommunityReaction[]
   comments  CommunityComment[]
+
+  // Round-34 generated tsvector — see User.searchVector.
+  searchVector Unsupported("tsvector")?
 
   @@index([cityId, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
