@@ -54,6 +54,19 @@ export const ProfileByUsernameQuery = graphql(/* GraphQL */ `
           name
         }
       }
+      teams(limit: 8) {
+        id
+        slug
+        name
+        logoUrl
+        captain {
+          id
+        }
+        members {
+          id
+        }
+      }
+      teamsCount
     }
   }
 `);

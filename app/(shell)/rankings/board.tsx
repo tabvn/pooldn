@@ -9,7 +9,6 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CountryFlag } from "@/components/ui/country-flag";
-import { RatingBadge } from "@/components/ui/rating-badge";
 import {
   RankingsQuery,
   RankingsTeamFilterQuery,
@@ -138,8 +137,13 @@ export function RankingsBoard() {
                     <TeamAvatars teams={u.teams} total={u.teamsCount} />
                   </div>
                 </div>
-                <RatingBadge rating={u.rating} size="sm" />
-                <span className="font-mono text-sm font-bold text-primary tabular-nums">
+                {/* Round-50 — dropped the duplicate RatingBadge; the
+                    number alone is cleaner and the rank chip on the left
+                    already carries the tier signal for the podium. */}
+                <span
+                  className="font-mono text-base font-bold tabular-nums text-foreground"
+                  data-testid={`ranking-rating-${i + 1}`}
+                >
                   {u.rating}
                 </span>
               </Link>

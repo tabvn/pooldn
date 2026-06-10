@@ -106,8 +106,23 @@ export default async function ProfilePage({
         }
         meta={
           <>
-            <RatingBadge rating={user.rating} size="md" showRating />
+            {/* Round-50 — dropped the inline RatingBadge here; the dedicated
+                Rating card below carries the hero rating + tier progress
+                and the meta was reading "rating · rating · role" twice. */}
             <Badge variant="primary">{user.role.replace(/_/g, " ")}</Badge>
+            <Badge variant="neutral" size="sm">
+              Lv {user.level}
+            </Badge>
+            {user.rank ? (
+              <Link
+                href="/rankings"
+                className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+              >
+                Rank{" "}
+                <span className="font-mono font-bold">#{user.rank}</span>
+                <span aria-hidden>↗</span>
+              </Link>
+            ) : null}
             {user.bannedAt ? (
               <Badge variant="danger" data-testid="profile-banned-badge">
                 Banned
@@ -134,36 +149,40 @@ export default async function ProfilePage({
       />
       <div className="p-4 md:p-8 max-w-5xl space-y-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <div className="flex items-center gap-4">
+          {/* Round-50 — About card. PageTitle above already shows name +
+              @username + meta + actions; this card used to repeat the
+              avatar, name and username inside its own CardHeader which
+              read as duplicate content. Keep the avatar as a visual
+              anchor and let the bio carry the rest. */}
+          <Card className="md:col-span-2" data-testid="player-about-card">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-4">
                 <Avatar
                   size="xl"
                   src={user.avatarUrl ?? undefined}
                   fallback={user.name}
                 />
-                <div>
-                  <CardTitle>{user.name}</CardTitle>
-                  <p className="text-sm text-muted-foreground">@{user.username}</p>
+                <div className="min-w-0 flex-1 space-y-3 text-sm">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                    About
+                  </div>
+                  {user.bio ? (
+                    <p className="text-foreground">{user.bio}</p>
+                  ) : (
+                    <p className="italic text-muted-foreground">
+                      {isSelf
+                        ? "Your bio is empty — tell people who you are."
+                        : "This player hasn't written a bio yet."}
+                    </p>
+                  )}
+                  {isSelf ? (
+                    <div className="text-xs">
+                      <span className="text-muted-foreground">Email · </span>
+                      <span className="font-mono">{user.email}</span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {user.bio ? (
-                <p className="text-foreground">{user.bio}</p>
-              ) : (
-                <p className="text-muted-foreground italic">
-                  {isSelf
-                    ? "Your bio is empty — tell people who you are."
-                    : "This player hasn't written a bio yet."}
-                </p>
-              )}
-              {isSelf ? (
-                <div>
-                  <span className="text-xs text-muted-foreground">Email: </span>
-                  <span>{user.email}</span>
-                </div>
-              ) : null}
             </CardContent>
           </Card>
 
@@ -237,8 +256,11 @@ export default async function ProfilePage({
                         {tier.blurb}
                       </p>
                       <div className="space-y-1.5">
-                        <div className="flex items-baseline justify-between text-[11px]">
-                          <span className="font-semibold">{tier.name}</span>
+                        {/* Round-50 — the tier name is already shown big
+                            inside the hero badge above; we used to repeat
+                            it here. Keep just the "N pts to next" hint so
+                            the progress bar tells a clear story. */}
+                        <div className="flex items-baseline justify-end text-[11px]">
                           <span className="text-muted-foreground tabular-nums">
                             {remaining} pts to next
                           </span>
@@ -267,31 +289,79 @@ export default async function ProfilePage({
                     </>
                   );
                 })()}
-                <div className="flex items-center justify-between text-xs">
-                  <span className="inline-flex items-center gap-1.5">
-                    <Badge variant="primary" size="sm">
-                      Lv {user.level}
-                    </Badge>
-                  </span>
-                  {user.rank ? (
-                    <Link
-                      href="/rankings"
-                      className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
-                    >
-                      Rank{" "}
-                      <span className="font-mono font-bold">
-                        #{user.rank}
-                      </span>{" "}
-                      ↗
-                    </Link>
-                  ) : (
-                    <span className="text-muted-foreground">Unranked</span>
-                  )}
-                </div>
+                {/* Round-50 — Lv + Rank moved up to the PageTitle meta so
+                    they sit alongside Role/City and aren't repeated here. */}
               </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* Round-50 — Teams strip. Horizontal-scrolling card row so the
+            page handles users in many teams without ballooning. Captain
+            badge on teams the user captains, member count on the rest.
+            "+N more" tail card links to a richer view if there are more
+            than the limit (currently the strip caps at 8). */}
+        {user.teams.length > 0 ? (
+          <section
+            className="space-y-3"
+            data-testid="player-teams-strip"
+          >
+            <header className="flex items-baseline justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Teams
+              </h2>
+              <Badge variant="neutral" size="sm">
+                {user.teamsCount}
+              </Badge>
+            </header>
+            <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory">
+              {user.teams.map((t) => {
+                const isCaptain = t.captain.id === user.id;
+                return (
+                  <Link
+                    key={t.id}
+                    href={`/teams/${t.slug}`}
+                    className="flex w-60 shrink-0 snap-start flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40"
+                    data-testid={`player-team-${t.id}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Avatar
+                        size="lg"
+                        src={t.logoUrl ?? undefined}
+                        fallback={t.name}
+                        shape="team"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-sm font-semibold">
+                            {t.name}
+                          </span>
+                          {isCaptain ? (
+                            <Badge variant="primary" size="sm">
+                              Captain
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {t.members.length} member
+                          {t.members.length === 1 ? "" : "s"}
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+              {user.teamsCount > user.teams.length ? (
+                <div
+                  className="flex w-40 shrink-0 snap-start items-center justify-center rounded-xl border border-dashed border-border bg-card/40 text-xs text-muted-foreground"
+                  data-testid="player-teams-more"
+                >
+                  +{user.teamsCount - user.teams.length} more
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
         {/* Competition history */}
         <Card data-testid="player-competition-history">
