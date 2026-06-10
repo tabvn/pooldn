@@ -4,7 +4,6 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CountryFlag } from "@/components/ui/country-flag";
 import { LocalDateTime } from "@/components/ui/local-datetime";
 import { RatingBadge } from "@/components/ui/rating-badge";
 import { RelativeTime } from "@/components/ui/relative-time";
@@ -114,15 +113,13 @@ export default async function ProfilePage({
                 Banned
               </Badge>
             ) : null}
+            {/* Round-50 — show ONLY the city the player picked in Settings.
+                Pairing the nationality flag with the city was misleading
+                (e.g. Vietnamese flag rendered next to "Toronto, Canada"
+                because nationality + residence are different fields). */}
             {user.city ? (
               <span>
                 {user.city.name}, {user.city.country.name}
-              </span>
-            ) : null}
-            {user.nationality ? (
-              <span className="inline-flex items-center gap-1.5">
-                <CountryFlag code={user.nationality} className="text-base leading-none" />
-                <span>{user.nationality}</span>
               </span>
             ) : null}
             <span

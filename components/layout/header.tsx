@@ -27,11 +27,18 @@ export function Header({
   return (
     <header
       data-scrolled={scrolled || undefined}
+      // Round-50 — kept the header height STATIC so scrolling never triggers
+      // a layout reflow under the sticky bar. The "condense" feel comes from
+      // a vertical-padding transition (cheap, composited) plus a hairline
+      // shadow that fades in. Earlier we were animating `height` + `padding`
+      // simultaneously over 200ms, which forced the entire scroll area to
+      // re-layout for the duration of the transition and felt laggy.
       className={cn(
-        "sticky top-0 z-30 flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card/95 backdrop-blur transition-[height,padding] duration-200 ease-out",
+        "sticky top-0 z-30 flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card/95 backdrop-blur",
+        "h-[64px] transition-[padding,box-shadow] duration-150 ease-out will-change-[padding]",
         scrolled
-          ? "h-[56px] px-3 md:px-4"
-          : "h-[72px] px-3 md:gap-4 md:px-6",
+          ? "px-3 py-1 shadow-sm md:px-4"
+          : "px-3 py-3 md:gap-4 md:px-6",
       )}
     >
       {/* Mobile logo + city — sidebar is hidden on small screens so the

@@ -1,9 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Lock, Mail, ShieldAlert } from "lucide-react";
-import { useMutation, useQuery } from "@apollo/client/react";
+import {
+  AlertTriangle,
+  AtSign,
+  CheckCircle2,
+  Loader2,
+  Lock,
+  Mail,
+  ShieldAlert,
+  XCircle,
+} from "lucide-react";
+import { useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +22,8 @@ import { useToast } from "@/components/ui/toast";
 import {
   ChangeEmailMutation,
   ChangePasswordMutation,
+  ChangeUsernameMutation,
+  CheckUsernameAvailableQuery,
   DeactivateAccountMutation,
   ResendEmailVerificationMutation,
   ViewerSettingsQuery,
@@ -34,6 +45,13 @@ export function AccountTab() {
 
   return (
     <div className="max-w-xl space-y-4">
+      <UsernameSection
+        currentUsername={viewer.username}
+        onSaved={async () => {
+          await refetch();
+          toast.success("Username updated");
+        }}
+      />
       <EmailSection
         currentEmail={viewer.email}
         emailVerified={viewer.emailVerified}
@@ -50,6 +68,254 @@ export function AccountTab() {
       <DangerZone username={viewer.username} />
     </div>
   );
+}
+
+function UsernameSection({
+  currentUsername,
+  onSaved,
+}: {
+  currentUsername: string;
+  onSaved: () => void | Promise<void>;
+}) {
+  const router = useRouter();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [password, setPassword] = useState("");
+  const [save, { loading }] = useMutation(ChangeUsernameMutation);
+  const [check, { data: checkData, loading: checking }] = useLazyQuery(
+    CheckUsernameAvailableQuery,
+  );
+
+  // Mirror server-side validation so the user gets feedback before they
+  // hit Save.
+  const syntaxError = useMemo(
+    () => clientValidateUsername(value),
+    [value],
+  );
+  const sameAsCurrent =
+    value.trim().toLowerCase() === currentUsername.toLowerCase();
+  const available =
+    !syntaxError && !sameAsCurrent && checkData?.checkUsernameAvailable === true;
+  const ready = available && !!password && !loading;
+
+  // Debounce the availability query — fire 350ms after the user stops
+  // typing, only when the value is otherwise valid.
+  const lastQueried = useRef<string>("");
+  useEffect(() => {
+    if (syntaxError || sameAsCurrent) return;
+    const next = value.trim().toLowerCase();
+    if (!next) return;
+    const id = setTimeout(() => {
+      if (lastQueried.current === next) return;
+      lastQueried.current = next;
+      void check({ variables: { username: next } });
+    }, 350);
+    return () => clearTimeout(id);
+  }, [value, syntaxError, sameAsCurrent, check]);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!ready) return;
+    try {
+      await save({
+        variables: {
+          newUsername: value.trim().toLowerCase(),
+          currentPassword: password,
+        },
+      });
+      setOpen(false);
+      setValue("");
+      setPassword("");
+      await onSaved();
+      router.refresh();
+    } catch (err) {
+      toast.error(
+        "Could not update username",
+        err instanceof Error ? err.message : undefined,
+      );
+    }
+  }
+
+  function statusLine(): React.ReactNode {
+    if (!value) {
+      return (
+        <span className="text-muted-foreground">
+          3–24 lowercase letters, digits, or . _ -
+        </span>
+      );
+    }
+    if (sameAsCurrent) {
+      return (
+        <span className="text-muted-foreground">
+          That&apos;s already your username.
+        </span>
+      );
+    }
+    if (syntaxError) {
+      return (
+        <span className="inline-flex items-center gap-1 text-destructive">
+          <XCircle className="size-3.5" />
+          {syntaxError}
+        </span>
+      );
+    }
+    if (checking) {
+      return (
+        <span className="inline-flex items-center gap-1 text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" />
+          Checking…
+        </span>
+      );
+    }
+    if (checkData?.checkUsernameAvailable === true) {
+      return (
+        <span className="inline-flex items-center gap-1 text-success">
+          <CheckCircle2 className="size-3.5" />
+          Available — your profile will move to /players/{value.trim().toLowerCase()}.
+        </span>
+      );
+    }
+    if (checkData?.checkUsernameAvailable === false) {
+      return (
+        <span className="inline-flex items-center gap-1 text-destructive">
+          <XCircle className="size-3.5" />
+          Taken — pick another.
+        </span>
+      );
+    }
+    return null;
+  }
+
+  return (
+    <Card data-testid="account-username">
+      <CardHeader>
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2">
+              <AtSign className="size-4 text-muted-foreground" /> Username
+            </CardTitle>
+            <p className="text-sm font-mono text-muted-foreground">
+              @{currentUsername}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Used in your profile URL and @-mentions. Changing it leaves
+              your old URL pointing nowhere — share the new one.
+            </p>
+          </div>
+          <Button
+            variant={open ? "ghost" : "outline"}
+            size="sm"
+            onClick={() => {
+              setOpen((v) => !v);
+              setValue("");
+              setPassword("");
+            }}
+            data-testid="open-username-change"
+          >
+            {open ? "Cancel" : "Change username"}
+          </Button>
+        </div>
+      </CardHeader>
+      {open ? (
+        <CardContent>
+          <form onSubmit={onSubmit} className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="newUsername">New username</Label>
+              <div className="relative">
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
+                >
+                  @
+                </span>
+                <Input
+                  id="newUsername"
+                  autoComplete="username"
+                  required
+                  className="pl-7 font-mono"
+                  placeholder="your-handle"
+                  value={value}
+                  onChange={(e) =>
+                    setValue(
+                      e.target.value.replace(/[^A-Za-z0-9._-]/g, "").toLowerCase(),
+                    )
+                  }
+                  invalid={!!syntaxError && !!value}
+                  data-testid="new-username-input"
+                />
+              </div>
+              <p className="text-xs" data-testid="username-status">
+                {statusLine()}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="usernamePw">Confirm with current password</Label>
+              <Input
+                id="usernamePw"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end pt-1">
+              <Button
+                type="submit"
+                loading={loading}
+                disabled={!ready}
+                data-testid="save-username"
+              >
+                Update username
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      ) : null}
+    </Card>
+  );
+}
+
+// Round-50 — client mirror of the server's validator. Kept here verbatim
+// so the user sees the same message before round-tripping.
+const USERNAME_REGEX_CLIENT =
+  /^[a-z0-9](?!.*[._-]{2})[a-z0-9._-]{1,22}[a-z0-9]$/;
+const RESERVED_USERNAMES_CLIENT = new Set([
+  "admin",
+  "administrator",
+  "root",
+  "support",
+  "system",
+  "api",
+  "settings",
+  "signin",
+  "sign-in",
+  "signup",
+  "sign-up",
+  "login",
+  "logout",
+  "auth",
+  "me",
+  "self",
+  "null",
+  "undefined",
+  "pooldn",
+  "anonymous",
+  "guest",
+]);
+function clientValidateUsername(raw: string): string | null {
+  const v = raw.trim().toLowerCase();
+  if (!v) return null;
+  if (v.length < 3) return "Use at least 3 characters";
+  if (v.length > 24) return "Keep it to 24 characters or fewer";
+  if (!USERNAME_REGEX_CLIENT.test(v)) {
+    return "Use lowercase letters, digits, and . _ - (no leading/trailing or doubled separators)";
+  }
+  if (RESERVED_USERNAMES_CLIENT.has(v)) {
+    return "That username is reserved — try another";
+  }
+  return null;
 }
 
 function DangerZone({ username }: { username: string }) {

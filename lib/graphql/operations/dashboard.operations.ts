@@ -28,6 +28,8 @@ export const DashboardQuery = graphql(/* GraphQL */ `
         id
         name
       }
+      homeLineupSubmittedAt
+      awayLineupSubmittedAt
       matchday {
         id
         number
@@ -36,6 +38,7 @@ export const DashboardQuery = graphql(/* GraphQL */ `
           name
           slug
           bannerUrl
+          raceToFrames
         }
       }
     }
@@ -59,6 +62,8 @@ export const DashboardQuery = graphql(/* GraphQL */ `
         id
         name
       }
+      homeLineupSubmittedAt
+      awayLineupSubmittedAt
       matchday {
         id
         number
@@ -67,6 +72,7 @@ export const DashboardQuery = graphql(/* GraphQL */ `
           name
           slug
           bannerUrl
+          raceToFrames
         }
       }
     }

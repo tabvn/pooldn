@@ -41,19 +41,28 @@ export function AppShell({
   const [scrolled, setScrolled] = useState(false);
   const [collapsed, setCollapsed] = useState(initialCollapsed);
 
-  // Scroll → setScrolled(scrollTop > 8). rAF-throttled so we don't run the
-  // effect every pixel; just toggling a bool so React batches normally.
+  // Scroll → setScrolled. rAF-throttled and hysteresis-guarded (different
+  // thresholds for scroll-down vs scroll-up) so the header doesn't flip the
+  // class on every pixel around the boundary, which made the header look
+  // janky on inertial scrolls.
   useEffect(() => {
     const el = mainRef.current;
     if (!el) return;
     let raf = 0;
     let queued = false;
+    let lastState = false;
     const onScroll = () => {
       if (queued) return;
       queued = true;
       raf = requestAnimationFrame(() => {
         queued = false;
-        setScrolled(el.scrollTop > 8);
+        const y = el.scrollTop;
+        // Asymmetric thresholds: become scrolled past 24px, revert below 8px.
+        const next = lastState ? y > 8 : y > 24;
+        if (next !== lastState) {
+          lastState = next;
+          setScrolled(next);
+        }
       });
     };
     el.addEventListener("scroll", onScroll, { passive: true });

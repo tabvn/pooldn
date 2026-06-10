@@ -60,18 +60,16 @@ export default async function PoolhubDashboard() {
         </div>
       </header>
 
-      {/* Today's match (or next scheduled when nothing today) */}
+      {/* Today's match (or next scheduled when nothing today) — the card
+          owns its own eyebrow + state pill so we just render it raw here. */}
       {nextMatch ? (
-        <section className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wider text-primary">
-            {todayMatch ? "Today's match" : "Next match"}
-          </p>
-          <TodayMatchCard match={nextMatch} />
-        </section>
+        <TodayMatchCard match={nextMatch} />
       ) : viewer ? (
-        <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-8 text-center text-sm text-muted-foreground">
-          You have no scheduled matches right now. Browse competitions below to
-          get in the action.
+        <div className="rounded-2xl border border-dashed border-border bg-card/50 px-6 py-10 text-center">
+          <p className="text-sm font-semibold">No matches on your card.</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Browse competitions below to get in the action.
+          </p>
         </div>
       ) : null}
 

@@ -7,6 +7,53 @@ import { requireUser } from "@/lib/casl/guard";
 
 const BCRYPT_ROUNDS = 10;
 
+// Round-50 — keep username validation in one place so the mutation, the
+// live-availability check, and (eventually) the sign-up flow agree.
+//
+// Rules:
+//  - 3–24 characters
+//  - lowercase letters, digits, underscore, dash, dot
+//  - can't start or end with a separator
+//  - no two consecutive separators
+//  - reserved words rejected (admin paths, common system slugs)
+const USERNAME_REGEX = /^[a-z0-9](?!.*[._-]{2})[a-z0-9._-]{1,22}[a-z0-9]$/;
+const RESERVED_USERNAMES = new Set([
+  "admin",
+  "administrator",
+  "root",
+  "support",
+  "system",
+  "api",
+  "settings",
+  "signin",
+  "sign-in",
+  "signup",
+  "sign-up",
+  "login",
+  "logout",
+  "auth",
+  "me",
+  "self",
+  "null",
+  "undefined",
+  "pooldn",
+  "anonymous",
+  "guest",
+]);
+
+function validateUsernameSyntax(value: string): string | null {
+  if (!value) return "Username is required";
+  if (value.length < 3) return "Use at least 3 characters";
+  if (value.length > 24) return "Keep it to 24 characters or fewer";
+  if (!USERNAME_REGEX.test(value)) {
+    return "Use lowercase letters, digits, and . _ - (no leading/trailing or doubled separators)";
+  }
+  if (RESERVED_USERNAMES.has(value)) {
+    return "That username is reserved — try another";
+  }
+  return null;
+}
+
 builder.mutationFields((t) => ({
   createUser: t.prismaField({
     type: "User",
@@ -91,6 +138,60 @@ builder.mutationFields((t) => ({
         data: { password: hashed },
       });
       return true;
+    },
+  }),
+
+  changeUsername: t.prismaField({
+    type: "User",
+    description:
+      "Change the viewer's own username. 3–24 chars, lowercase letters, " +
+      "digits, underscore, dash, dot; can't start/end with a separator, no " +
+      "double separators, reserved words rejected. Case-insensitive uniqueness.",
+    args: {
+      newUsername: t.arg.string({ required: true }),
+      currentPassword: t.arg.string({ required: true }),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const next = String(args.newUsername).trim().toLowerCase();
+      const password = String(args.currentPassword);
+      const issue = validateUsernameSyntax(next);
+      if (issue) {
+        throw new GraphQLError(issue, {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const user = await ctx.prisma.user.findUniqueOrThrow({
+        where: { id: ctx.viewer.id },
+        select: { password: true, username: true },
+      });
+      if (next === user.username.toLowerCase()) {
+        throw new GraphQLError("That's already your username", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const ok = await bcrypt.compare(password, user.password);
+      if (!ok) {
+        throw new GraphQLError("Current password is incorrect", {
+          extensions: { code: "INVALID_CREDENTIALS" },
+        });
+      }
+      const taken = await ctx.prisma.user.findFirst({
+        where: {
+          username: { equals: next, mode: "insensitive" },
+        },
+        select: { id: true },
+      });
+      if (taken && taken.id !== ctx.viewer.id) {
+        throw new GraphQLError("That username is already taken", {
+          extensions: { code: "USERNAME_TAKEN" },
+        });
+      }
+      return ctx.prisma.user.update({
+        ...query,
+        where: { id: ctx.viewer.id },
+        data: { username: next },
+      });
     },
   }),
 
@@ -421,6 +522,28 @@ builder.mutationFields((t) => ({
         data: { isActive: false },
       });
       return true;
+    },
+  }),
+}));
+
+// Round-50 — companion query for the username field. Lives next to the
+// mutation so the syntax validator + reserved list stay in lockstep.
+builder.queryFields((t) => ({
+  checkUsernameAvailable: t.boolean({
+    description:
+      "Live availability check for the username field. Returns true when " +
+      "the username passes format rules and isn't taken (case-insensitive); " +
+      "the viewer's own current username also counts as available.",
+    args: { username: t.arg.string({ required: true }) },
+    resolve: async (_root, args, ctx) => {
+      const next = String(args.username).trim().toLowerCase();
+      if (validateUsernameSyntax(next)) return false;
+      const row = await ctx.prisma.user.findFirst({
+        where: { username: { equals: next, mode: "insensitive" } },
+        select: { id: true },
+      });
+      if (!row) return true;
+      return ctx.viewer?.id === row.id;
     },
   }),
 }));

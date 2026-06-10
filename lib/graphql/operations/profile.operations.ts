@@ -125,6 +125,24 @@ export const ChangeEmailMutation = graphql(/* GraphQL */ `
   }
 `);
 
+export const ChangeUsernameMutation = graphql(/* GraphQL */ `
+  mutation ChangeUsername($newUsername: String!, $currentPassword: String!) {
+    changeUsername(
+      newUsername: $newUsername
+      currentPassword: $currentPassword
+    ) {
+      id
+      username
+    }
+  }
+`);
+
+export const CheckUsernameAvailableQuery = graphql(/* GraphQL */ `
+  query CheckUsernameAvailable($username: String!) {
+    checkUsernameAvailable(username: $username)
+  }
+`);
+
 export const AdminUpdateUserMutation = graphql(/* GraphQL */ `
   mutation AdminUpdateUser(
     $id: ID!
