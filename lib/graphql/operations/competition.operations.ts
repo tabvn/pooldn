@@ -144,6 +144,30 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
       currency
       minTeams
       maxTeams
+      # Round-48 — overview "About this competition" card needs the apply-
+      # relevant config visible BEFORE captains/players hit the apply form.
+      type
+      format
+      gameType
+      startDate
+      endDate
+      raceToFrames
+      minPlayersPerTeam
+      maxPlayersPerTeam
+      breakAndRunRule
+      requiresHomeVenue
+      applicationMode
+      matchVenueMode
+      gamesPerOpponent
+      weekdaySchedule {
+        weekday
+        time
+      }
+      rulesUrl
+      city {
+        id
+        name
+      }
       applications {
         id
         status

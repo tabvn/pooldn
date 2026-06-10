@@ -13,6 +13,7 @@ import {
 import { getClient } from "@/lib/apollo/client";
 import { CompetitionOverviewQuery } from "@/lib/graphql/operations/competition.operations";
 import { LiveStandingsListener } from "@/components/live/live-standings-listener";
+import { AboutCard } from "@/components/competition/about-card";
 
 export default async function CompetitionOverviewPage({
   params,
@@ -59,6 +60,13 @@ export default async function CompetitionOverviewPage({
 
   return (
     <div className="space-y-8">
+      {/* Round-48 — "About this competition" surfaced at the top of the
+          overview so captains/players see the apply-relevant config
+          (type, rules, dates, weekdays, venue mode, application mode)
+          before they click Apply. Hidden on COMPLETED comps where the
+          winner banner takes the headline spot. */}
+      {!isCompleted ? <AboutCard c={c} /> : null}
+
       {/* Winner + MVP banner — only when the competition is COMPLETED */}
       {isCompleted ? (
         <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl bg-purple-600/30 md:grid-cols-2">
