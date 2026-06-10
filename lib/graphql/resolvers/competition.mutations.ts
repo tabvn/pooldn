@@ -639,34 +639,85 @@ builder.mutationFields((t) => ({
       const { bergerPairings, assignVenuesWithCap } = await import(
         "@/lib/services/scheduling.service"
       );
-      const rounds = bergerPairings(teamIds);
+      // Round-48 (wizard) — Figma "Games per Opponent". 1 = single round
+      // robin (current default); 2 = home & away. We tile the Berger
+      // pairings N times and FLIP home/away on alternate cycles so each
+      // pair plays at both teams' venues.
+      const baseRounds = bergerPairings(teamIds);
+      const cycles = Math.max(
+        1,
+        Math.min(4, Number(competition.gamesPerOpponent ?? 1)),
+      );
+      const rounds: Array<Array<[string, string]>> = [];
+      for (let c = 0; c < cycles; c++) {
+        for (const round of baseRounds) {
+          rounds.push(
+            c % 2 === 0
+              ? round.map((m) => [m[0], m[1]] as [string, string])
+              : round.map((m) => [m[1], m[0]] as [string, string]),
+          );
+        }
+      }
 
       // Round-47 — use the shared planner so the dates in the wizard's
       // Season Preview step are exactly what we persist here.
+      // Round-48 (wizard) — pass weekdaySchedule + matchdayStartTime so the
+      // planner respects the Figma "Every Tuesday/Friday at 9pm" cadence.
       const { planMatchdays } = await import(
         "@/lib/services/match-schedule.service"
       );
+      const weekdaySlots = Array.isArray(competition.weekdaySchedule)
+        ? (competition.weekdaySchedule as unknown[])
+            .filter(
+              (s): s is { weekday: number; time: string } =>
+                typeof s === "object" &&
+                s !== null &&
+                "weekday" in s &&
+                "time" in s &&
+                typeof (s as { weekday: unknown }).weekday === "number" &&
+                typeof (s as { time: unknown }).time === "string",
+            )
+            .map((s) => ({ weekday: s.weekday, time: s.time }))
+        : [];
       const planned = planMatchdays({
         startDate: competition.startDate,
         endDate: competition.endDate,
         matchdayCount: rounds.length,
+        weekdaySchedule: weekdaySlots,
       });
 
       // Round-47 — venue assignment + max-games-per-venue cap. Default
       // to the home team's homeVenue; flip home/away when the cap would
       // be exceeded so the match plays at the away team's venue.
+      // Round-48 (wizard) — Figma "Where Matches Are Played":
+      //   CENTRAL_VENUE → every match plays at competition.centralVenueId
+      //                   and venue-cap routing is bypassed (you're already
+      //                   at the one venue).
+      //   TEAM_VENUES   → existing behavior (home team's homeVenue with cap).
       const teams = await ctx.prisma.team.findMany({
         where: { id: { in: teamIds } },
         select: { id: true, homeVenueId: true },
       });
+      const useCentral = competition.matchVenueMode === "CENTRAL_VENUE";
       const homeVenueByTeam = new Map<string, string | null>(
-        teams.map((t) => [t.id, t.homeVenueId ?? null]),
+        teams.map((t) => [
+          t.id,
+          useCentral ? competition.centralVenueId ?? null : t.homeVenueId ?? null,
+        ]),
       );
-      const scheduled = assignVenuesWithCap(
-        rounds,
-        homeVenueByTeam,
-        competition.maxGamesPerVenuePerMatchday ?? null,
-      );
+      const scheduled = useCentral
+        ? rounds.map((round) =>
+            round.map((m) => ({
+              home: m[0],
+              away: m[1],
+              venueId: competition.centralVenueId ?? null,
+            })),
+          )
+        : assignVenuesWithCap(
+            rounds,
+            homeVenueByTeam,
+            competition.maxGamesPerVenuePerMatchday ?? null,
+          );
 
       // One transaction: bulk-create matchdays + matches + notifications.
       return ctx.prisma.$transaction(async (tx) => {

@@ -454,10 +454,13 @@ export function NewCompetitionForm({
     }
   }
 
-  const onSubmit = handleSubmit(async (values) => {
-    // Guard: Enter inside any earlier-step input must NOT skip Review.
-    // Without this the form auto-submits on first Enter and the Review step
-    // is never reached.
+  // Round-48 (wizard) — `triggerSubmit` is the ONLY path that actually
+  // executes the mutation. The form itself never auto-submits (the
+  // <form> element has a preventDefault onSubmit and every nav button is
+  // type="button"), so neither Enter inside an input NOR a button-swap
+  // mouseup race can fire the mutation. Calling triggerSubmit also runs
+  // RHF validation up-front via handleSubmit().
+  const triggerSubmit = handleSubmit(async (values) => {
     if (step !== 4) return;
     const blocks = structureItemsToBlocks(values.structureItems);
     try {
@@ -637,7 +640,12 @@ export function NewCompetitionForm({
 
       <form
         id="new-comp"
-        onSubmit={onSubmit}
+        onSubmit={(e) => {
+          // Round-48 (wizard) — never auto-submit. The Confirm button calls
+          // `triggerSubmit()` directly; this handler exists only to swallow
+          // Enter-key submissions from inputs deep in the form.
+          e.preventDefault();
+        }}
         className="px-8 py-8 max-w-3xl mx-auto space-y-6"
       >
         {step === 0 && (
@@ -1324,10 +1332,20 @@ export function NewCompetitionForm({
               Next
             </Button>
           ) : (
+            // Round-48 (wizard) — explicitly type="button" with a click that
+            // invokes the submit handler. Letting the browser submit the
+            // form via type="submit" caused the bug where stepping into
+            // Review (step 4) auto-fired because the trailing mouseup from
+            // the previous Next click landed on the freshly-mounted submit
+            // button at the same DOM position. Buttons stay type="button"
+            // throughout the wizard; the form's onSubmit only runs on this
+            // explicit click.
             <Button
-              type="submit"
+              type="button"
               loading={isSubmitting}
+              onClick={() => triggerSubmit()}
               iconAfter={<Check className="size-4" />}
+              data-testid="confirm-publish"
             >
               {isEdit ? "Save changes" : "Confirm & Publish"}
             </Button>
@@ -1881,9 +1899,12 @@ function TournamentTypeCard({
 }
 
 const DateInput = (() => {
-  // Wrap the date input with a leading calendar icon so the field reads as
-  // a date picker even on browsers that hide the native indicator under our
-  // dark theme. Forwarded ref keeps it RHF-register compatible.
+  // Round-48 — calendar icon moved to the RIGHT edge per user feedback (was
+  // a leading icon, which doubled the visual weight against the native
+  // picker indicator). Bigger icon (size-5) so it reads as a tap target.
+  // `pointer-events-none` keeps the native date picker reachable through
+  // the icon — the input's right-side native indicator is hidden via the
+  // existing globals.css rule (`::-webkit-calendar-picker-indicator`).
   type DateInputProps = React.InputHTMLAttributes<HTMLInputElement>;
   function Inner(
     props: DateInputProps,
@@ -1891,12 +1912,15 @@ const DateInput = (() => {
   ) {
     return (
       <div className="relative">
-        <CalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <Input
           type="date"
           ref={ref}
           {...props}
-          className={cn("pl-10", props.className)}
+          className={cn("pr-10", props.className)}
+        />
+        <CalendarDays
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-5 text-muted-foreground"
+          aria-hidden
         />
       </div>
     );
