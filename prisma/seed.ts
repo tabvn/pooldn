@@ -455,15 +455,30 @@ async function main() {
     | "APPROVED"
     | "REJECTED"
     | "CANCELLED"
-    | "WAITLISTED";
+    | "WAITLISTED"
+    | "INVITED";
+
+  // Round-50 — seed applicationPlayers + CompetitionRoster alongside the
+  // application row so the new "Application (players)" detail view and the
+  // Players tab have something to show on a fresh DB.
+  //
+  // applicationPlayers carries every active team member (cross-team overlap
+  // is tolerated at the seed level so each team's drawer shows a populated
+  // roster — assertNoCrossTeamRoster would gate this in production, but
+  // here we trade that invariant for a friendly demo state).
+  //
+  // CompetitionRoster respects its DB unique([competitionId, userId])
+  // constraint: first-come APPROVED app for each user wins; later
+  // APPROVED apps that share a user just skip the duplicate row.
+  const rosteredInComp = new Map<string, Set<string>>();
 
   const upsertApp = async (
     competitionId: string,
     teamId: string,
     status: AppStatus,
     reviewNote?: string,
-  ) =>
-    prisma.competitionApplication.upsert({
+  ) => {
+    const app = await prisma.competitionApplication.upsert({
       where: { competitionId_teamId: { competitionId, teamId } },
       update: { status, reviewNote: reviewNote ?? null },
       create: {
@@ -474,6 +489,75 @@ async function main() {
         reviewedAt: status === "PENDING" ? null : new Date(),
       },
     });
+
+    // Idempotent reseed: wipe both tables for this (app, team) so re-runs
+    // always reflect the current memberships rather than stale unions.
+    await prisma.applicationPlayer.deleteMany({
+      where: { applicationId: app.id },
+    });
+    await prisma.competitionRoster.deleteMany({
+      where: { competitionId, teamId },
+    });
+
+    // INVITED rows are organizer-seeded — the captain hasn't picked players
+    // yet, so leave applicationPlayers + CompetitionRoster empty (mirrors
+    // inviteTeamsToCompetition).
+    if (status === "INVITED") return app;
+
+    const members = await prisma.teamMember.findMany({
+      where: { teamId, isActive: true },
+      include: { user: { select: { id: true, name: true } } },
+      orderBy: { joinedAt: "asc" },
+    });
+
+    if (members.length > 0) {
+      await prisma.applicationPlayer.createMany({
+        data: members.map((m) => ({
+          applicationId: app.id,
+          userId: m.userId,
+          name: m.user.name,
+        })),
+      });
+    }
+
+    if (status === "APPROVED" && members.length > 0) {
+      const taken =
+        rosteredInComp.get(competitionId) ?? new Set<string>();
+      const freshlyRostered = members.filter((m) => !taken.has(m.userId));
+      for (const m of freshlyRostered) taken.add(m.userId);
+      rosteredInComp.set(competitionId, taken);
+      if (freshlyRostered.length > 0) {
+        await prisma.competitionRoster.createMany({
+          data: freshlyRostered.map((m) => ({
+            competitionId,
+            teamId,
+            userId: m.userId,
+          })),
+        });
+      }
+    }
+
+    return app;
+  };
+
+  // Round-50 — re-seeds keep stale CompetitionRoster + ApplicationPlayer
+  // rows from prior runs (different team distributions, retired players,
+  // etc.), which collide with the (competitionId, userId) unique
+  // constraint when upsertApp tries to seed the fresh first-come
+  // assignment. Wipe the seeded competitions clean BEFORE any upsertApp
+  // call so the cache + idempotent rebuild lines up.
+  const seededCompetitionIds = [
+    completed.id,
+    ongoing.id,
+    startable.id,
+    open.id,
+  ];
+  await prisma.competitionRoster.deleteMany({
+    where: { competitionId: { in: seededCompetitionIds } },
+  });
+  await prisma.applicationPlayer.deleteMany({
+    where: { application: { competitionId: { in: seededCompetitionIds } } },
+  });
 
   // Completed comp — 2 approved (original participants)
   await upsertApp(completed.id, genTeam.id, "APPROVED");

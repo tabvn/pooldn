@@ -10,6 +10,7 @@ import {
   SchedulingType,
   ApplicationMode,
   MatchVenueMode,
+  RosterChangeRequestStatus,
 } from "@/lib/generated/prisma/enums";
 
 export const UserRoleEnum = builder.enumType(UserRole, { name: "UserRole" });
@@ -38,3 +39,7 @@ export const ApplicationModeEnum = builder.enumType(ApplicationMode, {
 export const MatchVenueModeEnum = builder.enumType(MatchVenueMode, {
   name: "MatchVenueMode",
 });
+export const RosterChangeRequestStatusEnum = builder.enumType(
+  RosterChangeRequestStatus,
+  { name: "RosterChangeRequestStatus" },
+);

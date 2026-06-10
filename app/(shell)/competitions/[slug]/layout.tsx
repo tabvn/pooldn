@@ -29,7 +29,7 @@ export default async function CompetitionLayout({
   if (!c) notFound();
   const viewer = viewerResult.data?.viewer ?? null;
 
-  const tabs: Array<{ href: string; label: string }> = [
+  const tabs: Array<{ href: string; label: string; badge?: number | null }> = [
     { href: `/competitions/${slug}`, label: "Overview" },
     { href: `/competitions/${slug}/matchdays`, label: "Matchdays" },
     { href: `/competitions/${slug}/players`, label: "Players" },
@@ -44,6 +44,10 @@ export default async function CompetitionLayout({
     tabs.push({
       href: `/competitions/${slug}/applications`,
       label: "Applications",
+      // Round-50 — surface pending review items (PENDING applications +
+      // PENDING RosterChangeRequests). Only rendered for org/admin since
+      // the Applications tab itself is gated on canManage.
+      badge: c.pendingReviewCount > 0 ? c.pendingReviewCount : null,
     });
   }
   // Round-48 (wizard) — single source of truth for "should the apply CTA

@@ -7,6 +7,7 @@ import {
   CompetitionTypeEnum,
   GameTypeEnum,
   MatchVenueModeEnum,
+  RosterChangeRequestStatusEnum,
   SchedulingTypeEnum,
 } from "./enums";
 export { SchedulingTypeEnum };
@@ -114,6 +115,33 @@ builder.prismaObject("Competition", {
       "maxGamesPerVenuePerMatchday",
       { nullable: true },
     ),
+    // Round-50 — organizer locks. Public so the apply CTA / captain roster
+    // editor can disable themselves without a separate round-trip.
+    registrationLocked: t.exposeBoolean("registrationLocked"),
+    rosterLocked: t.exposeBoolean("rosterLocked"),
+    /**
+     * Round-50 — single attention counter the layout reads when surfacing
+     * the Applications tab badge for org/admin. Counts items that need a
+     * review action: PENDING applications + PENDING roster change
+     * requests under this competition. Public so the count doesn't leak
+     * what's pending (just the cardinality).
+     */
+    pendingReviewCount: t.int({
+      resolve: async (c, _args, ctx) => {
+        const [pendingApps, pendingChanges] = await Promise.all([
+          ctx.prisma.competitionApplication.count({
+            where: { competitionId: c.id, status: "PENDING" },
+          }),
+          ctx.prisma.rosterChangeRequest.count({
+            where: {
+              status: "PENDING",
+              application: { competitionId: c.id },
+            },
+          }),
+        ]);
+        return pendingApps + pendingChanges;
+      },
+    }),
     /**
      * Round-48 (wizard) — server-computed gate the apply CTA reads. True iff
      *  - viewer is signed in and not the read-only VIEWER role,
@@ -128,6 +156,9 @@ builder.prismaObject("Competition", {
         if (!ctx.viewer) return false;
         if (ctx.viewer.role === "VIEWER") return false;
         if (c.status !== "OPEN_FOR_APPLICATIONS") return false;
+        // Round-50 — organizer's manual registration lock. Admin bypass is
+        // already handled by the apply page (it skips this gate for admins).
+        if (c.registrationLocked) return false;
         if (c.applicationMode === "OPEN") return true;
         // INVITE_ONLY — does the viewer captain any of the invited teams?
         const invited = Array.isArray(c.invitedTeamIds)
@@ -157,8 +188,47 @@ builder.prismaObject("Competition", {
       query: () => ({ orderBy: [{ position: "asc" }, { points: "desc" }] }),
     }),
     playerStats: t.relation("playerStats"),
+    // Round-50 — locked roster rows. Every approved-team player ends up here
+    // (auto-accept of an invite, or organizer approval of a manual apply).
+    // The Players tab reads this so newly-rostered players show before any
+    // matches are played; PlayerCompStat fills in stats once frames happen.
+    rosters: t.relation("rosters", {
+      query: () => ({
+        orderBy: [
+          { team: { name: "asc" } },
+          { user: { name: "asc" } },
+        ],
+      }),
+    }),
     createdAt: t.expose("createdAt", { type: "DateTime" }),
     updatedAt: t.expose("updatedAt", { type: "DateTime" }),
+  }),
+});
+
+builder.prismaObject("CompetitionRoster", {
+  description:
+    "Locked roster slot: one (competition, team, user) — unique on (competition, user). Carries the optional matching PlayerCompStat so the Players tab can render stats inline.",
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    user: t.relation("user"),
+    team: t.relation("team"),
+    createdAt: t.expose("createdAt", { type: "DateTime" }),
+    // PlayerCompStat is unique on (competitionId, userId); null until the
+    // player has appeared in a recorded frame.
+    stat: t.prismaField({
+      type: "PlayerCompStat",
+      nullable: true,
+      resolve: (query, parent, _args, ctx) =>
+        ctx.prisma.playerCompStat.findUnique({
+          ...query,
+          where: {
+            competitionId_userId: {
+              competitionId: parent.competitionId,
+              userId: parent.userId,
+            },
+          },
+        }),
+    }),
   }),
 });
 
@@ -177,6 +247,36 @@ builder.prismaObject("CompetitionApplication", {
     // Captain isn't in this application's roster). The match flow allows
     // this user to act with the same authority as the Team Captain.
     rosterCaptain: t.relation("rosterCaptain", { nullable: true }),
+    // Round-50 — captain-initiated roster swap proposals. Newest first.
+    rosterChangeRequests: t.relation("rosterChangeRequests", {
+      query: () => ({ orderBy: { submittedAt: "desc" } }),
+    }),
+  }),
+});
+
+builder.prismaObject("RosterChangeRequest", {
+  description:
+    "Round-50 — captain-proposed roster swap on an APPROVED application. " +
+    "The proposed set lives in `proposedPlayers`; the locked roster on " +
+    "CompetitionRoster stays untouched until status flips to APPROVED.",
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    application: t.relation("application"),
+    requestedBy: t.relation("requestedBy"),
+    reviewedBy: t.relation("reviewedBy", { nullable: true }),
+    status: t.expose("status", { type: RosterChangeRequestStatusEnum }),
+    message: t.exposeString("message", { nullable: true }),
+    reviewNote: t.exposeString("reviewNote", { nullable: true }),
+    submittedAt: t.expose("submittedAt", { type: "DateTime" }),
+    reviewedAt: t.expose("reviewedAt", { type: "DateTime", nullable: true }),
+    proposedPlayers: t.relation("proposedPlayers"),
+  }),
+});
+
+builder.prismaObject("RosterChangePlayer", {
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    user: t.relation("user"),
   }),
 });
 

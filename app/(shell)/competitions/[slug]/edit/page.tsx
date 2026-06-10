@@ -5,6 +5,7 @@ import { getClient } from "@/lib/apollo/client";
 import { CompetitionEditableQuery } from "@/lib/graphql/operations/competition.operations";
 import { NewCompetitionForm } from "@/app/(shell)/competitions/new/form";
 import { CompetitionBannerUpload } from "./banner-upload";
+import { CompetitionLocksCard } from "@/components/competition/competition-locks-card";
 
 export default async function EditCompetitionPage({
   params,
@@ -28,7 +29,7 @@ export default async function EditCompetitionPage({
 
   return (
     <div className="min-h-full">
-      <div className="px-8 pt-6">
+      <div className="space-y-6 px-8 pt-6">
         <Card>
           <CardHeader>
             <CardTitle>Banner</CardTitle>
@@ -38,6 +39,18 @@ export default async function EditCompetitionPage({
               competitionId={c.id}
               name={c.name}
               bannerUrl={c.bannerUrl ?? null}
+            />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Locks</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CompetitionLocksCard
+              competitionId={c.id}
+              registrationLocked={c.registrationLocked}
+              rosterLocked={c.rosterLocked}
             />
           </CardContent>
         </Card>

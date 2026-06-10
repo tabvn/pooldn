@@ -9,6 +9,9 @@ Build: the live competition page has the same Overview/Matchdays/Players/About t
 ## ✅ Competition Pre-Start — Applications (node 356-19455) — roughly MATCHES
 Figma: header (name, Active, dates, teams, prize) + **Apply** button; tabs **Applications · Matchdays · Players · About**; "Ready to Compete? / Apply as a Team" hero CTA; **Confirmed Teams** table (Team · Captain/Roster Captain · status · points). Build has the Apply CTA + tabbed competition page + applications — close. (Confirm the "Confirmed Teams" table columns + the hero CTA styling match.)
 
+## ✅ Apply / Preview Application (node 356-19658) — mostly MATCHES
+Figma: "Preview Application" with **Team** select, **Home Venue** select ("This competition requires each team to have a home venue"), **Select Roster** (checkbox list, "Select 1 to N players"), and **"Select a Roster Captain"** dropdown. Build's apply wizard has Team → roster → note → confirm with Home Venue. **Verify the build includes the "Select a Roster Captain" step** (nominate a per-competition roster captain) — that's the one piece to confirm/add.
+
 ## Summary so far
 - **Competition CREATION flow** — the big divergence (round-48): wrong tab set/order, missing How-Participants-Apply, missing Schedule toggles (Where-Played / Games-per-Opponent / Weekly-vs-Fixed), missing per-step summaries, dots instead of labeled tabs.
 - **Competition Ongoing (Overview)** and **Pre-Start (Applications)** — largely match the build.

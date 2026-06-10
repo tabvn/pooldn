@@ -8,6 +8,13 @@ import { cn } from "@/lib/utils";
 export type SelectOption = {
   value: string;
   label: React.ReactNode;
+  /** When true, the row is rendered greyed out and isn't selectable. The
+   *  hidden-input shape stays the same. */
+  disabled?: boolean;
+  /** Optional secondary text shown when the popup is open (right-aligned
+   *  inside the row). Not rendered inside the trigger so the trigger stays
+   *  short. */
+  description?: React.ReactNode;
 };
 
 export type SelectProps = {
@@ -92,9 +99,13 @@ export function Select({
                 <SelectPrimitive.Item
                   key={opt.value}
                   value={opt.value}
+                  disabled={opt.disabled}
                   className={cn(
-                    "relative flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm",
+                    "relative flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm",
                     "outline-none",
+                    opt.disabled
+                      ? "cursor-not-allowed opacity-50"
+                      : "cursor-pointer",
                     "data-[highlighted]:bg-secondary/60 data-[highlighted]:text-foreground",
                     "data-[selected]:font-semibold",
                   )}
@@ -105,6 +116,11 @@ export function Select({
                   <SelectPrimitive.ItemText className="flex-1">
                     {opt.label}
                   </SelectPrimitive.ItemText>
+                  {opt.description ? (
+                    <span className="ml-2 text-[11px] text-muted-foreground">
+                      {opt.description}
+                    </span>
+                  ) : null}
                 </SelectPrimitive.Item>
               ))}
             </SelectPrimitive.List>

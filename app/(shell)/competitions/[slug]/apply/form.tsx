@@ -238,7 +238,20 @@ export function ApplyForm({
         },
       });
       if (result.data?.applyToCompetition) {
-        toast.success("Application submitted", "The organizer will review it.");
+        // Round-50 — accepting an organizer invite auto-approves, so the
+        // toast reflects the actual outcome instead of always saying
+        // "submitted, will review".
+        if (result.data.applyToCompetition.status === "APPROVED") {
+          toast.success(
+            "You're in",
+            "Your team is on the competition list.",
+          );
+        } else {
+          toast.success(
+            "Application submitted",
+            "The organizer will review it.",
+          );
+        }
         router.push(`/competitions/${slug}`);
         router.refresh();
       }

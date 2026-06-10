@@ -61,6 +61,8 @@ export const CompetitionEditableQuery = graphql(/* GraphQL */ `
         time
       }
       maxGamesPerVenuePerMatchday
+      registrationLocked
+      rosterLocked
       pointsWin
       pointsDraw
       pointsLoss
@@ -112,6 +114,7 @@ export const CompetitionHeaderQuery = graphql(/* GraphQL */ `
       viewerCanApply
       isFollowing
       followerCount
+      pendingReviewCount
       myTeamApplication {
         id
         status
@@ -139,6 +142,7 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
   query CompetitionOverview($slug: String!) {
     competition(slug: $slug) {
       id
+      name
       status
       prizePool
       currency
@@ -157,6 +161,8 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
       breakAndRunRule
       requiresHomeVenue
       applicationMode
+      registrationLocked
+      rosterLocked
       matchVenueMode
       gamesPerOpponent
       weekdaySchedule {
@@ -265,22 +271,31 @@ export const CompetitionPlayersQuery = graphql(/* GraphQL */ `
   query CompetitionPlayers($slug: String!) {
     competition(slug: $slug) {
       id
-      playerStats {
+      rosters {
         id
-        matchesPlayed
-        framesWon
-        framesPlayed
-        singlesWon
-        doublesWon
-        brWon
-        mvpScore
-        isMvp
         user {
           id
           name
           username
           nationality
           avatarUrl
+        }
+        team {
+          id
+          name
+          slug
+          logoUrl
+        }
+        stat {
+          id
+          matchesPlayed
+          framesWon
+          framesPlayed
+          singlesWon
+          doublesWon
+          brWon
+          mvpScore
+          isMvp
         }
       }
     }
@@ -291,6 +306,7 @@ export const CompetitionApplicationsQuery = graphql(/* GraphQL */ `
   query CompetitionApplications($slug: String!) {
     competition(slug: $slug) {
       id
+      name
       applications {
         id
         status
@@ -328,6 +344,101 @@ export const MyCompetitionsQuery = graphql(/* GraphQL */ `
       city {
         id
         name
+      }
+    }
+  }
+`);
+
+// Round-50 — Application (players) detail page. Returns the locked roster,
+// any pending RosterChangeRequest with its proposed players, plus the
+// captain's team-member roster so the captain can pick from in the edit UI.
+export const CompetitionApplicationDetailQuery = graphql(/* GraphQL */ `
+  query CompetitionApplicationDetail($id: ID!) {
+    competitionApplication(id: $id) {
+      id
+      status
+      message
+      reviewNote
+      submittedAt
+      reviewedAt
+      competition {
+        id
+        slug
+        name
+        status
+        registrationLocked
+        rosterLocked
+        minPlayersPerTeam
+        maxPlayersPerTeam
+        organizer {
+          id
+        }
+      }
+      team {
+        id
+        name
+        slug
+        logoUrl
+        captain {
+          id
+          name
+          username
+        }
+        members {
+          id
+          isActive
+          user {
+            id
+            name
+            username
+            nationality
+            avatarUrl
+          }
+        }
+      }
+      rosterCaptain {
+        id
+        name
+        username
+      }
+      applicationPlayers {
+        id
+        name
+        user {
+          id
+          name
+          username
+          nationality
+          avatarUrl
+        }
+      }
+      rosterChangeRequests {
+        id
+        status
+        message
+        reviewNote
+        submittedAt
+        reviewedAt
+        requestedBy {
+          id
+          name
+          username
+        }
+        reviewedBy {
+          id
+          name
+          username
+        }
+        proposedPlayers {
+          id
+          user {
+            id
+            name
+            username
+            nationality
+            avatarUrl
+          }
+        }
       }
     }
   }

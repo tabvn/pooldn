@@ -245,7 +245,6 @@ builder.mutationFields((t) => ({
           ? match.homeTeam?.members ?? []
           : match.awayTeam?.members ?? [];
       const allowedIds = new Set(teamMembers.map((m) => m.userId));
-      const seen = new Set<string>();
       for (const slot of args.input.slots) {
         for (const pid of [slot.playerId, slot.partnerPlayerId]) {
           if (!pid) continue;
@@ -255,12 +254,15 @@ builder.mutationFields((t) => ({
               extensions: { code: "BAD_USER_INPUT" },
             });
           }
-          if (seen.has(id)) {
-            throw new GraphQLError("Same player assigned to multiple frames", {
-              extensions: { code: "BAD_USER_INPUT" },
-            });
-          }
-          seen.add(id);
+        }
+        if (
+          slot.partnerPlayerId &&
+          String(slot.playerId) === String(slot.partnerPlayerId)
+        ) {
+          throw new GraphQLError(
+            "A doubles couple can't be the same player",
+            { extensions: { code: "BAD_USER_INPUT" } },
+          );
         }
       }
 
@@ -277,6 +279,38 @@ builder.mutationFields((t) => ({
 
       return ctx.prisma.$transaction(async (tx) => {
         await scaffoldMatchFramesFromStructure(tx, match.id);
+        // Round-50 — once the scaffold is in place each frame has a known
+        // blockType. New rule: a player can hold AT MOST one SINGLES slot
+        // AND at most one DOUBLES/SCOTCH slot (so a singles player can
+        // also be a doubles partner, but not the singles for two games
+        // or the partner in two doubles couples).
+        const scaffoldedFrames = await tx.matchFrame.findMany({
+          where: { matchId: match.id },
+          select: { frameNumber: true, blockType: true },
+        });
+        const blockTypeByFrame = new Map(
+          scaffoldedFrames.map((f) => [f.frameNumber, f.blockType]),
+        );
+        const seenSingles = new Set<string>();
+        const seenDoubles = new Set<string>();
+        for (const slot of args.input.slots) {
+          const blockType = blockTypeByFrame.get(slot.frameNumber);
+          for (const pid of [slot.playerId, slot.partnerPlayerId]) {
+            if (!pid) continue;
+            const id = String(pid);
+            const isSingles = blockType === "SINGLES";
+            const set = isSingles ? seenSingles : seenDoubles;
+            if (set.has(id)) {
+              throw new GraphQLError(
+                isSingles
+                  ? "Player can't be in two singles frames"
+                  : "Player can't be in two doubles couples",
+                { extensions: { code: "BAD_USER_INPUT" } },
+              );
+            }
+            set.add(id);
+          }
+        }
         for (const slot of args.input.slots) {
           await tx.matchFrame.update({
             where: {

@@ -8,7 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ApplicationStatusChip } from "@/components/ui/status-chip";
 import { useToast } from "@/components/ui/toast";
-import { CompetitionApplicationsQuery } from "@/lib/graphql/operations/competition.operations";
+import { ApplicationDetailDialog } from "@/components/competition/application-detail-dialog";
+import {
+  CompetitionApplicationsQuery,
+  ViewerQuery,
+} from "@/lib/graphql/operations/competition.operations";
 import {
   InviteTeamsToCompetitionMutation,
   ReviewApplicationMutation,
@@ -27,6 +31,11 @@ export function ApplicationsList({ slug }: { slug: string }) {
   const { data, refetch } = useQuery(CompetitionApplicationsQuery, {
     variables: { slug },
   });
+  const { data: viewerData } = useQuery(ViewerQuery, {
+    errorPolicy: "ignore",
+    fetchPolicy: "cache-first",
+  });
+  const viewer = viewerData?.viewer ?? null;
   const [review, { loading }] = useMutation(ReviewApplicationMutation);
   const [reinvite, { loading: reinviting }] = useMutation(
     InviteTeamsToCompetitionMutation,
@@ -131,6 +140,18 @@ export function ApplicationsList({ slug }: { slug: string }) {
                   </div>
                   <div className="flex items-center gap-2">
                     <ApplicationStatusChip status={app.status} />
+                    {app.status !== "INVITED" ? (
+                      <ApplicationDetailDialog
+                        applicationId={app.id}
+                        teamName={app.team.name}
+                        competitionName={data?.competition?.name ?? undefined}
+                        viewerId={viewer?.id ?? null}
+                        viewerRole={viewer?.role ?? null}
+                        triggerLabel={
+                          app.status === "PENDING" ? "Review" : "View"
+                        }
+                      />
+                    ) : null}
                     {app.status === "PENDING" ? (
                       <>
                         <Button
@@ -138,6 +159,7 @@ export function ApplicationsList({ slug }: { slug: string }) {
                           variant="success"
                           loading={loading}
                           onClick={() => decide(app.id, true)}
+                          data-testid={`quick-approve-${app.id}`}
                         >
                           Approve
                         </Button>
@@ -146,6 +168,7 @@ export function ApplicationsList({ slug }: { slug: string }) {
                           variant="danger"
                           loading={loading}
                           onClick={() => decide(app.id, false)}
+                          data-testid={`quick-reject-${app.id}`}
                         >
                           Reject
                         </Button>

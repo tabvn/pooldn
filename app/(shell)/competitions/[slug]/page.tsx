@@ -11,9 +11,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getClient } from "@/lib/apollo/client";
-import { CompetitionOverviewQuery } from "@/lib/graphql/operations/competition.operations";
+import {
+  CompetitionOverviewQuery,
+  ViewerQuery,
+} from "@/lib/graphql/operations/competition.operations";
 import { LiveStandingsListener } from "@/components/live/live-standings-listener";
 import { AboutCard } from "@/components/competition/about-card";
+import { ConfirmedTeamsRow } from "@/components/competition/confirmed-teams-row";
 import { InviteBanner } from "@/components/competition/invite-banner";
 
 export default async function CompetitionOverviewPage({
@@ -22,12 +26,14 @@ export default async function CompetitionOverviewPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const { data } = await getClient().query({
-    query: CompetitionOverviewQuery,
-    variables: { slug },
-  });
+  const client = getClient();
+  const [{ data }, viewerResult] = await Promise.all([
+    client.query({ query: CompetitionOverviewQuery, variables: { slug } }),
+    client.query({ query: ViewerQuery, errorPolicy: "ignore" }),
+  ]);
   const c = data?.competition;
   if (!c) return null;
+  const viewer = viewerResult.data?.viewer ?? null;
 
   const isCompleted = c.status === "COMPLETED";
   const winner = isCompleted ? c.standings[0] : null;
@@ -223,49 +229,15 @@ export default async function CompetitionOverviewPage({
           the standings table below carries the team list so we collapse this
           to a compact strip just to confirm who's in. */}
       {c.applications.filter((a) => a.status === "APPROVED").length > 0 ? (
-        <section
-          className="rounded-xl border border-border bg-card p-4"
-          data-testid="confirmed-teams"
-        >
-          <header className="mb-3 flex items-baseline justify-between">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Confirmed teams
-            </h3>
-            <Badge variant="primary" size="sm">
-              {c.applications.filter((a) => a.status === "APPROVED").length}
-              {c.maxTeams ? ` / ${c.maxTeams}` : ""}
-            </Badge>
-          </header>
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {c.applications
-              .filter((a) => a.status === "APPROVED")
-              .map((a) => (
-                <li key={a.id}>
-                  <Link
-                    href={`/teams/${a.team.slug}`}
-                    className="flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2 hover:border-primary/40"
-                    data-testid={`confirmed-team-${a.team.id}`}
-                  >
-                    <Avatar
-                      size="sm"
-                      src={a.team.logoUrl ?? undefined}
-                      fallback={a.team.name}
-                      shape="team"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold">
-                        {a.team.name}
-                      </div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        Captain {a.team.captain.name} · {a.team.members.length}{" "}
-                        members
-                      </div>
-                    </div>
-                  </Link>
-                </li>
-              ))}
-          </ul>
-        </section>
+        <ConfirmedTeamsRow
+          competitionName={c.name}
+          competitionStatus={c.status}
+          rosterLocked={c.rosterLocked}
+          applications={c.applications}
+          viewerId={viewer?.id ?? null}
+          viewerRole={viewer?.role ?? null}
+          maxTeams={c.maxTeams ?? null}
+        />
       ) : c.status === "OPEN_FOR_APPLICATIONS" ? (
         <section
           className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-8 text-center text-sm text-muted-foreground"

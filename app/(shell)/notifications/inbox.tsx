@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "@apollo/client/react";
 import {
   AtSign,
   Bell,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -25,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 import type { NotificationType } from "@/lib/generated/prisma/enums";
 import {
   MarkAllNotificationsReadMutation,
@@ -148,15 +150,28 @@ export function NotificationsInbox() {
   const router = useRouter();
   const toast = useToast();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const { data, loading, fetchMore } = useQuery(NotificationsConnectionQuery, {
-    variables: { first: PAGE_SIZE, onlyUnread: false },
-    notifyOnNetworkStatusChange: true,
+  const [onlyUnread, setOnlyUnread] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const { data, loading, fetchMore, refetch } = useQuery(
+    NotificationsConnectionQuery,
+    {
+      variables: { first: PAGE_SIZE, onlyUnread },
+      notifyOnNetworkStatusChange: true,
+      fetchPolicy: "cache-and-network",
+    },
+  );
+  const { data: unreadData } = useQuery(UnreadNotificationCountQuery, {
+    fetchPolicy: "cache-and-network",
   });
   const [markRead] = useMutation(MarkNotificationReadMutation);
   const [markAll, markAllState] = useMutation(MarkAllNotificationsReadMutation);
 
   const nodes = data?.notifications?.nodes ?? [];
   const nextCursor = data?.notifications?.nextCursor ?? null;
+  const unreadCount = unreadData?.unreadNotificationCount ?? 0;
+  // First-load skeleton vs. refetch / load-more: only show the skeleton when
+  // the cache is empty for the current variables (no nodes AND loading).
+  const isInitialLoading = loading && nodes.length === 0 && !loadingMore;
 
   // Group by groupKey — same fan-out event shows once with unread count.
   const groups = new Map<string, typeof nodes>();
@@ -206,6 +221,54 @@ export function NotificationsInbox() {
     if (node.href) router.push(node.href);
   }
 
+  function onMarkReadOnly(
+    e: React.MouseEvent,
+    node: (typeof nodes)[number],
+  ) {
+    // Per-item "mark as read" — doesn't navigate, just clears the dot.
+    e.preventDefault();
+    e.stopPropagation();
+    doMarkRead(node.id, node.isRead);
+  }
+
+  async function onLoadMore() {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    try {
+      await fetchMore({
+        variables: {
+          first: PAGE_SIZE,
+          after: nextCursor,
+          onlyUnread,
+        },
+        updateQuery: (prev, { fetchMoreResult }) => {
+          if (!fetchMoreResult?.notifications) return prev;
+          return {
+            notifications: {
+              __typename: "NotificationConnection" as const,
+              nodes: [
+                ...(prev.notifications?.nodes ?? []),
+                ...fetchMoreResult.notifications.nodes,
+              ],
+              nextCursor: fetchMoreResult.notifications.nextCursor,
+            },
+          };
+        },
+      });
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  function onChangeFilter(next: boolean) {
+    if (next === onlyUnread) return;
+    setOnlyUnread(next);
+    setExpanded(new Set());
+    // Apollo refetches automatically when `variables` changes, but kicking
+    // it explicitly keeps the loading indicator deterministic.
+    void refetch({ first: PAGE_SIZE, onlyUnread: next });
+  }
+
   async function onMarkAll() {
     const before = nodes.filter((n) => !n.isRead).length;
     await markAll({
@@ -229,9 +292,16 @@ export function NotificationsInbox() {
 
   return (
     <div className="p-8 max-w-3xl space-y-4">
-      <header className="flex items-start justify-between gap-4">
+      <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-3xl font-semibold">Notifications</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-semibold">Notifications</h1>
+            {unreadCount > 0 ? (
+              <Badge variant="primary" size="sm">
+                {unreadCount} unread
+              </Badge>
+            ) : null}
+          </div>
           <p className="text-sm text-muted-foreground">
             Everything that affects your competitions, teams, and matches.
           </p>
@@ -240,17 +310,54 @@ export function NotificationsInbox() {
           variant="outline"
           size="sm"
           loading={markAllState.loading}
+          disabled={unreadCount === 0}
           onClick={onMarkAll}
         >
           Mark all read
         </Button>
       </header>
 
-      {nodes.length === 0 ? (
+      {/* Filter tabs — keep the same routing surface (still /notifications),
+          drive purely from local state. */}
+      <div
+        role="tablist"
+        aria-label="Notification filter"
+        className="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary/40 p-1"
+      >
+        <FilterTab
+          active={!onlyUnread}
+          onClick={() => onChangeFilter(false)}
+          label="All"
+          testId="filter-all"
+        />
+        <FilterTab
+          active={onlyUnread}
+          onClick={() => onChangeFilter(true)}
+          label={`Unread${unreadCount > 0 ? ` · ${unreadCount}` : ""}`}
+          testId="filter-unread"
+        />
+      </div>
+
+      {isInitialLoading ? (
+        <InboxSkeleton />
+      ) : nodes.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
             <Inbox className="size-10" />
-            <p className="text-sm">No notifications yet.</p>
+            <p className="text-sm">
+              {onlyUnread
+                ? "Inbox zero — no unread notifications."
+                : "No notifications yet."}
+            </p>
+            {onlyUnread ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onChangeFilter(false)}
+              >
+                Show all
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
       ) : (
@@ -314,15 +421,29 @@ export function NotificationsInbox() {
                           </span>
                         </p>
                       </div>
-                      {items.length > 1 ? (
-                        isExpanded ? (
-                          <ChevronDown className="size-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="size-4 text-muted-foreground" />
-                        )
-                      ) : head.href ? (
-                        <span className="text-xs text-muted-foreground">→</span>
-                      ) : null}
+                      <div className="flex shrink-0 items-center gap-1">
+                        {!head.isRead ? (
+                          <button
+                            type="button"
+                            onClick={(e) => onMarkReadOnly(e, head)}
+                            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
+                            aria-label="Mark as read"
+                            data-testid={`mark-read-${head.id}`}
+                            title="Mark as read"
+                          >
+                            <Check className="size-4" />
+                          </button>
+                        ) : null}
+                        {items.length > 1 ? (
+                          isExpanded ? (
+                            <ChevronDown className="size-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="size-4 text-muted-foreground" />
+                          )
+                        ) : head.href ? (
+                          <span className="text-xs text-muted-foreground">→</span>
+                        ) : null}
+                      </div>
                     </div>
                   </button>
                   {isExpanded && items.length > 1 ? (
@@ -358,6 +479,26 @@ export function NotificationsInbox() {
                                 {relativeTime(n.createdAt)}
                               </p>
                             </div>
+                            {!n.isRead ? (
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => onMarkReadOnly(e, n)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    onMarkReadOnly(
+                                      e as unknown as React.MouseEvent,
+                                      n,
+                                    );
+                                  }
+                                }}
+                                className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
+                                aria-label="Mark as read"
+                                title="Mark as read"
+                              >
+                                <Check className="size-4" />
+                              </span>
+                            ) : null}
                           </button>
                         </li>
                       ))}
@@ -374,34 +515,70 @@ export function NotificationsInbox() {
         <div className="flex justify-center">
           <Button
             variant="outline"
-            loading={loading}
-            onClick={() =>
-              fetchMore({
-                variables: {
-                  first: PAGE_SIZE,
-                  after: nextCursor,
-                  onlyUnread: false,
-                },
-                updateQuery: (prev, { fetchMoreResult }) => {
-                  if (!fetchMoreResult?.notifications) return prev;
-                  return {
-                    notifications: {
-                      __typename: "NotificationConnection" as const,
-                      nodes: [
-                        ...(prev.notifications?.nodes ?? []),
-                        ...fetchMoreResult.notifications.nodes,
-                      ],
-                      nextCursor: fetchMoreResult.notifications.nextCursor,
-                    },
-                  };
-                },
-              })
-            }
+            loading={loadingMore}
+            onClick={onLoadMore}
+            data-testid="notifications-load-more"
           >
             Load more
           </Button>
         </div>
+      ) : !isInitialLoading && nodes.length > 0 ? (
+        <p className="pt-2 text-center text-xs text-muted-foreground">
+          You&apos;re all caught up.
+        </p>
       ) : null}
     </div>
+  );
+}
+
+function FilterTab({
+  active,
+  onClick,
+  label,
+  testId,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  testId: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      data-testid={testId}
+      className={cn(
+        "inline-flex h-8 items-center justify-center rounded-md px-3 text-sm font-semibold transition-colors",
+        active
+          ? "bg-card text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
+function InboxSkeleton() {
+  return (
+    <ul className="space-y-2" data-testid="notifications-skeleton">
+      {[0, 1, 2, 3].map((i) => (
+        <li
+          key={i}
+          className="rounded-xl border border-border border-l-4 border-l-border/40 bg-card px-4 py-3"
+        >
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 size-8 shrink-0 animate-pulse rounded-full bg-secondary/60" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 w-1/3 animate-pulse rounded bg-secondary/60" />
+              <div className="h-3 w-2/3 animate-pulse rounded bg-secondary/40" />
+              <div className="h-3 w-20 animate-pulse rounded bg-secondary/40" />
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }

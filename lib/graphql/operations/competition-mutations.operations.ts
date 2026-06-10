@@ -127,9 +127,18 @@ export const WithdrawApplicationMutation = graphql(/* GraphQL */ `
 `);
 
 export const EditApplicationRosterMutation = graphql(/* GraphQL */ `
-  mutation EditApplicationRoster($id: ID!, $playerUserIds: [ID!]!) {
-    editApplicationRoster(id: $id, playerUserIds: $playerUserIds) {
+  mutation EditApplicationRoster(
+    $id: ID!
+    $playerUserIds: [ID!]!
+    $rosterCaptainUserId: ID
+  ) {
+    editApplicationRoster(
+      id: $id
+      playerUserIds: $playerUserIds
+      rosterCaptainUserId: $rosterCaptainUserId
+    ) {
       id
+      status
       applicationPlayers {
         id
         user {
@@ -159,6 +168,74 @@ export const InviteTeamsToCompetitionMutation = graphql(/* GraphQL */ `
         name
         slug
       }
+    }
+  }
+`);
+
+// Round-50 — organizer/admin lock toggles + captain-initiated roster change
+// requests that require organizer review.
+export const SetCompetitionLocksMutation = graphql(/* GraphQL */ `
+  mutation SetCompetitionLocks(
+    $id: ID!
+    $registrationLocked: Boolean
+    $rosterLocked: Boolean
+  ) {
+    setCompetitionLocks(
+      id: $id
+      registrationLocked: $registrationLocked
+      rosterLocked: $rosterLocked
+    ) {
+      id
+      registrationLocked
+      rosterLocked
+    }
+  }
+`);
+
+export const RequestRosterChangeMutation = graphql(/* GraphQL */ `
+  mutation RequestRosterChange(
+    $applicationId: ID!
+    $playerUserIds: [ID!]!
+    $message: String
+    $rosterCaptainUserId: ID
+  ) {
+    requestRosterChange(
+      applicationId: $applicationId
+      playerUserIds: $playerUserIds
+      message: $message
+      rosterCaptainUserId: $rosterCaptainUserId
+    ) {
+      id
+      status
+      submittedAt
+    }
+  }
+`);
+
+export const CancelRosterChangeRequestMutation = graphql(/* GraphQL */ `
+  mutation CancelRosterChangeRequest($id: ID!) {
+    cancelRosterChangeRequest(id: $id) {
+      id
+      status
+    }
+  }
+`);
+
+export const DecideRosterChangeRequestMutation = graphql(/* GraphQL */ `
+  mutation DecideRosterChangeRequest(
+    $id: ID!
+    $approve: Boolean!
+    $reviewNote: String
+  ) {
+    decideRosterChangeRequest(
+      id: $id
+      approve: $approve
+      reviewNote: $reviewNote
+    ) {
+      id
+      status
+      reviewNote
+      reviewedAt
     }
   }
 `);

@@ -230,6 +230,9 @@ model User {
   teamMemberships       TeamMember[]
   applicationPlayers    ApplicationPlayer[]
   rosterCaptainOf       CompetitionApplication[] @relation("ApplicationRosterCaptain")
+  rosterChangeRequested RosterChangeRequest[]    @relation("RosterChangeRequestedBy")
+  rosterChangeReviewed  RosterChangeRequest[]    @relation("RosterChangeReviewedBy")
+  rosterChangePlayerOf  RosterChangePlayer[]
   matchParticipations   MatchParticipant[]
   playerCompStats       PlayerCompStat[]
   notifications         Notification[]
@@ -523,6 +526,17 @@ model Competition {
   // refuses to schedule more than this many matches at the same venue on
   // the same matchday. Null = no cap. UI input on the wizard Schedule step.
   maxGamesPerVenuePerMatchday Int?
+  // Round-50 — organizer/admin locks. Independent of `status` so an ONGOING
+  // competition can stay open for late-registration substitutions, and a
+  // closed-registration competition can still let captains swap rosters.
+  //
+  //   registrationLocked = true → applyToCompetition + inviteTeamsToCompetition
+  //                               reject (SUPER_ADMIN bypasses).
+  //   rosterLocked       = true → captains cannot open a RosterChangeRequest.
+  //
+  // Both default false so existing competitions behave unchanged.
+  registrationLocked  Boolean           @default(false)
+  rosterLocked        Boolean           @default(false)
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 
@@ -595,6 +609,7 @@ model CompetitionApplication {
   rosterCaptain       User?     @relation("ApplicationRosterCaptain", fields: [rosterCaptainUserId], references: [id])
 
   applicationPlayers ApplicationPlayer[]
+  rosterChangeRequests RosterChangeRequest[]
 
   @@unique([competitionId, teamId])
   @@index([teamId])
@@ -616,6 +631,56 @@ model ApplicationPlayer {
   @@unique([applicationId, userId])
   @@index([userId])
   @@map("application_players")
+}
+
+// Round-50 — captain-initiated roster swap on an APPROVED application.
+// Captures the proposed roster atomically; CompetitionRoster + applicationPlayers
+// stay locked to the previous set until an organizer/admin approves. Approval
+// diffs the proposed set against the locked roster, then syncs both tables in
+// one transaction. Rejection leaves both alone.
+//
+// Lifecycle: PENDING (captain just submitted) → APPROVED | REJECTED | CANCELLED.
+//   CANCELLED = captain withdrew the request before review.
+enum RosterChangeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model RosterChangeRequest {
+  id            String                    @id @default(cuid())
+  applicationId String
+  application   CompetitionApplication    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  requestedById String
+  requestedBy   User                      @relation("RosterChangeRequestedBy", fields: [requestedById], references: [id])
+  status        RosterChangeRequestStatus @default(PENDING)
+  message       String?
+  reviewNote    String?
+  reviewedById  String?
+  reviewedBy    User?                     @relation("RosterChangeReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt    DateTime?
+  submittedAt   DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  proposedPlayers RosterChangePlayer[]
+
+  @@index([applicationId])
+  @@index([status])
+  @@index([requestedById])
+  @@map("roster_change_requests")
+}
+
+model RosterChangePlayer {
+  id        String              @id @default(cuid())
+  requestId String
+  request   RosterChangeRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                @relation(fields: [userId], references: [id])
+
+  @@unique([requestId, userId])
+  @@index([userId])
+  @@map("roster_change_players")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

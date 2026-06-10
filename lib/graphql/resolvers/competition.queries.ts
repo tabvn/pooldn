@@ -73,4 +73,33 @@ builder.queryFields((t) => ({
       });
     },
   }),
+
+  competitionApplication: t.prismaField({
+    type: "CompetitionApplication",
+    nullable: true,
+    description:
+      "Round-50 — look up a single application by id. Used by the per-team " +
+      "Application (players) page. Returns null if the parent competition " +
+      "isn't readable to the viewer.",
+    args: { id: t.arg.id({ required: true }) },
+    resolve: async (query, _root, args, ctx) => {
+      const app = await ctx.prisma.competitionApplication.findFirst({
+        ...query,
+        where: { id: String(args.id) },
+      });
+      if (!app) return null;
+      // Mirror the per-competition read gate so admins+organizers see drafts
+      // while public viewers only see public competitions' applications.
+      const readable = await ctx.prisma.competition.findFirst({
+        where: {
+          AND: [
+            accessibleBy(ctx.ability, "read").ofType("Competition"),
+            { id: app.competitionId },
+          ],
+        },
+        select: { id: true },
+      });
+      return readable ? app : null;
+    },
+  }),
 }));
