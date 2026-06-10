@@ -141,15 +141,6 @@ export const EditApplicationRosterMutation = graphql(/* GraphQL */ `
   }
 `);
 
-export const AcceptCompetitionInviteMutation = graphql(/* GraphQL */ `
-  mutation AcceptCompetitionInvite($applicationId: ID!) {
-    acceptCompetitionInvite(applicationId: $applicationId) {
-      id
-      status
-    }
-  }
-`);
-
 export const InviteTeamsToCompetitionMutation = graphql(/* GraphQL */ `
   mutation InviteTeamsToCompetition(
     $competitionId: ID!

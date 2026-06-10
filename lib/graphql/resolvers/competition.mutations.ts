@@ -1062,70 +1062,27 @@ builder.mutationFields((t) => ({
           });
         }
       }
+      // Round-49 — keep `competition.invitedTeamIds` in sync with the new
+      // INVITED rows so an INVITE_ONLY comp's apply form / viewerCanApply
+      // gate accepts the invited captain. We union, never remove: revoking
+      // is a separate flow (decline + admin edit).
+      if (results.length) {
+        const current = Array.isArray(competition.invitedTeamIds)
+          ? (competition.invitedTeamIds as unknown[]).map(String)
+          : [];
+        const next = Array.from(new Set([...current, ...teams.map((t) => t.id)]));
+        if (next.length !== current.length) {
+          await ctx.prisma.competition.update({
+            where: { id: competition.id },
+            data: { invitedTeamIds: next },
+          });
+        }
+      }
       // Re-fetch with the prismaField selection set so downstream resolvers
       // (team, competition, etc.) get whatever the client asked for.
       return ctx.prisma.competitionApplication.findMany({
         ...query,
         where: { id: { in: results.map((r) => r.id) } },
-      });
-    },
-  }),
-
-  acceptCompetitionInvite: t.prismaField({
-    type: "CompetitionApplication",
-    description:
-      "Round-49 — team captain accepts a one-click invite (INVITED → " +
-      "PENDING). Roster stays empty; the captain (or organizer) can fill " +
-      "it later via editApplicationRoster. The organizer gets a fresh " +
-      "APPLICATION_SUBMITTED notification so the row surfaces in their " +
-      "Pending list.",
-    args: { applicationId: t.arg.id({ required: true }) },
-    resolve: async (query, _root, args, ctx) => {
-      requireUser(ctx.viewer);
-      const app = await ctx.prisma.competitionApplication.findUniqueOrThrow({
-        where: { id: String(args.applicationId) },
-        include: {
-          competition: { select: { id: true, name: true, slug: true, organizerId: true, status: true } },
-          team: { select: { id: true, name: true, captainId: true } },
-        },
-      });
-      const isCaptain = app.team.captainId === ctx.viewer.id;
-      const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
-      if (!isCaptain && !isAdmin) {
-        throw new GraphQLError("Only the team captain may accept this invite", {
-          extensions: { code: "FORBIDDEN" },
-        });
-      }
-      if (app.status !== "INVITED") {
-        throw new GraphQLError("This application is not awaiting an invite response.", {
-          extensions: { code: "INVALID_TRANSITION", currentStatus: app.status },
-        });
-      }
-      const updated = await ctx.prisma.competitionApplication.update({
-        where: { id: app.id },
-        data: {
-          status: "PENDING",
-          reviewNote: null,
-          reviewedAt: null,
-        },
-      });
-      // Re-use the "team applied" notification so the organizer's existing
-      // pending-application flow lights up unchanged.
-      await new NotificationService(ctx.prisma).create({
-        type: "APPLICATION_SUBMITTED",
-        title: `${app.team.name} accepted your invite to ${app.competition.name}`,
-        message: "Review the application and approve when you're ready.",
-        recipients: [app.competition.organizerId],
-        entity: {
-          type: "APPLICATION",
-          id: app.competition.id,
-          slug: app.competition.slug,
-        },
-        groupKey: `app-${app.competition.id}`,
-      });
-      return ctx.prisma.competitionApplication.findUniqueOrThrow({
-        ...query,
-        where: { id: updated.id },
       });
     },
   }),

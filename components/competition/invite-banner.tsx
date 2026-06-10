@@ -10,10 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
 import { MyTeamsQuery } from "@/lib/graphql/operations/team.operations";
-import {
-  AcceptCompetitionInviteMutation,
-  WithdrawApplicationMutation,
-} from "@/lib/graphql/operations/competition-mutations.operations";
+import { WithdrawApplicationMutation } from "@/lib/graphql/operations/competition-mutations.operations";
 
 type InvitedApp = {
   id: string;
@@ -30,11 +27,12 @@ type InvitedApp = {
 /**
  * Round-49 — captain-facing invite banner.
  *
- * Both Accept and Decline run in-place: button → loading spinner →
- * banner dismisses → Sonner toast. Accept flips the row INVITED → PENDING
- * (roster left empty, captain edits later); Decline flips to CANCELLED via
- * withdrawApplication. We dismiss optimistically before the refresh so the
- * banner doesn't briefly re-render with the old data.
+ * Accept routes through the existing /apply form so the captain reuses
+ * the same roster + roster-captain picker that any other applicant goes
+ * through (the INVITED row joins the resurrection path in
+ * applyToCompetition, so the existing form submission flips it to
+ * PENDING). Decline runs in-place: spinner → optimistic dismiss → Sonner
+ * toast, no confirm dialog.
  */
 export function InviteBanner({
   competitionSlug,
@@ -43,7 +41,6 @@ export function InviteBanner({
   competitionSlug: string;
   applications: InvitedApp[];
 }) {
-  void competitionSlug;
   const router = useRouter();
   const toast = useToast();
   const { data: viewerData } = useQuery(ViewerQuery, {
@@ -54,10 +51,9 @@ export function InviteBanner({
     fetchPolicy: "cache-first",
     errorPolicy: "ignore",
   });
-  const [accept] = useMutation(AcceptCompetitionInviteMutation);
   const [withdraw] = useMutation(WithdrawApplicationMutation);
 
-  const [pending, setPending] = useState<Record<string, "accept" | "decline" | undefined>>({});
+  const [declining, setDeclining] = useState<Set<string>>(new Set());
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const viewerId = viewerData?.viewer?.id ?? null;
@@ -75,31 +71,8 @@ export function InviteBanner({
   );
   if (!viewerId || invites.length === 0) return null;
 
-  async function onAccept(appId: string, teamName: string) {
-    setPending((p) => ({ ...p, [appId]: "accept" }));
-    try {
-      await accept({ variables: { applicationId: appId } });
-      setDismissed((s) => new Set(s).add(appId));
-      toast.success(
-        `Invite accepted for ${teamName}`,
-        "Your application is now pending the organizer's review.",
-      );
-      router.refresh();
-    } catch (e) {
-      toast.error(
-        "Couldn't accept invite",
-        e instanceof Error ? e.message : "Try again.",
-      );
-    } finally {
-      setPending((p) => {
-        const { [appId]: _, ...rest } = p;
-        return rest;
-      });
-    }
-  }
-
   async function onDecline(appId: string, teamName: string) {
-    setPending((p) => ({ ...p, [appId]: "decline" }));
+    setDeclining((s) => new Set(s).add(appId));
     try {
       await withdraw({ variables: { id: appId } });
       setDismissed((s) => new Set(s).add(appId));
@@ -114,9 +87,10 @@ export function InviteBanner({
         e instanceof Error ? e.message : "Try again.",
       );
     } finally {
-      setPending((p) => {
-        const { [appId]: _, ...rest } = p;
-        return rest;
+      setDeclining((s) => {
+        const next = new Set(s);
+        next.delete(appId);
+        return next;
       });
     }
   }
@@ -124,10 +98,7 @@ export function InviteBanner({
   return (
     <div className="space-y-3">
       {invites.map((app) => {
-        const state = pending[app.id];
-        const accepting = state === "accept";
-        const declining = state === "decline";
-        const anyAction = accepting || declining;
+        const isDeclining = declining.has(app.id);
         return (
           <div
             key={app.id}
@@ -155,8 +126,8 @@ export function InviteBanner({
                   </Link>
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  The organizer wants your team in this competition. Accept to
-                  send your application, or decline if you can't make it.
+                  Accept to pick your roster (same form any team uses to
+                  apply), or decline if you can't make it.
                 </div>
               </div>
             </div>
@@ -164,24 +135,22 @@ export function InviteBanner({
               <Button
                 variant="ghost"
                 size="sm"
-                loading={declining}
-                disabled={anyAction}
+                loading={isDeclining}
+                disabled={isDeclining}
                 onClick={() => onDecline(app.id, app.team.name)}
                 data-testid={`competition-invite-decline-${app.team.slug}`}
               >
                 <X className="size-4" />
                 Decline
               </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                loading={accepting}
-                disabled={anyAction}
-                onClick={() => onAccept(app.id, app.team.name)}
+              <Link
+                href={`/competitions/${competitionSlug}/apply?teamId=${app.team.id}`}
                 data-testid={`competition-invite-accept-${app.team.slug}`}
               >
-                Accept invite
-              </Button>
+                <Button variant="primary" size="sm" disabled={isDeclining}>
+                  Accept invite
+                </Button>
+              </Link>
             </div>
           </div>
         );
