@@ -55,6 +55,114 @@ builder.queryFields((t) => ({
     },
   }),
 
+  // Round-50 — flip side of followers: who a user follows. The three
+  // resolvers below mirror each other and power the tabbed Following page
+  // on the public profile. Cursor-paginated by Follow.id; preserves
+  // newest-follow-first ordering so the chip on the profile lines up.
+  following: t.prismaField({
+    type: ["User"],
+    description: "Users this user follows. Cursor-paginated by Follow.id.",
+    args: {
+      userId: t.arg.id({ required: true }),
+      first: t.arg.int({ defaultValue: 30 }),
+      after: t.arg.string(),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      const take = Math.min(Math.max(args.first ?? 30, 1), 100);
+      const rows = await ctx.prisma.follow.findMany({
+        where: {
+          userId: String(args.userId),
+          entityType: "USER",
+        },
+        orderBy: { createdAt: "desc" },
+        take,
+        ...(args.after ? { skip: 1, cursor: { id: String(args.after) } } : {}),
+        select: { id: true, entityId: true },
+      });
+      if (rows.length === 0) return [];
+      const users = await ctx.prisma.user.findMany({
+        ...query,
+        where: { id: { in: rows.map((r) => r.entityId) } },
+      });
+      const byId = new Map(users.map((u) => [u.id, u]));
+      return rows
+        .map((r) => byId.get(r.entityId))
+        .filter((u): u is NonNullable<typeof u> => !!u);
+    },
+  }),
+
+  followedTeams: t.prismaField({
+    type: ["Team"],
+    description: "Teams this user follows. Cursor-paginated by Follow.id.",
+    args: {
+      userId: t.arg.id({ required: true }),
+      first: t.arg.int({ defaultValue: 30 }),
+      after: t.arg.string(),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      const take = Math.min(Math.max(args.first ?? 30, 1), 100);
+      const rows = await ctx.prisma.follow.findMany({
+        where: {
+          userId: String(args.userId),
+          entityType: "TEAM",
+        },
+        orderBy: { createdAt: "desc" },
+        take,
+        ...(args.after ? { skip: 1, cursor: { id: String(args.after) } } : {}),
+        select: { id: true, entityId: true },
+      });
+      if (rows.length === 0) return [];
+      const teams = await ctx.prisma.team.findMany({
+        ...query,
+        where: { id: { in: rows.map((r) => r.entityId) } },
+      });
+      const byId = new Map(teams.map((t2) => [t2.id, t2]));
+      return rows
+        .map((r) => byId.get(r.entityId))
+        .filter((t2): t2 is NonNullable<typeof t2> => !!t2);
+    },
+  }),
+
+  followedCompetitions: t.prismaField({
+    type: ["Competition"],
+    description:
+      "Competitions this user follows. CASL-filtered to readable comps " +
+      "(DRAFT/CANCELLED are hidden for non-organizers).",
+    args: {
+      userId: t.arg.id({ required: true }),
+      first: t.arg.int({ defaultValue: 30 }),
+      after: t.arg.string(),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      const take = Math.min(Math.max(args.first ?? 30, 1), 100);
+      const rows = await ctx.prisma.follow.findMany({
+        where: {
+          userId: String(args.userId),
+          entityType: "COMPETITION",
+        },
+        orderBy: { createdAt: "desc" },
+        take,
+        ...(args.after ? { skip: 1, cursor: { id: String(args.after) } } : {}),
+        select: { id: true, entityId: true },
+      });
+      if (rows.length === 0) return [];
+      const ids = rows.map((r) => r.entityId);
+      const comps = await ctx.prisma.competition.findMany({
+        ...query,
+        where: {
+          AND: [
+            accessibleBy(ctx.ability, "read").ofType("Competition"),
+            { id: { in: ids } },
+          ],
+        },
+      });
+      const byId = new Map(comps.map((c) => [c.id, c]));
+      return rows
+        .map((r) => byId.get(r.entityId))
+        .filter((c): c is NonNullable<typeof c> => !!c);
+    },
+  }),
+
   followerCountFor: t.int({
     description: "Cheap count for the header chip.",
     args: {
@@ -152,8 +260,15 @@ builder.mutationFields((t) => ({
       const id = String(args.entityId);
       if (args.entityType === "COMPETITION") {
         await ctx.prisma.competition.findUniqueOrThrow({ where: { id } });
-      } else {
+      } else if (args.entityType === "TEAM") {
         await ctx.prisma.team.findUniqueOrThrow({ where: { id } });
+      } else if (args.entityType === "USER") {
+        if (id === ctx.viewer.id) {
+          throw new GraphQLError("You can't follow yourself", {
+            extensions: { code: "BAD_USER_INPUT" },
+          });
+        }
+        await ctx.prisma.user.findUniqueOrThrow({ where: { id } });
       }
       return ctx.prisma.follow.upsert({
         ...query,
@@ -322,6 +437,27 @@ builder.prismaObjectFields("User", (t) => ({
   followingCount: t.int({
     resolve: (u, _args, ctx) =>
       ctx.prisma.follow.count({ where: { userId: u.id } }),
+  }),
+  // Round-50 — per-category counts so the Following page can label its
+  // tabs ("Players · 3 / Teams · 1 / Competitions · 2") and the viewer
+  // knows where the action is when the default tab is empty.
+  followingUsersCount: t.int({
+    resolve: (u, _args, ctx) =>
+      ctx.prisma.follow.count({
+        where: { userId: u.id, entityType: "USER" },
+      }),
+  }),
+  followingTeamsCount: t.int({
+    resolve: (u, _args, ctx) =>
+      ctx.prisma.follow.count({
+        where: { userId: u.id, entityType: "TEAM" },
+      }),
+  }),
+  followingCompetitionsCount: t.int({
+    resolve: (u, _args, ctx) =>
+      ctx.prisma.follow.count({
+        where: { userId: u.id, entityType: "COMPETITION" },
+      }),
   }),
 }));
 

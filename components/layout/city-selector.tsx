@@ -104,9 +104,10 @@ export function CitySelector({ city: initialLabel }: { city: string }) {
         <ChevronDown className="size-4 text-muted-foreground" />
       </PopoverPrimitive.Trigger>
       <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Positioner sideOffset={6} align="start">
+        {/* Header is sticky at z-30; popups need z-40+ to sit above it. */}
+        <PopoverPrimitive.Positioner sideOffset={6} align="start" className="z-50">
           <PopoverPrimitive.Popup
-            className="w-[260px] max-h-[60vh] overflow-auto rounded-xl border border-border bg-card text-card-foreground shadow-xl outline-none"
+            className="z-50 w-[260px] max-h-[60vh] overflow-auto rounded-xl border border-border bg-card text-card-foreground shadow-xl outline-none"
             data-testid="city-popover"
           >
             <div className="border-b border-border px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground">

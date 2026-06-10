@@ -10,6 +10,7 @@ import {
   MyCompetitionsQuery,
   ViewerQuery,
 } from "@/lib/graphql/operations/competition.operations";
+import { competitionStatusLabel } from "@/components/ui/status-chip";
 import type {
   CompetitionStatus,
   GameType,
@@ -135,7 +136,8 @@ export default async function CompetitionsBrowsePage({
                       {c.name}
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
-                      {c.status.replace(/_/g, " ").toLowerCase()}
+                      {competitionStatusLabel[c.status] ??
+                        c.status.replace(/_/g, " ").toLowerCase()}
                       {c.city ? ` · ${c.city.name}` : ""}
                     </div>
                   </div>

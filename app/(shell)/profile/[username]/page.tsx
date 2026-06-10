@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { LocalDateTime } from "@/components/ui/local-datetime";
 import { RatingBadge } from "@/components/ui/rating-badge";
+import { RelativeTime } from "@/components/ui/relative-time";
+import { Users } from "lucide-react";
 import { Sparkline } from "@/components/ui/sparkline";
 import { pointsToNextTier, tierFromRating } from "@/lib/rating/tier";
 import { BanUserButton } from "@/components/admin/ban-user-button";
@@ -50,6 +52,27 @@ export default async function ProfilePage({
         eyebrow={<span>@{user.username}</span>}
         actions={
           <div className="flex items-center gap-2">
+            {/* Round-50 — surface following count separately from the
+                follower chip the button renders. Both link to their list
+                pages so the audience can drill into either side. */}
+            <Link
+              href={`/players/${user.username}/following`}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-semibold text-muted-foreground hover:border-primary/50 hover:text-foreground"
+              data-testid="following-count-link"
+            >
+              <Users className="size-3.5" />
+              {user.followingCount} following
+            </Link>
+            {isSelf ? (
+              <Link
+                href={`/players/${user.username}/followers`}
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-semibold text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                data-testid="self-followers-count-link"
+              >
+                <Users className="size-3.5" />
+                {user.followerCount} followers
+              </Link>
+            ) : null}
             {!isSelf ? (
               <FollowButton
                 entityType="USER"
@@ -102,8 +125,12 @@ export default async function ProfilePage({
                 <span>{user.nationality}</span>
               </span>
             ) : null}
-            <span>
-              Joined <LocalDateTime value={user.createdAt} variant="date" />
+            <span
+              title={new Date(user.createdAt).toLocaleDateString()}
+              data-testid="profile-joined-at"
+            >
+              Joined <RelativeTime value={user.createdAt} /> ·{" "}
+              <LocalDateTime value={user.createdAt} variant="date" />
             </span>
           </>
         }

@@ -67,6 +67,7 @@ export const TeamDetailQuery = graphql(/* GraphQL */ `
       banReason
       isFollowing
       followerCount
+      createdAt
       myInvitation {
         id
         message

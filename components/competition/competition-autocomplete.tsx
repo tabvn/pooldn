@@ -5,6 +5,7 @@ import { useQuery } from "@apollo/client/react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { competitionStatusLabel } from "@/components/ui/status-chip";
 import { CompetitionsListQuery } from "@/lib/graphql/operations/competition.operations";
 
 /**
@@ -142,7 +143,8 @@ export function CompetitionAutocomplete({
                       />
                       <span className="flex-1 truncate">{c.name}</span>
                       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                        {c.status.replace(/_/g, " ").toLowerCase()}
+                        {competitionStatusLabel[c.status] ??
+                          c.status.replace(/_/g, " ").toLowerCase()}
                       </span>
                       {active ? (
                         <Check className="size-3.5 text-primary" />

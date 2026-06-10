@@ -10,6 +10,7 @@ import { PageTitle } from "@/components/layout/page-title";
 import { TabNav } from "@/components/layout/tab-nav";
 import { getClient } from "@/lib/apollo/client";
 import { CompetitionHeaderQuery, ViewerQuery } from "@/lib/graphql/operations/competition.operations";
+import { competitionStatusLabel } from "@/components/ui/status-chip";
 
 
 export default async function CompetitionLayout({
@@ -65,7 +66,11 @@ export default async function CompetitionLayout({
       <PageTitle
         title={c.name}
         bannerUrl={c.bannerUrl}
-        eyebrow={<span>Competition · {c.status.replace(/_/g, " ")}</span>}
+        eyebrow={
+          <span>
+            Competition · {competitionStatusLabel[c.status] ?? c.status}
+          </span>
+        }
         description={c.description}
         actions={
           <div className="flex items-center gap-2">

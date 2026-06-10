@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RelativeTime } from "@/components/ui/relative-time";
 import { TeamActionsMenu } from "@/components/team/team-actions-menu";
 import { FollowButton } from "@/components/follow-button";
 import { PageTitle } from "@/components/layout/page-title";
@@ -92,6 +93,9 @@ export default async function TeamLayout({
               {team.members.length}{" "}
               {team.members.length === 1 ? "member" : "members"}
             </Badge>
+            <span data-testid="team-created-at">
+              Created <RelativeTime value={team.createdAt} />
+            </span>
             {!team.isActive ? (
               <Badge variant="neutral">inactive</Badge>
             ) : null}

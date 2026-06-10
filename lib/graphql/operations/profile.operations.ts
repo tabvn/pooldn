@@ -18,6 +18,9 @@ export const ProfileByUsernameQuery = graphql(/* GraphQL */ `
       isFollowing
       followerCount
       followingCount
+      followingUsersCount
+      followingTeamsCount
+      followingCompetitionsCount
       bannedAt
       banReason
       ratingHistory(limit: 20)
