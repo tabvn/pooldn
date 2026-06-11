@@ -3,10 +3,17 @@ import { requireViewer } from "@/lib/auth/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getClient } from "@/lib/apollo/client";
 import { CompetitionEditableQuery } from "@/lib/graphql/operations/competition.operations";
-import { NewCompetitionForm } from "@/app/(shell)/competitions/new/form";
 import { CompetitionBannerUpload } from "./banner-upload";
 import { CompetitionLocksCard } from "@/components/competition/competition-locks-card";
+import { TabEditor } from "./tab-editor";
 
+/**
+ * Round-51 — Figma-faithful draft editor.
+ *
+ * Server-renders the title block & banner / locks cards, then hands the
+ * configurable fields off to the four-tab client editor (Participants ·
+ * Schedule · Structure · Review & Publish).
+ */
 export default async function EditCompetitionPage({
   params,
 }: {
@@ -29,7 +36,43 @@ export default async function EditCompetitionPage({
 
   return (
     <div className="min-h-full">
-      <div className="space-y-6 px-8 pt-6">
+      <TabEditor
+        initial={{
+          id: c.id,
+          slug: c.slug,
+          name: c.name,
+          status: c.status,
+          format: c.format ?? "ROUND_ROBIN",
+          gameType: c.gameType ?? "EIGHT_BALL",
+          type: c.type ?? "TEAMS",
+          startDate: c.startDate ?? null,
+          prizePool: c.prizePool ?? null,
+          currency: c.currency ?? "VND",
+          minTeams: c.minTeams ?? 2,
+          maxTeams: c.maxTeams ?? null,
+          minPlayersPerTeam: c.minPlayersPerTeam ?? 1,
+          maxPlayersPerTeam: c.maxPlayersPerTeam ?? null,
+          applicationMode: (c.applicationMode ?? "OPEN") as
+            | "OPEN"
+            | "INVITE_ONLY",
+          matchVenueMode: (c.matchVenueMode ?? "TEAM_VENUES") as
+            | "TEAM_VENUES"
+            | "CENTRAL_VENUE",
+          gamesPerOpponent: c.gamesPerOpponent ?? 1,
+          schedulingType: c.schedulingType ?? null,
+          weekdaySchedule: c.weekdaySchedule ?? [],
+          blocks: c.blocks.map((b) => ({
+            type: b.type as "SINGLES" | "DOUBLES" | "SCOTCH_DOUBLES",
+            games: b.games,
+            raceTo: b.raceTo,
+            breakAfterMin: b.breakAfterMin,
+          })),
+        }}
+      />
+
+      {/* Round-50 — banner + locks cards live outside the tabs as quick
+          admin tools; they're not part of the configurable flow. */}
+      <div className="mx-auto max-w-3xl space-y-4 px-4 pb-12 md:px-6">
         <Card>
           <CardHeader>
             <CardTitle>Banner</CardTitle>
@@ -55,44 +98,6 @@ export default async function EditCompetitionPage({
           </CardContent>
         </Card>
       </div>
-      <NewCompetitionForm
-        initial={{
-          id: c.id,
-          slug: c.slug,
-          name: c.name,
-          description: c.description,
-          rulesUrl: c.rulesUrl,
-          type: c.type,
-          format: c.format,
-          gameType: c.gameType,
-          minTeams: c.minTeams,
-          maxTeams: c.maxTeams,
-          minPlayersPerTeam: c.minPlayersPerTeam,
-          maxPlayersPerTeam: c.maxPlayersPerTeam,
-          raceToFrames: c.raceToFrames,
-          cityId: c.city?.id ?? null,
-          schedulingType: c.schedulingType,
-          startDate: c.startDate,
-          endDate: c.endDate,
-          prizePool: c.prizePool,
-          currency: c.currency,
-          breakAndRunRule: c.breakAndRunRule,
-          requiresHomeVenue: c.requiresHomeVenue,
-          applicationMode: c.applicationMode,
-          invitedTeamIds: c.invitedTeamIds ?? [],
-          matchVenueMode: c.matchVenueMode,
-          centralVenueId: c.centralVenue?.id ?? null,
-          gamesPerOpponent: c.gamesPerOpponent,
-          weekdaySchedule: c.weekdaySchedule ?? [],
-          maxGamesPerVenuePerMatchday: c.maxGamesPerVenuePerMatchday,
-          blocks: c.blocks.map((b) => ({
-            type: b.type as "SINGLES" | "DOUBLES" | "SCOTCH_DOUBLES",
-            games: b.games,
-            raceTo: b.raceTo,
-            breakAfterMin: b.breakAfterMin,
-          })),
-        }}
-      />
     </div>
   );
 }
