@@ -28,9 +28,9 @@ const PAGE = 12;
  * the grid) so the grid is a true "discover other teams" surface — fixes
  * the duplicate-listing complaint.
  *
- * Per-card CTA: "Manage" for the viewer's captained teams (impossible here
- * since we filter those out, but kept for symmetry) and "View team" for
- * every other card so the affordance is explicit, not implicit-link.
+ * Round-56 — the whole card is the link to the team page now; the
+ * standalone "View team" button was redundant inside an already-tappable
+ * card.
  */
 export function TeamsBrowse({
   teams,
@@ -95,51 +95,47 @@ export function TeamsBrowse({
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {shown.map((t) => (
-            <Card
+            <Link
               key={t.id}
-              className="hover:border-primary/50 transition-colors"
+              href={`/teams/${t.slug}`}
               data-testid={`team-card-${t.slug}`}
+              className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-lg"
             >
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <Avatar
-                    size="lg"
-                    src={t.logoUrl ?? undefined}
-                    fallback={t.name}
-                    shape="team"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <Badge variant="primary" size="sm">
-                        {t.memberCount}{" "}
-                        {t.memberCount === 1 ? "member" : "members"}
-                      </Badge>
-                      {!t.isActive ? (
-                        <Badge variant="neutral" size="sm">
-                          inactive
+              <Card className="h-full hover:border-primary/50 transition-colors">
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <Avatar
+                      size="lg"
+                      src={t.logoUrl ?? undefined}
+                      fallback={t.name}
+                      shape="team"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge variant="primary" size="sm">
+                          {t.memberCount}{" "}
+                          {t.memberCount === 1 ? "member" : "members"}
                         </Badge>
-                      ) : null}
+                        {!t.isActive ? (
+                          <Badge variant="neutral" size="sm">
+                            inactive
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <CardTitle className="text-primary mt-1 truncate">
+                        {t.name}
+                      </CardTitle>
                     </div>
-                    <CardTitle className="text-primary mt-1 truncate">
-                      {t.name}
-                    </CardTitle>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm text-muted-foreground">
-                <div>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground">
                   Captain {t.captain.name}{" "}
                   <span className="text-muted-foreground/70">
                     @{t.captain.username}
                   </span>
-                </div>
-                <Link href={`/teams/${t.slug}`}>
-                  <Button size="sm" variant="outline" block>
-                    View team
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
       )}
