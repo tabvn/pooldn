@@ -47,13 +47,14 @@ const GAME_OPTIONS: GameOption[] = [
   { value: "TEN_BALL", label: "10-Ball" },
 ];
 
-// Round-53 — CompetitionType now has three distinct values, each with its
-// own apply path: TEAMS (full roster), INDIVIDUAL (1v1 solo apply), DOUBLES
-// (2v2, captain applies with a 2-player team).
+// Round-53/55 — CompetitionType has three values total, but only TEAMS is
+// fully wired for MVP. Singles + Doubles stay visible behind a Coming-Soon
+// badge so organisers know the shape we're heading toward; the segmented
+// toggle won't let them pick those yet.
 const FORMAT_OPTIONS: FormatOption[] = [
   { value: "TEAMS", label: "Teams" },
-  { value: "INDIVIDUAL", label: "Singles" },
-  { value: "DOUBLES", label: "Doubles (2v2)" },
+  { value: "INDIVIDUAL", label: "Singles", soon: true },
+  { value: "DOUBLES", label: "Doubles (2v2)", soon: true },
 ];
 
 const TOURNAMENT_OPTIONS: TournamentOption[] = [
@@ -70,11 +71,13 @@ const TOURNAMENT_OPTIONS: TournamentOption[] = [
   {
     value: "SINGLE_ELIMINATION",
     label: "Single Elimination (Knockout)",
+    soon: true,
     bullets: ["Lose once = out", "Fast bracket, ideal for quick tournaments"],
   },
   {
     value: "DOUBLE_ELIMINATION",
     label: "Double Elimination",
+    soon: true,
     bullets: [
       "Players get a second chance",
       "Has Winners & Losers bracket",
