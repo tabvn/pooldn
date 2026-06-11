@@ -25,7 +25,7 @@ export default async function SearchPage({
           </span>
         }
       />
-      <div className="p-4 md:p-8 max-w-5xl">
+      <div className="mx-auto max-w-5xl p-6 md:p-10">
         <SearchResults initialQ={q} initialKind={kind} />
       </div>
     </div>

@@ -97,7 +97,7 @@ export function InvitationsList() {
           </Badge>
         }
       />
-      <div className="p-8 max-w-2xl space-y-6">
+      <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
         {/* Round-49 — competition invites surface first since they're the
             time-sensitive ones (organizer is waiting on the captain). */}
         {competitionInvites.length > 0 ? (

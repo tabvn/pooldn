@@ -80,7 +80,7 @@ export default async function CompetitionsBrowsePage({
     !!filters.status || !!filters.gameType || !!filters.search;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8 p-6 md:p-8">
+    <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
       {/* Page header */}
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-2">

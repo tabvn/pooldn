@@ -130,7 +130,7 @@ export default async function ProfilePage({
           </>
         }
       />
-      <div className="p-4 md:p-8 max-w-5xl space-y-6">
+      <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {/* Round-50 — About card. PageTitle above already shows name +
               @username + meta + actions; this card used to repeat the

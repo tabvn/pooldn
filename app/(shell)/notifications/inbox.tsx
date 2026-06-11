@@ -291,7 +291,7 @@ export function NotificationsInbox() {
   }
 
   return (
-    <div className="p-8 max-w-3xl space-y-4">
+    <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">

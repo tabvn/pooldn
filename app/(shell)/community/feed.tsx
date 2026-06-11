@@ -163,7 +163,7 @@ export function CommunityFeed({
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-3xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
       <header className="space-y-1">
         <h1 className="text-3xl font-semibold">Community</h1>
         <p className="text-sm text-muted-foreground">

@@ -23,7 +23,7 @@ export default async function TeamsPage() {
   const canCreate = !!viewer && viewer.role !== "VIEWER";
 
   return (
-    <div className="p-4 md:p-8 space-y-6">
+    <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
           <h1 className="text-3xl font-semibold">Teams</h1>
