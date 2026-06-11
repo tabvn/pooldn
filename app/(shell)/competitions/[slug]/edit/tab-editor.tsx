@@ -35,7 +35,7 @@ import {
 
 type Block = {
   id: string;
-  type: "SINGLES" | "DOUBLES" | "SCOTCH_DOUBLES" | "BREAK";
+  type: "SINGLES" | "DOUBLES" | "SCOTCH_DOUBLES";
   games: number;
   raceTo: number | null;
   breakAfterMin: number | null;
@@ -100,8 +100,6 @@ const HOURS_OPTIONS = (() => {
   }
   return out;
 })();
-
-const NUM = new Intl.NumberFormat("en-US");
 
 const GAME_LABEL: Record<string, string> = {
   EIGHT_BALL: "8-ball",
@@ -630,7 +628,6 @@ const BLOCK_LABEL: Record<string, string> = {
   SINGLES: "Singles Game (1 vs 1)",
   DOUBLES: "Doubles Game (2 vs 2)",
   SCOTCH_DOUBLES: "Scotch Doubles",
-  BREAK: "Break Time",
 };
 
 function StructureTab({
@@ -650,23 +647,10 @@ function StructureTab({
   const blocks = data.blocks;
 
   function add(type: Block["type"]) {
-    const next = [
+    onChange("blocks", [
       ...blocks,
-      type === "BREAK"
-        ? {
-            type: "BREAK" as const,
-            games: 0,
-            raceTo: null,
-            breakAfterMin: 10,
-          }
-        : {
-            type,
-            games: 1,
-            raceTo: 5,
-            breakAfterMin: null,
-          },
-    ];
-    onChange("blocks", next as unknown as CompetitionInitial["blocks"]);
+      { type, games: 1, raceTo: 5, breakAfterMin: null },
+    ] as unknown as CompetitionInitial["blocks"]);
   }
   function remove(idx: number) {
     onChange(
@@ -694,7 +678,7 @@ function StructureTab({
   const doubles = blocks
     .filter((b) => b.type === "DOUBLES" || b.type === "SCOTCH_DOUBLES")
     .reduce((a, b) => a + (b.games || 0), 0);
-  const breaks = blocks.filter((b) => b.type === "BREAK").length;
+  const breaks = blocks.filter((b) => b.breakAfterMin).length;
   const total = singles + doubles;
 
   return (
@@ -720,81 +704,91 @@ function StructureTab({
           blocks.map((b, idx) => (
             <li
               key={idx}
-              className={cn(
-                "flex items-center gap-3 rounded-md border px-3 py-2",
-                b.type === "BREAK"
-                  ? "border-warning/40 bg-warning/5"
-                  : "border-border",
-              )}
+              className="space-y-1.5 rounded-md border border-border px-3 py-2"
               data-testid={`structure-block-${idx}`}
             >
-              <button
-                type="button"
-                onClick={() => move(idx, -1)}
-                disabled={idx === 0}
-                aria-label="Move up"
-                className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-              >
-                <GripVertical className="size-4" />
-              </button>
-              <span className="w-6 text-center font-mono text-xs font-bold text-muted-foreground">
-                {idx + 1}
-              </span>
-              {b.type === "BREAK" ? (
-                <Coffee className="size-4 text-warning" />
-              ) : null}
-              <span className="text-sm font-semibold">
-                {BLOCK_LABEL[b.type]}
-              </span>
-              {b.type !== "BREAK" ? (
-                <>
-                  <span className="text-xs text-muted-foreground">games</span>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => move(idx, -1)}
+                  disabled={idx === 0}
+                  aria-label="Move up"
+                  className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+                >
+                  <GripVertical className="size-4" />
+                </button>
+                <span className="w-6 text-center font-mono text-xs font-bold text-muted-foreground">
+                  {idx + 1}
+                </span>
+                <span className="text-sm font-semibold">
+                  {BLOCK_LABEL[b.type]}
+                </span>
+                <span className="text-xs text-muted-foreground">games</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={b.games}
+                  onChange={(e) =>
+                    patch(idx, { games: Math.max(1, Number(e.target.value)) })
+                  }
+                  className="w-14 rounded-md border border-border bg-background px-2 py-1 text-sm"
+                />
+                <span className="text-xs text-muted-foreground">race to</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={b.raceTo ?? 5}
+                  onChange={(e) =>
+                    patch(idx, {
+                      raceTo: Math.max(1, Number(e.target.value)),
+                    })
+                  }
+                  className="w-14 rounded-md border border-border bg-background px-2 py-1 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => remove(idx)}
+                  aria-label="Remove block"
+                  className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+              {/* Break-after — Figma's standalone "Break Time" rows map to
+                  breakAfterMin on the preceding block in this schema.
+                  Surfaced inline so the captain can express the same shape. */}
+              <div className="flex flex-wrap items-center gap-2 pl-9 text-xs">
+                <label className="inline-flex items-center gap-1 text-muted-foreground">
                   <input
-                    type="number"
-                    min={1}
-                    value={b.games}
-                    onChange={(e) =>
-                      patch(idx, { games: Math.max(1, Number(e.target.value)) })
-                    }
-                    className="w-14 rounded-md border border-border bg-background px-2 py-1 text-sm"
-                  />
-                  <span className="text-xs text-muted-foreground">race to</span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={b.raceTo ?? 5}
+                    type="checkbox"
+                    checked={!!b.breakAfterMin}
                     onChange={(e) =>
                       patch(idx, {
-                        raceTo: Math.max(1, Number(e.target.value)),
+                        breakAfterMin: e.target.checked ? 10 : null,
                       })
                     }
-                    className="w-14 rounded-md border border-border bg-background px-2 py-1 text-sm"
+                    className="size-3 accent-primary"
                   />
-                </>
-              ) : (
-                <>
-                  <span className="text-xs text-muted-foreground">minutes</span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={b.breakAfterMin ?? 10}
-                    onChange={(e) =>
-                      patch(idx, {
-                        breakAfterMin: Math.max(1, Number(e.target.value)),
-                      })
-                    }
-                    className="w-16 rounded-md border border-border bg-background px-2 py-1 text-sm"
-                  />
-                </>
-              )}
-              <button
-                type="button"
-                onClick={() => remove(idx)}
-                aria-label="Remove block"
-                className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
-              >
-                <X className="size-4" />
-              </button>
+                  <Coffee className="size-3" />
+                  Break after this block
+                </label>
+                {b.breakAfterMin ? (
+                  <>
+                    <input
+                      type="number"
+                      min={1}
+                      value={b.breakAfterMin}
+                      onChange={(e) =>
+                        patch(idx, {
+                          breakAfterMin: Math.max(1, Number(e.target.value)),
+                        })
+                      }
+                      className="w-14 rounded-md border border-border bg-background px-2 py-1 text-xs"
+                    />
+                    <span className="text-muted-foreground">minutes</span>
+                  </>
+                ) : null}
+              </div>
             </li>
           ))
         )}
@@ -808,10 +802,6 @@ function StructureTab({
         <Button type="button" variant="outline" onClick={() => add("DOUBLES")}>
           <Plus className="size-4" />
           Doubles
-        </Button>
-        <Button type="button" variant="outline" onClick={() => add("BREAK")}>
-          <Plus className="size-4" />
-          Break
         </Button>
       </div>
 
@@ -858,13 +848,14 @@ function ReviewTab({
   const doubles = data.blocks
     .filter((b) => b.type === "DOUBLES" || b.type === "SCOTCH_DOUBLES")
     .reduce((a, b) => a + (b.games || 0), 0);
-  const breaks = data.blocks.filter((b) => b.type === "BREAK").length;
+  const breaks = data.blocks.filter((b) => b.breakAfterMin).length;
 
+  const isWeekly = (data.schedulingType ?? "WEEKLY_ROUNDS") === "WEEKLY_ROUNDS";
   const ready =
     !!data.maxTeams &&
     !!data.maxPlayersPerTeam &&
     (singles + doubles) > 0 &&
-    data.weekdaySchedule.length > 0;
+    (!isWeekly || data.weekdaySchedule.length > 0);
 
   return (
     <div className="space-y-4">

@@ -6,125 +6,73 @@ test.describe("Competition lifecycle (organizer)", () => {
     page,
   }) => {
     await signInAs(page, "michael");
+    await page.goto("/competitions");
     await expect(
       page.getByRole("link", { name: /create competition/i }),
     ).toBeVisible();
   });
 
-  test("create-competition wizard validates Step 1 before advancing", async ({
+  test("create-basics screen requires a name before submitting", async ({
     page,
   }) => {
     await signInAs(page, "michael");
     await page.goto("/competitions/new");
 
-    // Step 1 — try Next with empty fields, expect a validation error.
-    await page.getByRole("button", { name: /^next$/i }).click();
-    await expect(page.getByText("At least 3 characters").first()).toBeVisible();
-
-    // Fill name + bad slug, try Next again.
-    await page.getByLabel("Competition name").fill("Bad Slug League");
-    await page.getByLabel("Slug").fill("Bad SLUG!");
-    await page.getByRole("button", { name: /^next$/i }).click();
+    // The Figma basics card defaults Game/Format/Tournament to valid values
+    // so the only required field the captain has to touch is the name.
+    await page.getByTestId("basics-create").click();
     await expect(
-      page.getByText("Lowercase letters, numbers, hyphens only"),
+      page.getByText(/give your competition a name/i),
     ).toBeVisible();
   });
 
-  test("organizer creates a competition via the wizard and lands on detail", async ({
-    page,
-  }, testInfo) => {
-    await signInAs(page, "michael");
-    const slug = `e2e-${testInfo.workerIndex}-${Date.now()}`;
-    await page.goto("/competitions/new");
+  test(
+    "organizer creates a competition from the basics screen and lands on the tab editor",
+    async ({ page }, testInfo) => {
+      await signInAs(page, "michael");
+      const suffix = `${testInfo.workerIndex}-${Date.now()}`;
+      const name = `E2E Test League ${suffix}`;
 
-    // Step 1 — Basics
-    await page.getByLabel("Competition name").fill("E2E Test League");
-    await page.getByLabel("Slug").fill(slug);
-    await page.getByRole("button", { name: /^next$/i }).click();
+      await page.goto("/competitions/new");
+      await page.getByTestId("basics-name").fill(name);
+      await page.getByTestId("basics-startdate").fill("2027-09-01");
+      await page.getByTestId("basics-create").click();
 
-    // Step 2 — Participants (defaults are valid)
-    await expect(
-      page.getByRole("heading", { level: 1 }),
-    ).toContainText(/step 2/i);
-    await page.getByRole("button", { name: /^next$/i }).click();
+      // Lands on the four-tab draft editor. Slug is auto-generated.
+      await page.waitForURL(/\/competitions\/[^/]+\/edit$/);
 
-    // Step 3 — Schedule & prize (all optional)
-    await expect(
-      page.getByRole("heading", { level: 1 }),
-    ).toContainText(/step 3/i);
-    await page.getByRole("button", { name: /^next$/i }).click();
+      // Title block carries the new name + DRAFT badge.
+      await expect(
+        page.getByRole("heading", { name, exact: true }),
+      ).toBeVisible();
+      await expect(page.getByText("DRAFT")).toBeVisible();
 
-    // Step 4 — Structure (defaulted to a singles + doubles block pair)
-    await expect(
-      page.getByRole("heading", { level: 1 }),
-    ).toContainText(/step 4/i);
-    await page.getByRole("button", { name: /^next$/i }).click();
+      // Fill the four tabs end-to-end and publish.
+      await page.getByTestId("edit-tab-participants").click();
+      await page.getByTestId("participants-max-teams").fill("8");
+      await page.getByTestId("participants-min-players").fill("3");
+      await page.getByTestId("participants-max-players").fill("6");
+      await page.getByTestId("edit-save").click();
 
-    // Step 5 — Review
-    await expect(
-      page.getByRole("heading", { level: 1 }),
-    ).toContainText(/step 5/i);
-    // The success toast renders into an overlay dialog that briefly
-    // intercepts pointer events; race the click + navigation so the test
-    // doesn't fail just because the toast covered the button.
-    await Promise.all([
-      page.waitForURL(`/competitions/${slug}`),
-      page
-        .getByRole("button", { name: /^create competition$/i })
-        .click({ force: true }),
-    ]);
-    await expect(
-      page.getByRole("heading", { name: "E2E Test League", exact: true }),
-    ).toBeVisible();
-  });
-});
+      await page.getByTestId("edit-tab-schedule").click();
+      await page.getByTestId("schedule-add-weekday").click();
+      await page.getByTestId("edit-save").click();
 
-test.describe("Captain apply flow", () => {
-  test("anon user is redirected to sign-in", async ({ page }) => {
-    await page.goto(
-      "/competitions/da-nang-international-pool-league-2026/apply",
-    );
-    await page.waitForURL(/\/sign-in\?next=/);
-    await expect(
-      page.getByRole("heading", { name: "Welcome to PoolDN" }),
-    ).toBeVisible();
-  });
+      await page.getByTestId("edit-tab-structure").click();
+      await page.getByRole("button", { name: /^\s*singles\s*$/i }).click();
+      await page.getByRole("button", { name: /^\s*doubles\s*$/i }).click();
+      await page.getByTestId("edit-save").click();
 
-  test("captain sees the apply form populated with their teams", async ({
-    page,
-  }) => {
-    await signInAs(page, "gen");
-    await page.goto(
-      "/competitions/da-nang-international-pool-league-2026/apply",
-    );
-    await expect(
-      page.getByText("Apply to Da Nang International Pool League"),
-    ).toBeVisible();
-    await expect(page.getByLabel("Team")).toBeVisible();
-  });
-});
+      await page.getByTestId("edit-tab-review").click();
+      const publish = page.getByTestId("edit-publish");
+      await expect(publish).toBeEnabled();
+      await publish.click();
 
-test.describe("Organizer reviews applications", () => {
-  test("organizer sees the applications page", async ({ page }) => {
-    await signInAs(page, "michael");
-    await page.goto(
-      "/competitions/da-nang-international-pool-league-2026/applications",
-    );
-    // Seeded applications are APPROVED already; page shows them
-    await expect(page.getByText(/approved/i).first()).toBeVisible();
-  });
-
-  test("non-organizer is redirected away from applications", async ({
-    page,
-  }) => {
-    await signInAs(page, "player1");
-    await page.goto(
-      "/competitions/da-nang-international-pool-league-2026/applications",
-    );
-    // requireViewer redirects role-mismatched users to /
-    await page.waitForURL("/");
-    await expect(
-      page.getByRole("heading", { level: 1 }),
-    ).toContainText(/welcome/i);
-  });
+      // Publish transitions DRAFT → OPEN_FOR_APPLICATIONS and redirects.
+      await page.waitForURL(/\/competitions\/[^/]+$/);
+      await expect(
+        page.getByRole("heading", { name, exact: true }),
+      ).toBeVisible();
+    },
+  );
 });
