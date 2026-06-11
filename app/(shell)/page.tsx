@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,6 +40,12 @@ export default async function PoolhubDashboard() {
   const followedComps = data?.myFollowedCompetitions ?? [];
   const followedTeams = data?.myFollowedTeams ?? [];
   const hasFollowing = followedComps.length > 0 || followedTeams.length > 0;
+  // Round-57 — surface DRAFT comps the viewer is organizing so they can
+  // resume editing without hunting through /competitions. Filter from
+  // the broader `myCompetitions` so we don't add a new resolver.
+  const myDrafts = (data?.myCompetitions ?? []).filter(
+    (c) => c.status === "DRAFT",
+  );
   const greetingName = firstName(viewer?.name);
 
   return (
@@ -70,6 +76,46 @@ export default async function PoolhubDashboard() {
       {/* Today's Match (or next scheduled). Hidden in the signed-out viewer
           dashboard — there's no "your card" when there's no viewer. */}
       {viewer && nextMatch ? <TodayMatchCard match={nextMatch} /> : null}
+
+      {/* Round-57 — DRAFTs the viewer is organizing. Each row links to
+          /competitions/{slug} which auto-redirects organizers into the
+          4-tab setup editor, so a click resumes editing in one hop. */}
+      {viewer && myDrafts.length > 0 ? (
+        <section className="space-y-3" data-testid="dashboard-drafts">
+          <SectionHeader title="Resume editing" />
+          <div className="space-y-2.5">
+            {myDrafts.slice(0, 3).map((c) => (
+              <Link
+                key={c.id}
+                href={`/competitions/${c.slug}`}
+                data-testid={`dashboard-draft-${c.slug}`}
+                className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-xl"
+              >
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning/5 px-4 py-3 transition-colors hover:border-warning/70">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center rounded bg-pink-600 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                        Draft
+                      </span>
+                      <span className="truncate text-sm font-semibold">
+                        {c.name}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                      Pick up where you left off — Participants · Schedule
+                      · Structure · Review &amp; Publish.
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                    <Pencil className="size-3" />
+                    Continue
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {/* Upcoming Competitions — single column list. */}
       <section className="space-y-3" data-testid="dashboard-upcoming">

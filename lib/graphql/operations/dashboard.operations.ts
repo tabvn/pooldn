@@ -159,5 +159,30 @@ export const DashboardQuery = graphql(/* GraphQL */ `
         name
       }
     }
+    # Round-57 — organizer's in-progress DRAFTs surface as a
+    # "Resume editing" rail at the top of the dashboard so the user
+    # can pick up where they left off. Resolved by the existing
+    # myCompetitions field; we filter to DRAFT in the page.
+    myCompetitions {
+      id
+      slug
+      name
+      status
+      type
+      format
+      gameType
+      bannerUrl
+      startDate
+      endDate
+      prizePool
+      currency
+      minTeams
+      maxTeams
+      updatedAt
+      city {
+        id
+        name
+      }
+    }
   }
 `);
