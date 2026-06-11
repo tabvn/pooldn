@@ -18,46 +18,9 @@ export const UserType = builder.prismaObject("User", {
     isActive: t.exposeBoolean("isActive"),
     bannedAt: t.expose("bannedAt", { type: "DateTime", nullable: true }),
     banReason: t.exposeString("banReason", { nullable: true }),
-    rating: t.exposeInt("rating"),
-    level: t.exposeInt("level"),
-    // Round-47 — recent ELO data points (newest last) for a sparkline /
-    // "form" line on the profile. Capped at 20 entries by default so the
-    // payload stays tiny.
-    ratingHistory: t.field({
-      type: ["Int"],
-      args: { limit: t.arg.int() },
-      resolve: async (u, args, ctx) => {
-        const take = Math.min(Math.max(args.limit ?? 20, 2), 100);
-        const rows = await ctx.prisma.playerRatingHistory.findMany({
-          where: { userId: u.id },
-          orderBy: { createdAt: "desc" },
-          take,
-          select: { rating: true },
-        });
-        return rows.map((r) => r.rating).reverse();
-      },
-    }),
-    // Round-X — player landing surfaces.
-    rank: t.int({
-      nullable: true,
-      description:
-        "1-indexed rank among active PLAYER/TEAM_CAPTAIN users by rating DESC. Null if the viewer isn't ranked (rating-tied users disambiguate by id).",
-      resolve: async (u, _args, ctx) => {
-        if (u.role !== "PLAYER" && u.role !== "TEAM_CAPTAIN") return null;
-        if (!u.isActive) return null;
-        const ahead = await ctx.prisma.user.count({
-          where: {
-            isActive: true,
-            role: { in: ["PLAYER", "TEAM_CAPTAIN"] },
-            OR: [
-              { rating: { gt: u.rating } },
-              { rating: u.rating, id: { lt: u.id } },
-            ],
-          },
-        });
-        return ahead + 1;
-      },
-    }),
+    // Round-54 — rating / level / ratingHistory / rank deleted with the
+    // rating system. Bring back a points field here when the new model
+    // lands.
     playerCompStats: t.relation("playerCompStats", {
       query: () => ({
         orderBy: { id: "desc" },

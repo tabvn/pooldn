@@ -1252,25 +1252,13 @@ async function main() {
   await recomputeMvp(prisma, completed.id);
   await recomputeMvp(prisma, ongoing.id);
 
-  // Round-22 — backfill player ratings deterministically so /rankings has a
-  // populated board on a fresh seed. Hash the username into [800, 1900] and
-  // derive level from the rating (1000 → 3, 1500 → 8).
+  // Round-54 — player-rating backfill removed with the rating system.
+  // We still need the player list below for community posts + score
+  // submissions, so the query stays.
   const allPlayers = await prisma.user.findMany({
     where: { role: { in: ["PLAYER", "TEAM_CAPTAIN"] } },
     select: { id: true, username: true },
   });
-  const { levelFromRating } = await import("../lib/services/rating.service");
-  for (const u of allPlayers) {
-    let h = 0;
-    for (let i = 0; i < u.username.length; i++) {
-      h = (h * 31 + u.username.charCodeAt(i)) | 0;
-    }
-    const rating = 800 + (Math.abs(h) % 1100); // 800–1899
-    await prisma.user.update({
-      where: { id: u.id },
-      data: { rating, level: levelFromRating(rating) },
-    });
-  }
 
   // Round-41 — seed submittable score-submission fixtures on the ONGOING
   // competition so the audit/conflict/admin-override paths are testable

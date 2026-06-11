@@ -223,10 +223,9 @@ model User {
   // is banned" screen. `banReason` is shown on that screen verbatim.
   bannedAt      DateTime?
   banReason     String?
-  rating        Int      @default(1000)
-  // Round-22 — derived from rating but cached for cheap sorting/display.
-  // Recompute on rating writes (see lib/services/rating.service.ts).
-  level         Int      @default(1)
+  // Round-54 — player rating + level removed for MVP. We'll add a points
+  // model back once we decide how to compute it. The `rating` / `level`
+  // columns are dropped via migration 20260611140000_drop_player_rating.
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -272,7 +271,6 @@ model User {
   notificationPreferences NotificationPreference[]
   digestRuns              DigestRun[]
   emailTokens             EmailToken[]
-  ratingHistory           PlayerRatingHistory[]
   securityEvents          SecurityEvent[]
   rescheduleRequests      MatchRescheduleRequest[] @relation("RescheduleRequestedBy")
   rescheduleReviews       MatchRescheduleRequest[] @relation("RescheduleReviewedBy")
@@ -286,7 +284,6 @@ model User {
 
   @@index([isActive])
   @@index([bannedAt])
-  @@index([rating])
   @@map("users")
 }
 
@@ -1249,28 +1246,8 @@ model SecurityEvent {
   @@map("security_events")
 }
 
-/**
- * Round-47 — per-player ELO history. One row appended on every
- * applyMatchResult call so the profile can render a sparkline ("form")
- * without scanning the whole match log. `delta` is the signed swing
- * (winner > 0, loser < 0); `rating` is the post-update value.
- */
-model PlayerRatingHistory {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  rating     Int
-  delta      Int
-  /// "WIN" | "LOSS" — kept as a flat string so we don't add another enum
-  /// for a tiny derived flag.
-  outcome    String
-  opponentId String?
-  matchId    String?
-  createdAt  DateTime @default(now())
-
-  @@index([userId, createdAt])
-  @@map("player_rating_history")
-}
+// Round-54 — PlayerRatingHistory dropped along with the rating system.
+// See migration 20260611140000_drop_player_rating.
 
 // Round-49 — outgoing-email queue. One row per send; `template` selects
 // the renderer in lib/services/email-queue.service.ts and `payload` carries

@@ -12,9 +12,6 @@ export const ProfileByUsernameQuery = graphql(/* GraphQL */ `
       nationality
       avatarUrl
       createdAt
-      rating
-      level
-      rank
       isFollowing
       followerCount
       followingCount
@@ -23,7 +20,6 @@ export const ProfileByUsernameQuery = graphql(/* GraphQL */ `
       followingCompetitionsCount
       bannedAt
       banReason
-      ratingHistory(limit: 20)
       playerCompStats {
         id
         matchesPlayed

@@ -5,11 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LocalDateTime } from "@/components/ui/local-datetime";
-import { RatingBadge } from "@/components/ui/rating-badge";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { Users } from "lucide-react";
-import { Sparkline } from "@/components/ui/sparkline";
-import { pointsToNextTier, tierFromRating } from "@/lib/rating/tier";
 import { BanUserButton } from "@/components/admin/ban-user-button";
 import { FollowButton } from "@/components/follow-button";
 import { PageTitle } from "@/components/layout/page-title";
@@ -106,23 +103,9 @@ export default async function ProfilePage({
         }
         meta={
           <>
-            {/* Round-50 — dropped the inline RatingBadge here; the dedicated
-                Rating card below carries the hero rating + tier progress
-                and the meta was reading "rating · rating · role" twice. */}
+            {/* Round-54 — dropped Level + Rank chips with the rating
+                system; profile meta is just role + banned status now. */}
             <Badge variant="primary">{user.role.replace(/_/g, " ")}</Badge>
-            <Badge variant="neutral" size="sm">
-              Lv {user.level}
-            </Badge>
-            {user.rank ? (
-              <Link
-                href="/rankings"
-                className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
-              >
-                Rank{" "}
-                <span className="font-mono font-bold">#{user.rank}</span>
-                <span aria-hidden>↗</span>
-              </Link>
-            ) : null}
             {user.bannedAt ? (
               <Badge variant="danger" data-testid="profile-banned-badge">
                 Banned
@@ -186,114 +169,8 @@ export default async function ProfilePage({
             </CardContent>
           </Card>
 
-          {/* Rating + rank */}
-          <Card data-testid="player-rating-card">
-            <CardHeader>
-              <CardTitle className="text-sm">Rating</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <RatingBadge rating={user.rating} variant="hero" />
-                {(() => {
-                  const history = user.ratingHistory ?? [];
-                  if (history.length < 2) return null;
-                  const first = history[0]!;
-                  const last = history[history.length - 1]!;
-                  const swing = last - first;
-                  return (
-                    <div
-                      className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/40 px-3 py-2"
-                      data-testid="rating-trend"
-                    >
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                          Form · last {history.length}
-                        </div>
-                        <div
-                          className={
-                            "font-mono text-sm font-bold tabular-nums " +
-                            (swing > 0
-                              ? "text-success"
-                              : swing < 0
-                                ? "text-destructive"
-                                : "text-muted-foreground")
-                          }
-                        >
-                          {swing > 0 ? "+" : ""}
-                          {swing} pts
-                        </div>
-                      </div>
-                      <Sparkline
-                        data={history as ReadonlyArray<number>}
-                        width={140}
-                        height={36}
-                        stroke={
-                          swing >= 0 ? "rgb(34 197 94)" : "rgb(239 68 68)"
-                        }
-                        fill={swing >= 0 ? "rgb(34 197 94)" : "rgb(239 68 68)"}
-                      />
-                    </div>
-                  );
-                })()}
-                {(() => {
-                  const tier = tierFromRating(user.rating);
-                  const remaining = pointsToNextTier(user.rating);
-                  if (tier.next === null) {
-                    return (
-                      <p className="text-xs text-muted-foreground">
-                        {tier.blurb} You've reached the top tier.
-                      </p>
-                    );
-                  }
-                  const span = tier.next - tier.min;
-                  const progress = Math.min(
-                    100,
-                    Math.max(0, ((user.rating - tier.min) / span) * 100),
-                  );
-                  return (
-                    <>
-                      <p className="text-xs text-muted-foreground">
-                        {tier.blurb}
-                      </p>
-                      <div className="space-y-1.5">
-                        {/* Round-50 — the tier name is already shown big
-                            inside the hero badge above; we used to repeat
-                            it here. Keep just the "N pts to next" hint so
-                            the progress bar tells a clear story. */}
-                        <div className="flex items-baseline justify-end text-[11px]">
-                          <span className="text-muted-foreground tabular-nums">
-                            {remaining} pts to next
-                          </span>
-                        </div>
-                        <div
-                          className="h-2 w-full overflow-hidden rounded-full bg-secondary/60"
-                          role="progressbar"
-                          aria-valuemin={tier.min}
-                          aria-valuemax={tier.next ?? user.rating}
-                          aria-valuenow={user.rating}
-                          data-testid="tier-progress"
-                        >
-                          <div
-                            className="h-full rounded-full transition-[width]"
-                            style={{
-                              width: `${progress}%`,
-                              background: tier.gradient,
-                            }}
-                          />
-                        </div>
-                        <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
-                          <span>{tier.min}</span>
-                          <span>{tier.next}</span>
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()}
-                {/* Round-50 — Lv + Rank moved up to the PageTitle meta so
-                    they sit alongside Role/City and aren't repeated here. */}
-              </div>
-            </CardContent>
-          </Card>
+          {/* Round-54 — Rating card removed with the rating system. We'll
+              add a points card back once the new scoring model lands. */}
         </div>
 
         {/* Round-50 — Teams strip. Horizontal-scrolling card row so the

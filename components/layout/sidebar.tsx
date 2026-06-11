@@ -83,12 +83,6 @@ const NAV: NavItem[] = [
     matchPrefixes: ["/teams"],
   },
   {
-    href: "/rankings",
-    label: "Rankings",
-    icon: <Trophy className="size-5" />,
-    matchPrefixes: ["/rankings"],
-  },
-  {
     href: "/venues",
     label: "Venues",
     icon: <VenuesIcon className="size-5" />,
