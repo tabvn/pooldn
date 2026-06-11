@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { CountryFlag } from "@/components/ui/country-flag";
@@ -34,6 +35,18 @@ export default async function CompetitionOverviewPage({
   const c = data?.competition;
   if (!c) return null;
   const viewer = viewerResult.data?.viewer ?? null;
+
+  // Round-55 — DRAFT competitions don't have a public overview. The
+  // organizer (or admin) gets bounced into the 4-tab setup wizard at
+  // /edit — that IS the Figma "Draft Competition" screen. Anyone else
+  // who somehow lands here (CASL hides DRAFTs from non-org viewers, so
+  // this is mostly a safety net) goes to the browse page.
+  if (c.status === "DRAFT") {
+    const canManage =
+      !!viewer &&
+      (viewer.role === "SUPER_ADMIN" || viewer.id === c.organizer?.id);
+    redirect(canManage ? `/competitions/${slug}/edit` : "/competitions");
+  }
 
   const isCompleted = c.status === "COMPLETED";
   const winner = isCompleted ? c.standings[0] : null;

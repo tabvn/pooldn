@@ -170,6 +170,9 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
         time
       }
       rulesUrl
+      organizer {
+        id
+      }
       city {
         id
         name
