@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation } from "@apollo/client/react";
-import { Calendar, Check, Info } from "lucide-react";
+import { Check, Info } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -43,17 +43,18 @@ type TournamentOption = {
 
 const GAME_OPTIONS: GameOption[] = [
   { value: "EIGHT_BALL", label: "8-Ball" },
-  { value: "NINE_BALL", label: "9-Ball", soon: true },
-  { value: "TEN_BALL", label: "10-Ball", soon: true },
+  { value: "NINE_BALL", label: "9-Ball" },
+  { value: "TEN_BALL", label: "10-Ball" },
 ];
 
+// CompetitionType is TEAMS / INDIVIDUAL today. "Singles" maps to INDIVIDUAL
+// (one-player rosters) — the captain can still narrow it further from the
+// Participants tab. Doubles was a separate Figma label but collapses to the
+// same INDIVIDUAL type, so we keep just Teams + Singles here to avoid two
+// segments sharing the same value.
 const FORMAT_OPTIONS: FormatOption[] = [
   { value: "TEAMS", label: "Teams" },
-  // CompetitionType has only TEAMS/INDIVIDUAL today — Singles/Doubles in the
-  // design map to "INDIVIDUAL" but the differentiator (roster size) lives on
-  // the Participants tab, so we expose them as "coming soon" placeholders.
-  { value: "INDIVIDUAL", label: "Singles", soon: true },
-  { value: "INDIVIDUAL", label: "Doubles (2v2)", soon: true },
+  { value: "INDIVIDUAL", label: "Singles" },
 ];
 
 const TOURNAMENT_OPTIONS: TournamentOption[] = [
@@ -70,13 +71,11 @@ const TOURNAMENT_OPTIONS: TournamentOption[] = [
   {
     value: "SINGLE_ELIMINATION",
     label: "Single Elimination (Knockout)",
-    soon: true,
     bullets: ["Lose once = out", "Fast bracket, ideal for quick tournaments"],
   },
   {
     value: "DOUBLE_ELIMINATION",
     label: "Double Elimination",
-    soon: true,
     bullets: [
       "Players get a second chance",
       "Has Winners & Losers bracket",
@@ -298,20 +297,20 @@ export function BasicsForm() {
           </div>
         </Field>
 
-        {/* Start Date */}
+        {/* Start Date — color-scheme:dark forces the browser's native
+            calendar UI (and picker icon) into the dark palette so it
+            stays legible on the card background. Without it Chrome on
+            macOS shows a near-invisible white-on-white icon. */}
         <Field
           label="Competition Start Date"
           error={errors.startDate?.message}
         >
-          <div className="relative">
-            <Calendar className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="date"
-              {...register("startDate")}
-              className="block w-full rounded-md border border-border bg-background py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
-              data-testid="basics-startdate"
-            />
-          </div>
+          <input
+            type="date"
+            {...register("startDate")}
+            className="block w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary [color-scheme:dark]"
+            data-testid="basics-startdate"
+          />
         </Field>
 
         {/* Prize */}
