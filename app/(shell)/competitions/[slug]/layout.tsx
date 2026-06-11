@@ -61,6 +61,15 @@ export default async function CompetitionLayout({
   const isOpen = c.status === "OPEN_FOR_APPLICATIONS";
   const isInviteOnly = c.applicationMode === "INVITE_ONLY";
 
+  // Round-55 — DRAFT competitions have no public lifecycle yet (no
+  // matchdays, players or About content worth rendering), so the
+  // organizer-only edit screen owns the full viewport. The layout drops
+  // its PageTitle + TabNav + pre-start CTA for that state — the Figma
+  // draft screen has its own hero + 4-tab editor inside the page.
+  if (c.status === "DRAFT") {
+    return <div className="flex flex-col">{children}</div>;
+  }
+
   return (
     <div className="flex flex-col">
       <PageTitle
@@ -115,10 +124,10 @@ export default async function CompetitionLayout({
       <div className="px-8 pt-6">
         <TabNav items={tabs} />
       </div>
-      {/* Round-15 — pre-start banner: while the comp is still configurable,
-          surface the same wizard for editing right under the tabs. */}
-      {canManage &&
-      (c.status === "DRAFT" || c.status === "OPEN_FOR_APPLICATIONS") ? (
+      {/* Round-15/55 — pre-start banner only renders once the comp is
+          published (OPEN_FOR_APPLICATIONS); the standalone DRAFT screen
+          above already IS the edit wizard, no CTA needed. */}
+      {canManage && c.status === "OPEN_FOR_APPLICATIONS" ? (
         <div className="px-8 pt-4">
           <Link
             href={`/competitions/${slug}/edit`}
