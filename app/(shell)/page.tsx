@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CompetitionRowCard } from "@/components/competition/competition-row-card";
 import { TodayMatchCard } from "@/components/dashboard/today-match-card";
@@ -43,15 +45,25 @@ export default async function PoolhubDashboard() {
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
       {/* Greeting — lime only for the welcome line; signed-out viewers get
-          no heading here (the section titles below stand on their own). */}
+          no heading here (the section titles below stand on their own).
+          Create-competition CTA sits on the right since this is the only
+          entry point from the dashboard. */}
       {viewer ? (
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold text-primary md:text-3xl">
-            {greetingName
-              ? `Welcome back, ${greetingName}!`
-              : "Welcome to PoolDN"}
-          </h1>
-          <p className="text-sm text-muted-foreground">Ready to compete?</p>
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold text-primary md:text-3xl">
+              {greetingName
+                ? `Welcome back, ${greetingName}!`
+                : "Welcome to PoolDN"}
+            </h1>
+            <p className="text-sm text-muted-foreground">Ready to compete?</p>
+          </div>
+          <Link href="/competitions/new" data-testid="dashboard-create-comp">
+            <Button variant="primary">
+              <Plus className="size-4" />
+              Create competition
+            </Button>
+          </Link>
         </header>
       ) : null}
 
