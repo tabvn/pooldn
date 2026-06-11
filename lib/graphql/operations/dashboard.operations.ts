@@ -83,6 +83,7 @@ export const DashboardQuery = graphql(/* GraphQL */ `
       slug
       name
       status
+      type
       format
       gameType
       bannerUrl
@@ -108,6 +109,7 @@ export const DashboardQuery = graphql(/* GraphQL */ `
       slug
       name
       status
+      type
       format
       gameType
       bannerUrl
@@ -142,6 +144,7 @@ export const DashboardQuery = graphql(/* GraphQL */ `
       slug
       name
       status
+      type
       format
       gameType
       bannerUrl

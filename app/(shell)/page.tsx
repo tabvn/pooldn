@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { Avatar } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CompetitionCard } from "@/components/competition/competition-card";
+import { CompetitionRowCard } from "@/components/competition/competition-row-card";
 import { TodayMatchCard } from "@/components/dashboard/today-match-card";
 import { getClient } from "@/lib/apollo/client";
 import { DashboardQuery } from "@/lib/graphql/operations/dashboard.operations";
@@ -14,6 +12,15 @@ function firstName(full?: string | null) {
   return full.trim().split(/\s+/)[0];
 }
 
+/**
+ * Round-52 — Figma-faithful Poolhub dashboard.
+ *
+ * The redesign trades busy gradients and chip-colour soup for a single
+ * column of restrained row cards (matches Figma frames 31:2138 + 10:161).
+ * Only three accent colours touch the page: the lime welcome heading
+ * (greets a signed-in user), the lime "Upcoming" status pill, and the
+ * teal-tinted "Active" rows — everything else is foreground / muted.
+ */
 export default async function PoolhubDashboard() {
   const client = getClient();
   const [{ data }, viewerResult] = await Promise.all([
@@ -31,79 +38,60 @@ export default async function PoolhubDashboard() {
   const followedComps = data?.myFollowedCompetitions ?? [];
   const followedTeams = data?.myFollowedTeams ?? [];
   const hasFollowing = followedComps.length > 0 || followedTeams.length > 0;
-  // Round-47 — any signed-in user can run a competition; per-entity CASL
-  // grants organizer rights only on the comps they themselves create.
-  const canCreate = !!viewer;
   const greetingName = firstName(viewer?.name);
 
   return (
-    <div className="p-8 space-y-8">
-      {/* Greeting */}
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-bold text-primary">
+    <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
+      {/* Greeting — lime only for the welcome line; signed-out viewers get
+          no heading here (the section titles below stand on their own). */}
+      {viewer ? (
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold text-primary md:text-3xl">
             {greetingName
               ? `Welcome back, ${greetingName}!`
               : "Welcome to PoolDN"}
           </h1>
           <p className="text-sm text-muted-foreground">Ready to compete?</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {canCreate ? (
-            <Link href="/competitions/new">
-              <Button>Create competition</Button>
-            </Link>
-          ) : null}
-          <Link href="/competitions">
-            <Button variant="outline">Browse all</Button>
-          </Link>
-        </div>
-      </header>
-
-      {/* Today's match (or next scheduled when nothing today) — the card
-          owns its own eyebrow + state pill so we just render it raw here. */}
-      {nextMatch ? (
-        <TodayMatchCard match={nextMatch} />
-      ) : viewer ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card/50 px-6 py-10 text-center">
-          <p className="text-sm font-semibold">No matches on your card.</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Browse competitions below to get in the action.
-          </p>
-        </div>
+        </header>
       ) : null}
 
-      {/* Upcoming Competitions */}
-      <section className="space-y-3">
+      {/* Today's Match (or next scheduled). Hidden in the signed-out viewer
+          dashboard — there's no "your card" when there's no viewer. */}
+      {viewer && nextMatch ? <TodayMatchCard match={nextMatch} /> : null}
+
+      {/* Upcoming Competitions — single column list. */}
+      <section className="space-y-3" data-testid="dashboard-upcoming">
         <SectionHeader
-          title="Upcoming competitions"
+          title="Upcoming Competitions"
           href="/competitions?status=OPEN_FOR_APPLICATIONS"
+          showLink={upcoming.length > 0}
         />
         {upcoming.length === 0 ? (
           <EmptyMessage>
             No competitions are accepting applications right now.
           </EmptyMessage>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="space-y-2.5">
             {upcoming.slice(0, 3).map((c) => (
-              <CompetitionCard key={c.id} c={c} />
+              <CompetitionRowCard key={c.id} c={c} />
             ))}
           </div>
         )}
       </section>
 
-      {/* Active Competitions */}
-      <section className="space-y-3">
+      {/* Active Competitions — teal-tinted rows so they read as live. */}
+      <section className="space-y-3" data-testid="dashboard-active">
         <SectionHeader
-          title="Active competitions"
+          title="Active Competitions"
           href="/competitions?status=ONGOING"
+          showLink={active.length > 0}
         />
         {active.length === 0 ? (
           <EmptyMessage>No active competitions yet.</EmptyMessage>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="space-y-2.5">
             {active.slice(0, 3).map((c) => (
-              <CompetitionCard key={c.id} c={c} />
+              <CompetitionRowCard key={c.id} c={c} accent="active" />
             ))}
           </div>
         )}
@@ -112,48 +100,39 @@ export default async function PoolhubDashboard() {
       {/* Following */}
       {viewer && hasFollowing ? (
         <section className="space-y-3" data-testid="dashboard-following">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-xl font-semibold">Following</h2>
-            <span className="text-xs text-muted-foreground">
-              {followedComps.length + followedTeams.length} item
-              {followedComps.length + followedTeams.length === 1 ? "" : "s"}
-            </span>
-          </div>
+          <SectionHeader title="Following" />
           {followedComps.length > 0 ? (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="space-y-2.5">
               {followedComps.slice(0, 3).map((c) => (
-                <CompetitionCard key={c.id} c={c} />
+                <CompetitionRowCard key={c.id} c={c} />
               ))}
             </div>
           ) : null}
           {followedTeams.length > 0 ? (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
               {followedTeams.slice(0, 6).map((t) => (
                 <Link
                   key={t.id}
                   href={`/teams/${t.slug}`}
                   data-testid={`followed-team-${t.slug}`}
                 >
-                  <Card className="hover:border-primary/50 transition-colors">
+                  <Card className="transition-colors hover:border-primary/40">
                     <CardContent className="flex items-center gap-3 py-3">
                       <Avatar
-                        size="md"
+                        size="sm"
                         src={t.logoUrl ?? undefined}
                         fallback={t.name}
+                        shape="team"
                       />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-semibold">
                           {t.name}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          @{t.captain.username} ·{" "}
-                          {t.members.length} member
+                        <div className="truncate text-xs text-muted-foreground">
+                          @{t.captain.username} · {t.members.length} member
                           {t.members.length === 1 ? "" : "s"}
                         </div>
                       </div>
-                      <Badge variant="neutral" size="sm">
-                        Team
-                      </Badge>
                     </CardContent>
                   </Card>
                 </Link>
@@ -166,23 +145,33 @@ export default async function PoolhubDashboard() {
   );
 }
 
-function SectionHeader({ title, href }: { title: string; href: string }) {
+function SectionHeader({
+  title,
+  href,
+  showLink = true,
+}: {
+  title: string;
+  href?: string;
+  showLink?: boolean;
+}) {
   return (
     <div className="flex items-baseline justify-between">
-      <h2 className="text-xl font-semibold">{title}</h2>
-      <Link
-        href={href}
-        className="text-sm font-semibold text-primary hover:underline"
-      >
-        View all
-      </Link>
+      <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+      {href && showLink ? (
+        <Link
+          href={href}
+          className="text-xs font-semibold text-primary hover:underline"
+        >
+          View All
+        </Link>
+      ) : null}
     </div>
   );
 }
 
 function EmptyMessage({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-md border border-dashed border-border bg-card/40 px-4 py-6 text-sm text-muted-foreground">
+    <p className="rounded-md border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
       {children}
     </p>
   );
