@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@apollo/client/react";
 import {
@@ -339,15 +338,6 @@ export function TabEditor({ initial }: { initial: CompetitionInitial }) {
               />
             ) : null}
           </div>
-        </div>
-
-        <div className="mt-6 flex items-center justify-between text-sm">
-          <Link
-            href={`/competitions/${data.slug}`}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            ← Back to competition
-          </Link>
         </div>
       </div>
     </div>

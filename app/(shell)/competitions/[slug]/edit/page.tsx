@@ -1,18 +1,17 @@
 import { notFound, redirect } from "next/navigation";
 import { requireViewer } from "@/lib/auth/server";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getClient } from "@/lib/apollo/client";
 import { CompetitionEditableQuery } from "@/lib/graphql/operations/competition.operations";
-import { CompetitionBannerUpload } from "./banner-upload";
-import { CompetitionLocksCard } from "@/components/competition/competition-locks-card";
 import { TabEditor } from "./tab-editor";
 
 /**
  * Round-51 — Figma-faithful draft editor.
  *
- * Server-renders the title block & banner / locks cards, then hands the
- * configurable fields off to the four-tab client editor (Participants ·
- * Schedule · Structure · Review & Publish).
+ * Loads the editable competition and hands the configurable fields off to
+ * the four-tab client editor (Participants · Schedule · Structure ·
+ * Review & Publish). Round-55 dropped the banner upload + locks cards
+ * that used to sit beneath the editor — they're not in the Figma draft
+ * screen and we'll re-add them as a dedicated admin surface later.
  */
 export default async function EditCompetitionPage({
   params,
@@ -69,35 +68,6 @@ export default async function EditCompetitionPage({
           })),
         }}
       />
-
-      {/* Round-50 — banner + locks cards live outside the tabs as quick
-          admin tools; they're not part of the configurable flow. */}
-      <div className="mx-auto max-w-3xl space-y-4 px-4 pb-12 md:px-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Banner</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CompetitionBannerUpload
-              competitionId={c.id}
-              name={c.name}
-              bannerUrl={c.bannerUrl ?? null}
-            />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Locks</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CompetitionLocksCard
-              competitionId={c.id}
-              registrationLocked={c.registrationLocked}
-              rosterLocked={c.rosterLocked}
-            />
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }
