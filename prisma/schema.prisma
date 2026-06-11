@@ -44,7 +44,13 @@ enum CompetitionFormat {
 
 enum CompetitionType {
   TEAMS
+  // 1v1 — a player applies solo, no team required.
   INDIVIDUAL
+  // Round-53 — 2v2 — captain applies with a team that has exactly two
+  // players. We keep TEAMS for >2-player rosters; DOUBLES is the
+  // narrower lane so the apply form and the matchday generator can
+  // assume "two-versus-two" without inspecting roster size every time.
+  DOUBLES
 }
 
 enum GameType {
@@ -230,6 +236,10 @@ model User {
   teamMemberships       TeamMember[]
   applicationPlayers    ApplicationPlayer[]
   rosterCaptainOf       CompetitionApplication[] @relation("ApplicationRosterCaptain")
+  // Round-53 — INDIVIDUAL competition applications: the user is the
+  // applicant directly (no team). Back-relation for the new
+  // CompetitionApplication.applicantUserId column.
+  competitionApplications CompetitionApplication[] @relation("CompetitionApplicant")
   rosterChangeRequested RosterChangeRequest[]    @relation("RosterChangeRequestedBy")
   rosterChangeReviewed  RosterChangeRequest[]    @relation("RosterChangeReviewedBy")
   rosterChangePlayerOf  RosterChangePlayer[]
@@ -606,8 +616,14 @@ model CompetitionApplication {
   id            String            @id @default(cuid())
   competitionId String
   competition   Competition       @relation(fields: [competitionId], references: [id], onDelete: Cascade)
-  teamId        String
-  team          Team              @relation(fields: [teamId], references: [id])
+  // Round-53 — TEAMS / DOUBLES competitions still apply via a Team row,
+  // but INDIVIDUAL (1v1) comps don't have one. Make teamId nullable and
+  // add applicantUserId for the solo-applicant case. Exactly one of the
+  // two is set per row (enforced in the resolver).
+  teamId        String?
+  team          Team?             @relation(fields: [teamId], references: [id])
+  applicantUserId String?
+  applicant       User?           @relation("CompetitionApplicant", fields: [applicantUserId], references: [id])
   status        ApplicationStatus @default(PENDING)
   message       String?
   reviewNote    String?
@@ -626,7 +642,9 @@ model CompetitionApplication {
   rosterChangeRequests RosterChangeRequest[]
 
   @@unique([competitionId, teamId])
+  @@unique([competitionId, applicantUserId])
   @@index([teamId])
+  @@index([applicantUserId])
   @@index([status])
   @@index([rosterCaptainUserId])
   @@map("competition_applications")

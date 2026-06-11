@@ -28,7 +28,7 @@ type ConfirmedTeamApp = {
     logoUrl?: string | null;
     captain: TeamCaptain;
     members: Array<{ id: string }>;
-  };
+  } | null;
 };
 
 export function ConfirmedTeamsRow({
@@ -48,7 +48,13 @@ export function ConfirmedTeamsRow({
   viewerRole: string | null;
   maxTeams: number | null;
 }) {
-  const approved = applications.filter((a) => a.status === "APPROVED");
+  // Round-53 — this row is the "confirmed TEAMS" strip; INDIVIDUAL
+  // (solo) applications are surfaced elsewhere so we filter them out
+  // here rather than carry nullable team narrowings through the rest
+  // of the component.
+  const approved = applications.filter(
+    (a) => a.status === "APPROVED" && a.team !== null,
+  ) as Array<ConfirmedTeamApp & { team: NonNullable<ConfirmedTeamApp["team"]> }>;
   if (approved.length === 0) return null;
 
   const myAppIds = new Set(
@@ -140,7 +146,7 @@ function TeamCard({
   viewerRole,
 }: {
   competitionName: string;
-  app: ConfirmedTeamApp;
+  app: ConfirmedTeamApp & { team: NonNullable<ConfirmedTeamApp["team"]> };
   isMyTeam: boolean;
   viewerId: string | null;
   viewerRole: string | null;

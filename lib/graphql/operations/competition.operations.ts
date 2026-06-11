@@ -307,6 +307,7 @@ export const CompetitionApplicationsQuery = graphql(/* GraphQL */ `
     competition(slug: $slug) {
       id
       name
+      type
       applications {
         id
         status
@@ -323,6 +324,12 @@ export const CompetitionApplicationsQuery = graphql(/* GraphQL */ `
             name
             username
           }
+        }
+        applicant {
+          id
+          name
+          username
+          avatarUrl
         }
       }
     }

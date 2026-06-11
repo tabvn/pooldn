@@ -159,10 +159,14 @@ export async function recomputeStandings(
   // competition. Rejected / cancelled / waitlisted / pending teams should
   // never appear in the table even if a match was recorded for them.
   const approvedApps = await prisma.competitionApplication.findMany({
-    where: { competitionId, status: "APPROVED" },
+    // Round-53 — standings are team-only; solo INDIVIDUAL apps don't
+    // populate this table at all.
+    where: { competitionId, status: "APPROVED", teamId: { not: null } },
     select: { teamId: true },
   });
-  const approvedTeamIds = new Set(approvedApps.map((a) => a.teamId));
+  const approvedTeamIds = new Set(
+    approvedApps.map((a) => a.teamId).filter((id): id is string => Boolean(id)),
+  );
 
   // Drop any stale standings rows for non-approved teams.
   await prisma.standing.deleteMany({

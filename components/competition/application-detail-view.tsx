@@ -94,6 +94,17 @@ export function ApplicationDetailView({
       </div>
     );
   }
+  // Round-53 — solo (INDIVIDUAL) applications have no team, no roster, and
+  // no roster captain — the rest of this view assumes them. For now we
+  // render a minimal placeholder; a Round-54 follow-up will build the
+  // dedicated solo detail view.
+  if (!app.team) {
+    return (
+      <div className="rounded-md border border-border bg-card p-6 text-sm text-muted-foreground">
+        Solo (Singles) applications don't have a roster view yet.
+      </div>
+    );
+  }
 
   const isAdmin = viewerRole === "SUPER_ADMIN";
   const isOrganizer = viewerId === app.competition.organizer.id;
@@ -774,8 +785,8 @@ function RosterEditor({
 
   const min = app.competition.minPlayersPerTeam;
   const max = app.competition.maxPlayersPerTeam;
-  const teamMembers = app.team.members.filter((m) => m.isActive);
-  const captainInRoster = selected.has(app.team.captain.id);
+  const teamMembers = app.team?.members.filter((m) => m.isActive) ?? [];
+  const captainInRoster = selected.has(app.team?.captain.id ?? "__none__");
   const needsRosterCaptain = !captainInRoster;
   const ready =
     selected.size >= min &&
@@ -815,7 +826,7 @@ function RosterEditor({
       <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
         {teamMembers.map((m) => {
           const checked = selected.has(m.user.id);
-          const isCaptainRow = m.user.id === app.team.captain.id;
+          const isCaptainRow = m.user.id === app.team?.captain.id;
           return (
             <li key={m.id}>
               <label

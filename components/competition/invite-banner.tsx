@@ -12,13 +12,16 @@ import { CompetitionInviteActions } from "./competition-invite-actions";
 type InvitedApp = {
   id: string;
   status: string;
+  // Round-53 — INDIVIDUAL apps have no team; invite flow only fires on
+  // TEAMS/DOUBLES today, but the type stays nullable so the banner just
+  // filters those rows out instead of crashing.
   team: {
     id: string;
     name: string;
     slug: string;
     logoUrl?: string | null;
     captain: { id: string };
-  };
+  } | null;
 };
 
 /**
@@ -55,55 +58,60 @@ export function InviteBanner({
     (a) =>
       a.status === "INVITED" &&
       !dismissed.has(a.id) &&
+      a.team !== null &&
       (a.team.captain.id === viewerId || myCaptainedTeamIds.has(a.team.id)),
   );
   if (!viewerId || invites.length === 0) return null;
 
   return (
     <div className="space-y-3">
-      {invites.map((app) => (
-        <div
-          key={app.id}
-          data-testid={`competition-invite-banner-${app.team.slug}`}
-          className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm"
-        >
-          <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary">
-            <Mail className="size-4" />
-          </span>
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <Avatar
-              size="sm"
-              src={app.team.logoUrl ?? undefined}
-              fallback={app.team.name}
-              shape="team"
-            />
-            <div className="min-w-0">
-              <div className="font-semibold">
-                You're invited as{" "}
-                <Link
-                  href={`/teams/${app.team.slug}`}
-                  className="hover:underline"
-                >
-                  {app.team.name}
-                </Link>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Accept to pick your roster (same form any team uses to
-                apply), or decline if you can't make it.
+      {invites.map((app) => {
+        // Filter above guarantees a.team is set; narrow it for TS.
+        const team = app.team!;
+        return (
+          <div
+            key={app.id}
+            data-testid={`competition-invite-banner-${team.slug}`}
+            className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm"
+          >
+            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary">
+              <Mail className="size-4" />
+            </span>
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <Avatar
+                size="sm"
+                src={team.logoUrl ?? undefined}
+                fallback={team.name}
+                shape="team"
+              />
+              <div className="min-w-0">
+                <div className="font-semibold">
+                  You're invited as{" "}
+                  <Link
+                    href={`/teams/${team.slug}`}
+                    className="hover:underline"
+                  >
+                    {team.name}
+                  </Link>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Accept to pick your roster (same form any team uses to
+                  apply), or decline if you can't make it.
+                </div>
               </div>
             </div>
+            <CompetitionInviteActions
+              applicationId={app.id}
+              competitionSlug={competitionSlug}
+              teamId={team.id}
+              teamName={team.name}
+              onDeclined={() =>
+                setDismissed((s) => new Set(s).add(app.id))
+              }
+            />
           </div>
-          <CompetitionInviteActions
-            applicationId={app.id}
-            competitionSlug={competitionSlug}
-            teamId={app.team.id}
-            teamName={app.team.name}
-            onDeclined={() =>
-              setDismissed((s) => new Set(s).add(app.id))
-            }
-          />
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

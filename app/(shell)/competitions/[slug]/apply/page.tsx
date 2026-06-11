@@ -1,5 +1,8 @@
 import { requireViewer } from "@/lib/auth/server";
+import { getClient } from "@/lib/apollo/client";
+import { CompetitionHeaderQuery } from "@/lib/graphql/operations/competition.operations";
 import { ApplyForm } from "./form";
+import { SoloApplyForm } from "./solo-apply-form";
 
 export default async function ApplyPage({
   params,
@@ -16,10 +19,16 @@ export default async function ApplyPage({
     next: `/competitions/${slug}/apply`,
     roles: ["PLAYER", "TEAM_CAPTAIN", "SUPER_ADMIN"],
   });
-  // Round-49 — gating now lives inside ApplyForm so the captain sees a
-  // clear "why" panel (status not open, already approved, declined) and
-  // the deep-link with ?teamId=… from an invite accept can be honoured
-  // even when viewerCanApply is currently false (the form surfaces the
-  // reason explicitly instead of silently redirecting).
+  // Round-53 — INDIVIDUAL (Singles) competitions use a solo apply form;
+  // TEAMS and DOUBLES share the team-based wizard. Read the type up front
+  // so the right form renders without a client-side flash.
+  const { data } = await getClient().query({
+    query: CompetitionHeaderQuery,
+    variables: { slug },
+  });
+  const type = data?.competition?.type ?? "TEAMS";
+  if (type === "INDIVIDUAL") {
+    return <SoloApplyForm slug={slug} />;
+  }
   return <ApplyForm slug={slug} initialTeamId={teamId ?? null} />;
 }

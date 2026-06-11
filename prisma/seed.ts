@@ -807,10 +807,12 @@ async function main() {
   // Defensive: drop any standings + matches that involve non-approved
   // teams (e.g. Sharks were REJECTED but earlier seeds left rows behind).
   const ongoingApproved = await prisma.competitionApplication.findMany({
-    where: { competitionId: ongoing.id, status: "APPROVED" },
+    where: { competitionId: ongoing.id, status: "APPROVED", teamId: { not: null } },
     select: { teamId: true },
   });
-  const ongoingApprovedIds = ongoingApproved.map((a) => a.teamId);
+  const ongoingApprovedIds = ongoingApproved
+    .map((a) => a.teamId)
+    .filter((id): id is string => Boolean(id));
   await prisma.standing.deleteMany({
     where: {
       competitionId: ongoing.id,

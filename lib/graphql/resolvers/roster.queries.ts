@@ -47,14 +47,18 @@ builder.queryFields((t) => ({
           teamName: r.team.name,
           status: "ROSTERED",
         })),
-        ...applied.map((a) => ({
-          userId: a.userId,
-          userName: a.user.name,
-          userUsername: a.user.username,
-          teamId: a.application.teamId,
-          teamName: a.application.team.name,
-          status: a.application.status,
-        })),
+        // Round-53 — solo INDIVIDUAL applications have no team and can't
+        // block another team's roster, so drop those rows here.
+        ...applied
+          .filter((a) => a.application.teamId && a.application.team)
+          .map((a) => ({
+            userId: a.userId,
+            userName: a.user.name,
+            userUsername: a.user.username,
+            teamId: a.application.teamId!,
+            teamName: a.application.team!.name,
+            status: a.application.status,
+          })),
       ];
       // Dedup on userId — locked wins over applied.
       const seen = new Set<string>();

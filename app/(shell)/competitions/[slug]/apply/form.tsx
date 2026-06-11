@@ -759,7 +759,9 @@ function computeApplyGate(args: {
   competitionStatus: string | null;
   viewerCanApply: boolean;
   isAdmin: boolean;
-  application: { status: string; team: { name: string; slug: string } } | null;
+  application:
+    | { status: string; team: { name: string; slug: string } | null }
+    | null;
 }): {
   title: string;
   description: string;
@@ -771,26 +773,30 @@ function computeApplyGate(args: {
 
   // 1) Already engaged states — block re-entry with a clear status read.
   if (application) {
+    // Round-53 — solo INDIVIDUAL apps have no team; this team form never
+    // renders for them (page.tsx routes to SoloApplyForm), but keep the
+    // fallback so the typecheck stays clean.
+    const teamName = application.team?.name ?? "Your application";
     switch (application.status) {
       case "APPROVED":
         return {
           title: "You're already in",
           description: "Your team has been confirmed for this competition.",
-          detail: `${application.team.name} is approved.`,
+          detail: `${teamName} is approved.`,
           hint: "Open the team page to manage your roster.",
         };
       case "PENDING":
         return {
           title: "Application already submitted",
           description: "The organizer is reviewing your application.",
-          detail: `${application.team.name} has a pending application — wait for the organizer's decision.`,
+          detail: `${teamName} has a pending application — wait for the organizer's decision.`,
           hint: "We'll notify you here as soon as they respond.",
         };
       case "WAITLISTED":
         return {
           title: "You're on the waitlist",
           description: "The organizer has waitlisted your application.",
-          detail: `${application.team.name} is currently waitlisted.`,
+          detail: `${teamName} is currently waitlisted.`,
           hint: "If a slot opens, the organizer can still approve you.",
         };
       // INVITED / CANCELLED / REJECTED → fall through; the form's

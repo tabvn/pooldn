@@ -69,9 +69,20 @@ export function InvitationsList() {
   }
 
   const teamInvitations = data?.myTeamInvitations ?? [];
+  // Round-53 — INDIVIDUAL comp invites have no team; those won't fire
+  // through this banner (organizer invites assume TEAMS/DOUBLES), but
+  // filter explicitly so a corrupted row can't crash the inbox.
   const competitionInvites = (data?.myCompetitionInvitations ?? []).filter(
-    (i) => !dismissedCompInvites.has(i.id),
-  );
+    (i) => !dismissedCompInvites.has(i.id) && i.team !== null,
+  ) as Array<
+    (typeof data extends never
+      ? never
+      : NonNullable<NonNullable<typeof data>["myCompetitionInvitations"]>[number]) & {
+      team: NonNullable<
+        NonNullable<NonNullable<typeof data>["myCompetitionInvitations"]>[number]["team"]
+      >;
+    }
+  >;
   const myJoinRequests = joinRequestsQ.data?.myJoinRequests ?? [];
   const totalPending = teamInvitations.length + competitionInvites.length;
 

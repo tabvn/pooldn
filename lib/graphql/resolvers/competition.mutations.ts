@@ -19,6 +19,20 @@ import {
 } from "@/lib/services/email-queue.service";
 import { after } from "next/server";
 
+// Round-53 — looks up a display name for a solo applicant; returns a
+// generic fallback when the row is missing or the user has been deleted.
+async function getApplicantName(
+  ctx: GraphQLContext,
+  userId: string | null,
+): Promise<string> {
+  if (!userId) return "Applicant";
+  const u = await ctx.prisma.user.findUnique({
+    where: { id: userId },
+    select: { name: true },
+  });
+  return u?.name ?? "Applicant";
+}
+
 async function transition(
   ctx: GraphQLContext,
   query: { include?: unknown; select?: unknown },
@@ -475,18 +489,14 @@ builder.mutationFields((t) => ({
 
   applyToCompetition: t.prismaField({
     type: "CompetitionApplication",
-    description: "Submit a team application to a competition.",
+    description:
+      "Submit an application to a competition. TEAMS and DOUBLES require a " +
+      "teamId (and DOUBLES additionally requires the team to have exactly " +
+      "two members); INDIVIDUAL omits teamId and the viewer registers as " +
+      "the solo applicant.",
     args: { input: t.arg({ type: ApplyToCompetitionInput, required: true }) },
     resolve: async (query, _root, args, ctx) => {
       requireUser(ctx.viewer);
-      const team = await ctx.prisma.team.findUniqueOrThrow({
-        where: { id: String(args.input.teamId) },
-      });
-      if (team.captainId !== ctx.viewer.id && ctx.viewer.role !== "SUPER_ADMIN") {
-        throw new GraphQLError("Only the team captain may apply", {
-          extensions: { code: "FORBIDDEN" },
-        });
-      }
       const competition = await ctx.prisma.competition.findUniqueOrThrow({
         where: { id: String(args.input.competitionId) },
       });
@@ -495,8 +505,6 @@ builder.mutationFields((t) => ({
           extensions: { code: "INVALID_TRANSITION" },
         });
       }
-      // Round-50 — organizer's manual registration lock. SUPER_ADMIN bypasses
-      // so they can still apply on a team's behalf when correcting state.
       if (
         competition.registrationLocked &&
         ctx.viewer.role !== "SUPER_ADMIN"
@@ -504,6 +512,102 @@ builder.mutationFields((t) => ({
         throw new GraphQLError(
           "Registration is locked for this competition.",
           { extensions: { code: "REGISTRATION_LOCKED" } },
+        );
+      }
+
+      // Round-53 — INDIVIDUAL competitions don't go through the team flow at
+      // all. Validate inputs (no teamId allowed), check the applicant hasn't
+      // already applied, then create/upsert a solo application.
+      if (competition.type === "INDIVIDUAL") {
+        if (args.input.teamId) {
+          throw new GraphQLError(
+            "Solo (Singles) competitions don't accept a teamId.",
+            { extensions: { code: "INVALID_INPUT" } },
+          );
+        }
+        const userId = ctx.viewer.id;
+        const existing =
+          await ctx.prisma.competitionApplication.findUnique({
+            where: {
+              competitionId_applicantUserId: {
+                competitionId: competition.id,
+                applicantUserId: userId,
+              },
+            },
+          });
+        if (
+          existing &&
+          (existing.status === "PENDING" ||
+            existing.status === "APPROVED" ||
+            existing.status === "WAITLISTED")
+        ) {
+          throw new GraphQLError("You've already applied.", {
+            extensions: {
+              code: "ALREADY_APPLIED",
+              applicationStatus: existing.status,
+              applicationId: existing.id,
+            },
+          });
+        }
+        const app = existing
+          ? await ctx.prisma.competitionApplication.update({
+              ...query,
+              where: { id: existing.id },
+              data: {
+                status:
+                  existing.status === "INVITED" ? "APPROVED" : "PENDING",
+                message: args.input.message ?? null,
+                reviewNote: null,
+                reviewedAt:
+                  existing.status === "INVITED" ? new Date() : null,
+              },
+            })
+          : await ctx.prisma.competitionApplication.create({
+              ...query,
+              data: {
+                competitionId: competition.id,
+                applicantUserId: userId,
+                message: args.input.message ?? null,
+              },
+            });
+        await new NotificationService(ctx.prisma).create({
+          type: "APPLICATION_SUBMITTED",
+          title: `${ctx.viewer.name ?? "A player"} applied to ${competition.name}`,
+          message: "Review the application and decide.",
+          recipients: [competition.organizerId],
+          entity: {
+            type: "APPLICATION",
+            id: competition.id,
+            slug: competition.slug,
+          },
+          groupKey: `app-${competition.id}`,
+        });
+        return app;
+      }
+
+      // TEAMS / DOUBLES — teamId required from here on.
+      if (!args.input.teamId) {
+        throw new GraphQLError(
+          "A team is required to apply to this competition.",
+          { extensions: { code: "TEAM_REQUIRED" } },
+        );
+      }
+      const team = await ctx.prisma.team.findUniqueOrThrow({
+        where: { id: String(args.input.teamId) },
+        include: { members: { where: { isActive: true }, select: { id: true } } },
+      });
+      if (team.captainId !== ctx.viewer.id && ctx.viewer.role !== "SUPER_ADMIN") {
+        throw new GraphQLError("Only the team captain may apply", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+      // Round-53 — DOUBLES (2v2) needs a team of exactly two players. We count
+      // active TeamMember rows; admins still need to fix the team first since
+      // the matchday generator relies on the strict 2-player invariant.
+      if (competition.type === "DOUBLES" && team.members.length !== 2) {
+        throw new GraphQLError(
+          `Doubles competitions require a 2-player team — ${team.name} has ${team.members.length}.`,
+          { extensions: { code: "DOUBLES_TEAM_SIZE" } },
         );
       }
       // Round-48 — Figma gate "This competition requires each team to have a
@@ -758,7 +862,12 @@ builder.mutationFields((t) => ({
           { extensions: { code: "ALREADY_GENERATED" } },
         );
       }
-      const teamIds = competition.applications.map((a) => a.teamId);
+      // Round-53 — teamId is nullable on the model now (INDIVIDUAL
+      // applications use applicantUserId instead). Matchday generation
+      // is the team-flow only, so drop any solo rows here.
+      const teamIds = competition.applications
+        .map((a) => a.teamId)
+        .filter((id): id is string => Boolean(id));
       if (teamIds.length < 2) {
         throw new GraphQLError(
           "Need at least 2 approved teams to generate matchdays.",
@@ -925,17 +1034,17 @@ builder.mutationFields((t) => ({
         { ...app, __caslSubjectType__: "CompetitionApplication" },
       );
       const updated = await ctx.prisma.$transaction(async (tx) => {
-        if (args.input.approve) {
+        // Round-53 — INDIVIDUAL apps have no team and no roster: approval
+        // just flips the status, no CompetitionRoster rows to create. The
+        // team path keeps the existing cross-team guard.
+        if (args.input.approve && app.teamId) {
           const playerIds = app.applicationPlayers.map((p) => p.userId);
-          // Re-check at approve time — another team may have applied first.
-          await assertNoCrossTeamRoster(tx, app.competitionId, app.teamId, playerIds);
+          await assertNoCrossTeamRoster(tx, app.competitionId, app.teamId!, playerIds);
           if (playerIds.length > 0) {
-            // The @@unique([competitionId, userId]) constraint is the final
-            // arbiter under concurrent approvals.
             await tx.competitionRoster.createMany({
               data: playerIds.map((userId) => ({
                 competitionId: app.competitionId,
-                teamId: app.teamId,
+                teamId: app.teamId!!,
                 userId,
               })),
               skipDuplicates: false,
@@ -951,24 +1060,30 @@ builder.mutationFields((t) => ({
           },
         });
       });
-      // Fan-out: notify the captain + every team member.
-      const recipients = Array.from(
-        new Set([
-          ...app.team.members.map((m) => m.userId),
-          // also the captain explicitly in case they're not a TeamMember row
-          (await ctx.prisma.team.findUniqueOrThrow({
-            where: { id: app.teamId },
-            select: { captainId: true },
-          })).captainId,
-        ]),
-      );
+      // Fan-out: notify the captain + every team member (TEAMS/DOUBLES),
+      // or the lone applicant on a solo INDIVIDUAL row.
+      const recipients = app.team
+        ? Array.from(
+            new Set([
+              ...app.team.members.map((m) => m.userId),
+              (await ctx.prisma.team.findUniqueOrThrow({
+                where: { id: app.teamId! },
+                select: { captainId: true },
+              })).captainId,
+            ]),
+          )
+        : app.applicantUserId
+          ? [app.applicantUserId]
+          : [];
+      const subjectName =
+        app.team?.name ?? (await getApplicantName(ctx, app.applicantUserId));
       await new NotificationService(ctx.prisma).create({
         type: args.input.approve
           ? "APPLICATION_APPROVED"
           : "APPLICATION_REJECTED",
         title: args.input.approve
-          ? `Approved: ${app.team.name} in ${app.competition.name}`
-          : `Not approved: ${app.team.name} for ${app.competition.name}`,
+          ? `Approved: ${subjectName} in ${app.competition.name}`
+          : `Not approved: ${subjectName} for ${app.competition.name}`,
         message:
           args.input.reviewNote ?? "The organizer has reviewed your application.",
         recipients,
@@ -1011,6 +1126,14 @@ builder.mutationFields((t) => ({
           competition: { select: { id: true, organizerId: true, minPlayersPerTeam: true, maxPlayersPerTeam: true } },
         },
       });
+      // Round-53 — only team-based rows have a roster. Solo INDIVIDUAL
+      // rows reject all roster-edit attempts.
+      if (!app.team) {
+        throw new GraphQLError(
+          "This application has no team roster to edit.",
+          { extensions: { code: "NO_TEAM_ROSTER" } },
+        );
+      }
       const isCaptain = app.team.captainId === ctx.viewer.id;
       const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
       const isOrganizer = app.competition.organizerId === ctx.viewer.id;
@@ -1094,7 +1217,7 @@ builder.mutationFields((t) => ({
           // applicationPlayers so the Players tab + apply-flow conflict
           // checks stay consistent.
           const currentRoster = await tx.competitionRoster.findMany({
-            where: { competitionId: app.competitionId, teamId: app.teamId },
+            where: { competitionId: app.competitionId, teamId: app.teamId! },
             select: { userId: true },
           });
           const currentSet = new Set(currentRoster.map((r) => r.userId));
@@ -1102,13 +1225,13 @@ builder.mutationFields((t) => ({
           const toAdd = players.filter((id) => !currentSet.has(id));
           const toRemove = [...currentSet].filter((id) => !proposedSet.has(id));
           if (toAdd.length > 0) {
-            await assertNoCrossTeamRoster(tx, app.competitionId, app.teamId, toAdd);
+            await assertNoCrossTeamRoster(tx, app.competitionId, app.teamId!, toAdd);
           }
           if (toRemove.length > 0) {
             await tx.competitionRoster.deleteMany({
               where: {
                 competitionId: app.competitionId,
-                teamId: app.teamId,
+                teamId: app.teamId!,
                 userId: { in: toRemove },
               },
             });
@@ -1117,7 +1240,7 @@ builder.mutationFields((t) => ({
             await tx.competitionRoster.createMany({
               data: toAdd.map((userId) => ({
                 competitionId: app.competitionId,
-                teamId: app.teamId,
+                teamId: app.teamId!,
                 userId,
               })),
               skipDuplicates: false,
@@ -1131,7 +1254,7 @@ builder.mutationFields((t) => ({
         } else {
           // PENDING / WAITLISTED — just guard against cross-team conflicts on
           // the live application set (matches the legacy behavior).
-          await assertNoCrossTeamRoster(tx, app.competitionId, app.teamId, players);
+          await assertNoCrossTeamRoster(tx, app.competitionId, app.teamId!, players);
         }
         await tx.applicationPlayer.deleteMany({
           where: { applicationId: app.id },
@@ -1187,6 +1310,12 @@ builder.mutationFields((t) => ({
           competition: true,
         },
       });
+      if (!app.team) {
+        throw new GraphQLError(
+          "Solo applications can't request roster changes.",
+          { extensions: { code: "NO_TEAM_ROSTER" } },
+        );
+      }
       const isCaptain = app.team.captainId === ctx.viewer.id;
       const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
       if (!isCaptain && !isAdmin) {
@@ -1266,7 +1395,7 @@ builder.mutationFields((t) => ({
       // Cross-team check only for NEWLY added players. Players already on
       // this team's locked roster are staying — no conflict.
       const currentRoster = await ctx.prisma.competitionRoster.findMany({
-        where: { competitionId: app.competitionId, teamId: app.teamId },
+        where: { competitionId: app.competitionId, teamId: app.teamId! },
         select: { userId: true },
       });
       const currentSet = new Set(currentRoster.map((r) => r.userId));
@@ -1275,7 +1404,7 @@ builder.mutationFields((t) => ({
         await assertNoCrossTeamRoster(
           ctx.prisma,
           app.competitionId,
-          app.teamId,
+          app.teamId!,
           added,
         );
       }
@@ -1377,7 +1506,7 @@ builder.mutationFields((t) => ({
         });
         await new NotificationService(ctx.prisma).create({
           type: "APPLICATION_REJECTED",
-          title: `Roster change rejected for ${req.application.team.name}`,
+          title: `Roster change rejected for ${req.application.team?.name}`,
           message:
             args.reviewNote ??
             "The organizer rejected your proposed roster change.",
@@ -1396,7 +1525,7 @@ builder.mutationFields((t) => ({
       const currentRoster = await ctx.prisma.competitionRoster.findMany({
         where: {
           competitionId: req.application.competitionId,
-          teamId: req.application.teamId,
+          teamId: req.application.teamId!,
         },
         select: { userId: true },
       });
@@ -1411,7 +1540,7 @@ builder.mutationFields((t) => ({
           await assertNoCrossTeamRoster(
             tx,
             req.application.competitionId,
-            req.application.teamId,
+            req.application.teamId!,
             toAdd,
           );
         }
@@ -1419,7 +1548,7 @@ builder.mutationFields((t) => ({
           await tx.competitionRoster.deleteMany({
             where: {
               competitionId: req.application.competitionId,
-              teamId: req.application.teamId,
+              teamId: req.application.teamId!,
               userId: { in: toRemove },
             },
           });
@@ -1428,7 +1557,7 @@ builder.mutationFields((t) => ({
           await tx.competitionRoster.createMany({
             data: toAdd.map((userId) => ({
               competitionId: req.application.competitionId,
-              teamId: req.application.teamId,
+              teamId: req.application.teamId!,
               userId,
             })),
             skipDuplicates: false,
@@ -1455,7 +1584,7 @@ builder.mutationFields((t) => ({
         // rosterCaptainUserId points at a player who is. The request resolver
         // already validates this; we just confirm to keep the invariant on
         // disk consistent after async-state changes (e.g. captain swap).
-        const captainInRoster = proposed.includes(req.application.team.captainId);
+        const captainInRoster = proposed.includes(req.application.team?.captainId ?? "");
         let rosterCaptainUserId = req.application.rosterCaptainUserId;
         if (!captainInRoster && rosterCaptainUserId && !proposedSet.has(rosterCaptainUserId)) {
           rosterCaptainUserId = null;
@@ -1477,7 +1606,7 @@ builder.mutationFields((t) => ({
       });
       await new NotificationService(ctx.prisma).create({
         type: "APPLICATION_APPROVED",
-        title: `Roster updated for ${req.application.team.name}`,
+        title: `Roster updated for ${req.application.team?.name}`,
         message:
           args.reviewNote ??
           "Your proposed roster is now the locked roster for this competition.",
@@ -1693,7 +1822,7 @@ builder.mutationFields((t) => ({
         where: { id: String(args.id) },
         include: { team: { select: { captainId: true } } },
       });
-      const isCaptain = app.team.captainId === ctx.viewer.id;
+      const isCaptain = app.team?.captainId === ctx.viewer.id;
       const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
       if (!isCaptain && !isAdmin) {
         throw new GraphQLError("Only the team captain or admin may withdraw", {
@@ -1704,7 +1833,7 @@ builder.mutationFields((t) => ({
         // Once approved, the roster is locked — withdrawal must also remove the
         // CompetitionRoster rows so released players can re-apply elsewhere.
         await ctx.prisma.competitionRoster.deleteMany({
-          where: { competitionId: app.competitionId, teamId: app.teamId },
+          where: { competitionId: app.competitionId, teamId: app.teamId! },
         });
       }
       return ctx.prisma.competitionApplication.update({

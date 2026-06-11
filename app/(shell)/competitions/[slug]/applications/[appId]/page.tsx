@@ -41,6 +41,12 @@ export default async function ApplicationDetailPage({
   ]);
   const app = data?.competitionApplication;
   if (!app || app.competition.slug !== slug) notFound();
+  // Round-53 — INDIVIDUAL (solo) apps have no team and don't fit this
+  // detail view yet; redirect back to the applications list so the
+  // organizer at least lands somewhere coherent.
+  if (!app.team) {
+    notFound();
+  }
   const viewer = viewerResult.data?.viewer ?? null;
 
   const isCaptain = viewer?.id === app.team.captain.id;

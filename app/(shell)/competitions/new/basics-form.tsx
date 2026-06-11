@@ -47,14 +47,13 @@ const GAME_OPTIONS: GameOption[] = [
   { value: "TEN_BALL", label: "10-Ball" },
 ];
 
-// CompetitionType is TEAMS / INDIVIDUAL today. "Singles" maps to INDIVIDUAL
-// (one-player rosters) — the captain can still narrow it further from the
-// Participants tab. Doubles was a separate Figma label but collapses to the
-// same INDIVIDUAL type, so we keep just Teams + Singles here to avoid two
-// segments sharing the same value.
+// Round-53 — CompetitionType now has three distinct values, each with its
+// own apply path: TEAMS (full roster), INDIVIDUAL (1v1 solo apply), DOUBLES
+// (2v2, captain applies with a 2-player team).
 const FORMAT_OPTIONS: FormatOption[] = [
   { value: "TEAMS", label: "Teams" },
   { value: "INDIVIDUAL", label: "Singles" },
+  { value: "DOUBLES", label: "Doubles (2v2)" },
 ];
 
 const TOURNAMENT_OPTIONS: TournamentOption[] = [
@@ -88,7 +87,7 @@ const schema = z.object({
   name: z.string().min(2, "Give your competition a name").max(120),
   description: z.string().max(2000).optional(),
   gameType: z.enum(["EIGHT_BALL", "NINE_BALL", "TEN_BALL", "STRAIGHT_POOL"]),
-  type: z.enum(["TEAMS", "INDIVIDUAL"]),
+  type: z.enum(["TEAMS", "INDIVIDUAL", "DOUBLES"]),
   format: z.enum([
     "ROUND_ROBIN",
     "SINGLE_ELIMINATION",
@@ -233,12 +232,12 @@ export function BasicsForm() {
           />
         </Field>
 
-        {/* Format — segmented */}
+        {/* Format — segmented (drives CompetitionType: TEAMS / INDIVIDUAL /
+            DOUBLES). Each value steers the Round-53 apply flow to a
+            different gate. */}
         <Field label="Format">
-          {/* The third "format" option in Figma is also Singles/Doubles —
-              still maps to CompetitionType.INDIVIDUAL on submit but disabled. */}
           <SegmentedToggle
-            value={format === "ROUND_ROBIN" && type === "TEAMS" ? "TEAMS" : type}
+            value={type}
             options={FORMAT_OPTIONS}
             onSelect={(v) => setValue("type", v as CompetitionType)}
             testIdPrefix="basics-format"

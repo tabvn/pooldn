@@ -55,7 +55,8 @@ export function ApplicationsList({ slug }: { slug: string }) {
           a.status === "APPROVED" ||
           a.status === "WAITLISTED",
       )
-      .map((a) => a.team.id),
+      .map((a) => a.team?.id)
+      .filter((id): id is string => Boolean(id)),
   );
 
   async function decide(applicationId: string, approve: boolean) {
@@ -108,85 +109,105 @@ export function ApplicationsList({ slug }: { slug: string }) {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {groups[status].map((app) => (
-                <div
-                  key={app.id}
-                  className="flex items-center justify-between rounded-md border border-border bg-background px-4 py-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar
-                      size="md"
-                      src={app.team.logoUrl ?? undefined}
-                      fallback={app.team.name}
-                      shape="team"
-                    />
-                    <div>
-                      <Link
-                        href={`/teams/${app.team.slug}`}
-                        className="font-semibold hover:underline"
-                      >
-                        {app.team.name}
-                      </Link>
-                      <div className="text-xs text-muted-foreground">
-                        Captain:{" "}
+              {groups[status].map((app) => {
+                // Round-53 — INDIVIDUAL applications surface the solo
+                // applicant instead of a team. Fall back gracefully when
+                // both happen to be null (shouldn't happen — the resolver
+                // enforces one or the other).
+                const entityName =
+                  app.team?.name ?? app.applicant?.name ?? "Unknown";
+                const entityLogo = app.team?.logoUrl ?? app.applicant?.avatarUrl;
+                const entityHref = app.team
+                  ? `/teams/${app.team.slug}`
+                  : app.applicant
+                    ? `/players/${app.applicant.username}`
+                    : "#";
+                return (
+                  <div
+                    key={app.id}
+                    className="flex items-center justify-between rounded-md border border-border bg-background px-4 py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Avatar
+                        size="md"
+                        src={entityLogo ?? undefined}
+                        fallback={entityName}
+                        shape={app.team ? "team" : "user"}
+                      />
+                      <div>
                         <Link
-                          href={`/players/${app.team.captain.username}`}
-                          className="hover:underline"
+                          href={entityHref}
+                          className="font-semibold hover:underline"
                         >
-                          {app.team.captain.name}
+                          {entityName}
                         </Link>
+                        {app.team ? (
+                          <div className="text-xs text-muted-foreground">
+                            Captain:{" "}
+                            <Link
+                              href={`/players/${app.team.captain.username}`}
+                              className="hover:underline"
+                            >
+                              {app.team.captain.name}
+                            </Link>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">
+                            Solo registration
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <ApplicationStatusChip status={app.status} />
-                    {app.status !== "INVITED" ? (
-                      <ApplicationDetailDialog
-                        applicationId={app.id}
-                        teamName={app.team.name}
-                        competitionName={data?.competition?.name ?? undefined}
-                        viewerId={viewer?.id ?? null}
-                        viewerRole={viewer?.role ?? null}
-                        triggerLabel={
-                          app.status === "PENDING" ? "Review" : "View"
-                        }
-                      />
-                    ) : null}
-                    {app.status === "PENDING" ? (
-                      <>
+                    <div className="flex items-center gap-2">
+                      <ApplicationStatusChip status={app.status} />
+                      {app.status !== "INVITED" && app.team ? (
+                        <ApplicationDetailDialog
+                          applicationId={app.id}
+                          teamName={app.team.name}
+                          competitionName={data?.competition?.name ?? undefined}
+                          viewerId={viewer?.id ?? null}
+                          viewerRole={viewer?.role ?? null}
+                          triggerLabel={
+                            app.status === "PENDING" ? "Review" : "View"
+                          }
+                        />
+                      ) : null}
+                      {app.status === "PENDING" ? (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="success"
+                            loading={loading}
+                            onClick={() => decide(app.id, true)}
+                            data-testid={`quick-approve-${app.id}`}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            loading={loading}
+                            onClick={() => decide(app.id, false)}
+                            data-testid={`quick-reject-${app.id}`}
+                          >
+                            Reject
+                          </Button>
+                        </>
+                      ) : null}
+                      {app.status === "INVITED" && app.team ? (
                         <Button
                           size="sm"
-                          variant="success"
-                          loading={loading}
-                          onClick={() => decide(app.id, true)}
-                          data-testid={`quick-approve-${app.id}`}
+                          variant="secondary"
+                          loading={reinviting}
+                          onClick={() => reinviteOne(app.team!.id)}
                         >
-                          Approve
+                          Re-invite
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          loading={loading}
-                          onClick={() => decide(app.id, false)}
-                          data-testid={`quick-reject-${app.id}`}
-                        >
-                          Reject
-                        </Button>
-                      </>
-                    ) : null}
-                    {app.status === "INVITED" ? (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        loading={reinviting}
-                        onClick={() => reinviteOne(app.team.id)}
-                      >
-                        Re-invite
-                      </Button>
-                    ) : null}
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </CardContent>
           </Card>
         ),

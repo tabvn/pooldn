@@ -236,7 +236,10 @@ builder.prismaObject("CompetitionApplication", {
   fields: (t) => ({
     id: t.exposeID("id"),
     competition: t.relation("competition"),
-    team: t.relation("team"),
+    team: t.relation("team", { nullable: true }),
+    // Round-53 — INDIVIDUAL competitions register the applicant directly
+    // (no team). Returns null on TEAMS/DOUBLES rows where teamId is set.
+    applicant: t.relation("applicant", { nullable: true }),
     status: t.expose("status", { type: ApplicationStatusEnum }),
     message: t.exposeString("message", { nullable: true }),
     reviewNote: t.exposeString("reviewNote", { nullable: true }),
@@ -340,7 +343,10 @@ export const ApplyToCompetitionInput = builder.inputType(
   {
     fields: (t) => ({
       competitionId: t.id({ required: true }),
-      teamId: t.id({ required: true }),
+      // Round-53 — TEAMS and DOUBLES require a team; INDIVIDUAL doesn't,
+      // so teamId is now optional and the resolver enforces presence
+      // based on competition.type.
+      teamId: t.id(),
       message: t.string(),
       playerUserIds: t.idList({ defaultValue: [] }),
       // Round-48 — when the Team Captain isn't in playerUserIds, they MUST

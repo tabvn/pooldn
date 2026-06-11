@@ -68,8 +68,9 @@ export async function assertNoCrossTeamRoster(
   });
   if (liveAppConflicts.length > 0) {
     const c = liveAppConflicts[0];
+    const conflictTeamName = c.application.team?.name ?? "another team";
     throw new GraphQLError(
-      `${c.user.name} (@${c.user.username}) is already on ${c.application.team.name} for this competition`,
+      `${c.user.name} (@${c.user.username}) is already on ${conflictTeamName} for this competition`,
       {
         extensions: {
           code: "ROSTER_CONFLICT",
@@ -77,7 +78,7 @@ export async function assertNoCrossTeamRoster(
             userId: x.userId,
             userName: x.user.name,
             teamId: x.application.teamId,
-            teamName: x.application.team.name,
+            teamName: x.application.team?.name ?? null,
           })),
         },
       },
@@ -117,7 +118,9 @@ export async function rosterConflictsForCompetition(
   for (const r of locked) {
     out.push({ userId: r.userId, teamId: r.teamId, teamName: r.team.name, status: "ROSTERED" });
   }
+  // Round-53 — solo applicants don't block roster slots on other teams.
   for (const a of applied) {
+    if (!a.application.teamId || !a.application.team) continue;
     out.push({
       userId: a.userId,
       teamId: a.application.teamId,
