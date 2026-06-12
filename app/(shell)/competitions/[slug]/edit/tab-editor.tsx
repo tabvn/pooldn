@@ -288,7 +288,7 @@ export function TabEditor({ initial }: { initial: CompetitionInitial }) {
                   save(
                     {
                       applicationMode: data.applicationMode,
-                      maxTeams: data.maxTeams,
+                      maxTeams: roster.maxTeams,
                       minPlayersPerTeam: roster.minPlayersPerTeam,
                       maxPlayersPerTeam: roster.maxPlayersPerTeam,
                     },
@@ -372,19 +372,22 @@ function ParticipantsTab({
   onSave: (roster: {
     minPlayersPerTeam: number;
     maxPlayersPerTeam: number;
+    maxTeams: number;
   }) => void;
   saving: boolean;
 }) {
-  // Round-58 — Figma defaults: roster 3–8. The Basics screen creates comps
-  // with min=1 / max=null, so seed the friendly defaults the first time
-  // this tab renders rather than showing a bare "1 — 1".
+  // Round-58 — Figma defaults: roster 3–8, max 24 teams. The Basics screen
+  // creates comps with min=1 / max=null / maxTeams=null, so seed friendly
+  // defaults the first time this tab renders. The displayed values are
+  // exactly what saves — the field can't be left empty.
   const minPlayers = data.minPlayersPerTeam > 1 ? data.minPlayersPerTeam : 3;
   const maxPlayers = data.maxPlayersPerTeam ?? 8;
+  const maxTeams = data.maxTeams ?? 24;
   const rosterInvalid = maxPlayers < minPlayers;
 
   const summary =
     `${data.applicationMode === "OPEN" ? "Any team can apply" : "Invite-only"}. ` +
-    `Max ${data.maxTeams ?? "—"} participants. ` +
+    `Max ${maxTeams} participants. ` +
     `Team roster size ${minPlayers} to ${maxPlayers} players.`;
 
   return (
@@ -407,14 +410,13 @@ function ParticipantsTab({
         <input
           type="number"
           min={2}
-          value={data.maxTeams ?? ""}
-          onChange={(e) =>
-            onChange(
-              "maxTeams",
-              e.target.value ? Number(e.target.value) : null,
-            )
-          }
-          placeholder="24"
+          value={maxTeams}
+          onChange={(e) => {
+            // Clamp to ≥2 and never allow an empty value to persist — a
+            // cleared field falls back to the 24 default on blur/save.
+            const n = Number(e.target.value);
+            onChange("maxTeams", Number.isFinite(n) && n >= 2 ? n : 24);
+          }}
           className="block w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
           data-testid="participants-max-teams"
         />
@@ -456,6 +458,7 @@ function ParticipantsTab({
           onSave({
             minPlayersPerTeam: minPlayers,
             maxPlayersPerTeam: maxPlayers,
+            maxTeams,
           })
         }
       >
