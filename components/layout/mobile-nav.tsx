@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Asterisk, Home, Target, Trophy, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  CommunityIcon,
+  PoolhubIcon,
+  TeamsIcon,
+  VenuesIcon,
+} from "./sidebar-icons";
 
 type Item = {
   href: string;
@@ -12,12 +17,34 @@ type Item = {
   matchPrefixes: string[];
 };
 
+// Round-58 — keep in lockstep with the desktop sidebar's NAV (sidebar.tsx):
+// same four destinations, same Figma glyphs. Rankings died in Round-54;
+// the mobile tab still pointed there and 404'd.
 const ITEMS: Item[] = [
-  { href: "/", label: "Hub", icon: <Target className="size-5" />, matchPrefixes: ["/", "/competitions"] },
-  { href: "/teams", label: "Teams", icon: <Users className="size-5" />, matchPrefixes: ["/teams"] },
-  { href: "/rankings", label: "Rank", icon: <Trophy className="size-5" />, matchPrefixes: ["/rankings"] },
-  { href: "/venues", label: "Venues", icon: <Home className="size-5" />, matchPrefixes: ["/venues"] },
-  { href: "/community", label: "Talk", icon: <Asterisk className="size-5" />, matchPrefixes: ["/community"] },
+  {
+    href: "/",
+    label: "Poolhub",
+    icon: <PoolhubIcon className="size-5" />,
+    matchPrefixes: ["/", "/competitions"],
+  },
+  {
+    href: "/teams",
+    label: "Teams",
+    icon: <TeamsIcon className="size-5" />,
+    matchPrefixes: ["/teams"],
+  },
+  {
+    href: "/venues",
+    label: "Venues",
+    icon: <VenuesIcon className="size-5" />,
+    matchPrefixes: ["/venues"],
+  },
+  {
+    href: "/community",
+    label: "Community",
+    icon: <CommunityIcon className="size-5" />,
+    matchPrefixes: ["/community"],
+  },
 ];
 
 function isActive(path: string, item: Item): boolean {
@@ -40,7 +67,7 @@ export function MobileNav() {
       data-testid="mobile-nav"
       aria-label="Primary"
     >
-      <ul className="grid grid-cols-5">
+      <ul className="grid grid-cols-4">
         {ITEMS.map((item) => {
           const active = isActive(pathname, item);
           return (
