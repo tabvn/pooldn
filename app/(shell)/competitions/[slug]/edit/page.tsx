@@ -59,7 +59,15 @@ export default async function EditCompetitionPage({
             | "CENTRAL_VENUE",
           centralVenueId: c.centralVenue?.id ?? null,
           gamesPerOpponent: c.gamesPerOpponent ?? 1,
-          schedulingType: c.schedulingType ?? null,
+          // Round-58 — the column default is the legacy FLEXIBLE, which the
+          // two-segment Figma selector can't represent (neither segment
+          // would highlight). Normalise: anything that isn't explicitly
+          // FIXED_MATCHDAYS edits as Weekly Rounds, and the first save
+          // persists the normalised value.
+          schedulingType:
+            c.schedulingType === "FIXED_MATCHDAYS"
+              ? "FIXED_MATCHDAYS"
+              : "WEEKLY_ROUNDS",
           weekdaySchedule: c.weekdaySchedule ?? [],
           fixedMatchDates: c.fixedMatchDates ?? [],
           blocks: c.blocks.map((b) => ({
