@@ -170,6 +170,11 @@ builder.prismaObject("Competition", {
         // already handled by the apply page (it skips this gate for admins).
         if (c.registrationLocked) return false;
         if (c.applicationMode === "OPEN") return true;
+        // Round-58 — INVITE_ONLY on an INDIVIDUAL comp has no team list to
+        // check against (invitedTeamIds is team-shaped). There's no solo
+        // invite list yet, so treat invite-only solo comps as open to any
+        // signed-in player — the organizer still reviews every application.
+        if (c.type === "INDIVIDUAL") return true;
         // INVITE_ONLY — does the viewer captain any of the invited teams?
         const invited = Array.isArray(c.invitedTeamIds)
           ? (c.invitedTeamIds as unknown[]).map(String)

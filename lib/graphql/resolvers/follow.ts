@@ -320,14 +320,21 @@ builder.prismaObjectFields("Competition", (t) => ({
     type: "CompetitionApplication",
     nullable: true,
     description:
-      "If the viewer captains a team that has applied to this comp (any status), returns the most recent application — used by the CTA to gate Apply/Withdraw/Re-apply.",
+      "The viewer's most recent application to this comp (any status) — a team application they captain OR (Round-58 fix) a solo INDIVIDUAL application where they're the applicant. Used by the CTA + apply forms to gate Apply/Withdraw/Re-apply.",
     resolve: (query, c, _args, ctx) => {
       if (!ctx.viewer) return null;
       return ctx.prisma.competitionApplication.findFirst({
         ...query,
         where: {
           competitionId: c.id,
-          team: { captainId: ctx.viewer.id },
+          OR: [
+            { team: { captainId: ctx.viewer.id } },
+            // Round-58 — solo INDIVIDUAL rows have teamId=null and the
+            // viewer as applicant; without this branch the SoloApplyForm's
+            // already-applied gate never fired and re-submits only failed
+            // at the server with a confusing error.
+            { applicantUserId: ctx.viewer.id },
+          ],
         },
         orderBy: { submittedAt: "desc" },
       });
