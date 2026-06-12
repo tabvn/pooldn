@@ -276,13 +276,16 @@ export function TabEditor({ initial }: { initial: CompetitionInitial }) {
               <ParticipantsTab
                 data={data}
                 onChange={set}
-                onSave={() =>
+                // Round-58 — the tab passes the (possibly defaulted) roster
+                // values explicitly so a same-tick onChange + save can't
+                // race React's async state update.
+                onSave={(roster) =>
                   save(
                     {
                       applicationMode: data.applicationMode,
                       maxTeams: data.maxTeams,
-                      minPlayersPerTeam: data.minPlayersPerTeam,
-                      maxPlayersPerTeam: data.maxPlayersPerTeam,
+                      minPlayersPerTeam: roster.minPlayersPerTeam,
+                      maxPlayersPerTeam: roster.maxPlayersPerTeam,
                     },
                     "Participants saved",
                     "schedule",
@@ -359,13 +362,23 @@ function ParticipantsTab({
     k: K,
     v: CompetitionInitial[K],
   ) => void;
-  onSave: () => void;
+  onSave: (roster: {
+    minPlayersPerTeam: number;
+    maxPlayersPerTeam: number;
+  }) => void;
   saving: boolean;
 }) {
+  // Round-58 — Figma defaults: roster 3–8. The Basics screen creates comps
+  // with min=1 / max=null, so seed the friendly defaults the first time
+  // this tab renders rather than showing a bare "1 — 1".
+  const minPlayers = data.minPlayersPerTeam > 1 ? data.minPlayersPerTeam : 3;
+  const maxPlayers = data.maxPlayersPerTeam ?? 8;
+  const rosterInvalid = maxPlayers < minPlayers;
+
   const summary =
     `${data.applicationMode === "OPEN" ? "Any team can apply" : "Invite-only"}. ` +
     `Max ${data.maxTeams ?? "—"} participants. ` +
-    `Team roster size ${data.minPlayersPerTeam} to ${data.maxPlayersPerTeam ?? "—"} players.`;
+    `Team roster size ${minPlayers} to ${maxPlayers} players.`;
 
   return (
     <div className="space-y-5">
@@ -404,23 +417,41 @@ function ParticipantsTab({
         <div className="flex items-stretch gap-2">
           <LabeledNumber
             label="Min"
-            value={data.minPlayersPerTeam}
+            value={minPlayers}
             onChange={(n) => onChange("minPlayersPerTeam", Math.max(1, n))}
             testId="participants-min-players"
           />
           <span className="self-center text-muted-foreground">—</span>
           <LabeledNumber
             label="Max"
-            value={data.maxPlayersPerTeam ?? data.minPlayersPerTeam}
-            onChange={(n) => onChange("maxPlayersPerTeam", n)}
+            value={maxPlayers}
+            onChange={(n) => onChange("maxPlayersPerTeam", Math.max(1, n))}
             testId="participants-max-players"
           />
         </div>
+        {rosterInvalid ? (
+          <p
+            className="mt-2 text-xs font-medium text-destructive"
+            role="alert"
+            data-testid="participants-roster-error"
+          >
+            Max players must be greater than or equal to Min ({minPlayers}).
+          </p>
+        ) : null}
       </Field>
 
       <SummaryBox text={summary} />
 
-      <SaveButton loading={saving} onClick={onSave}>
+      <SaveButton
+        loading={saving}
+        disabled={rosterInvalid}
+        onClick={() =>
+          onSave({
+            minPlayersPerTeam: minPlayers,
+            maxPlayersPerTeam: maxPlayers,
+          })
+        }
+      >
         Save and Continue
       </SaveButton>
     </div>
