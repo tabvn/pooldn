@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "@apollo/client/react";
+import { useMutation, useQuery } from "@apollo/client/react";
 import {
   Calendar,
   Check,
@@ -21,6 +21,7 @@ import {
   PublishCompetitionMutation,
   UpdateCompetitionMutation,
 } from "@/lib/graphql/operations/competition-mutations.operations";
+import { VenuesListQuery } from "@/lib/graphql/operations/venue.operations";
 
 /**
  * Round-51 — Figma-faithful draft competition editor.
@@ -59,9 +60,11 @@ type CompetitionInitial = {
   maxPlayersPerTeam: number | null;
   applicationMode: "OPEN" | "INVITE_ONLY";
   matchVenueMode: "TEAM_VENUES" | "CENTRAL_VENUE";
+  centralVenueId: string | null;
   gamesPerOpponent: number;
   schedulingType: string | null;
   weekdaySchedule: WeekdaySlot[];
+  fixedMatchDates: string[];
   blocks: Array<{
     type: string;
     games: number;
@@ -153,9 +156,11 @@ export function TabEditor({ initial }: { initial: CompetitionInitial }) {
             minPlayersPerTeam: patch.minPlayersPerTeam,
             maxPlayersPerTeam: patch.maxPlayersPerTeam,
             matchVenueMode: patch.matchVenueMode,
+            centralVenueId: patch.centralVenueId,
             gamesPerOpponent: patch.gamesPerOpponent,
             schedulingType: patch.schedulingType,
             weekdaySchedule: patch.weekdaySchedule,
+            fixedMatchDates: patch.fixedMatchDates,
             blocks: patch.blocks?.map((b) => ({
               type: b.type as "SINGLES" | "DOUBLES" | "SCOTCH_DOUBLES",
               games: b.games,
@@ -302,9 +307,11 @@ export function TabEditor({ initial }: { initial: CompetitionInitial }) {
                   save(
                     {
                       matchVenueMode: data.matchVenueMode,
+                      centralVenueId: data.centralVenueId,
                       gamesPerOpponent: data.gamesPerOpponent,
                       schedulingType: data.schedulingType,
                       weekdaySchedule: data.weekdaySchedule,
+                      fixedMatchDates: data.fixedMatchDates,
                     },
                     "Schedule saved",
                     "structure",
@@ -478,6 +485,17 @@ function ScheduleTab({
 }) {
   const schedulingType = data.schedulingType ?? "WEEKLY_ROUNDS";
   const isWeekly = schedulingType === "WEEKLY_ROUNDS";
+  const isCentral = data.matchVenueMode === "CENTRAL_VENUE";
+
+  // Round-58 — venues list for the Central Venue dropdown. cache-first:
+  // the list barely changes within an editing session.
+  const venuesQuery = useQuery(VenuesListQuery, {
+    fetchPolicy: "cache-first",
+    errorPolicy: "ignore",
+    skip: !isCentral,
+  });
+  const venues = (venuesQuery.data?.venues ?? []).filter((v) => v.isActive);
+  const centralVenue = venues.find((v) => v.id === data.centralVenueId) ?? null;
 
   function addWeekday() {
     const used = new Set(data.weekdaySchedule.map((w) => w.weekday));
@@ -500,10 +518,35 @@ function ScheduleTab({
     );
   }
 
+  // Round-58 — Fixed Match Day(s) date list helpers.
+  function addFixedDate() {
+    // Default the new row to the day after the latest picked date (or
+    // tomorrow when the list is empty) so consecutive adds don't collide.
+    const last = data.fixedMatchDates[data.fixedMatchDates.length - 1];
+    const base = last ? new Date(`${last}T00:00:00`) : new Date();
+    base.setDate(base.getDate() + 1);
+    const iso = base.toISOString().slice(0, 10);
+    onChange("fixedMatchDates", [...data.fixedMatchDates, iso]);
+  }
+  function patchFixedDate(idx: number, value: string) {
+    onChange(
+      "fixedMatchDates",
+      data.fixedMatchDates.map((d, i) => (i === idx ? value : d)),
+    );
+  }
+  function removeFixedDate(idx: number) {
+    onChange(
+      "fixedMatchDates",
+      data.fixedMatchDates.filter((_, i) => i !== idx),
+    );
+  }
+
   const venueSentence =
     data.matchVenueMode === "TEAM_VENUES"
       ? "Teams will have games in their home venues"
-      : "Matches will all be played at a central venue";
+      : centralVenue
+        ? `All matches will be played at ${centralVenue.name}`
+        : "Pick the central venue all matches will be played at";
   const oppSentence =
     data.gamesPerOpponent >= 2
       ? "Each team plays twice (home & away) against every other team"
@@ -514,7 +557,9 @@ function ScheduleTab({
           .map((s) => `every ${WEEKDAYS[s.weekday] ?? "?"} at ${s.time}`)
           .join(" and ")}`
       : "Pick the weekdays games will run on"
-    : "Matchdays are fixed by the organizer";
+    : data.fixedMatchDates.length > 0
+      ? `Matches run on ${data.fixedMatchDates.length} fixed day${data.fixedMatchDates.length === 1 ? "" : "s"}: ${data.fixedMatchDates.join(", ")}`
+      : "Pick the specific dates matches will run on";
 
   return (
     <div className="space-y-5">
@@ -533,6 +578,27 @@ function ScheduleTab({
           }
           testIdPrefix="schedule-venue"
         />
+        {isCentral ? (
+          <select
+            value={data.centralVenueId ?? ""}
+            onChange={(e) =>
+              onChange("centralVenueId", e.target.value || null)
+            }
+            className="mt-3 block w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            data-testid="schedule-central-venue"
+          >
+            <option value="">
+              {venuesQuery.loading ? "Loading venues…" : "Select a venue…"}
+            </option>
+            {venues.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+                {v.city ? ` · ${v.city.name}` : ""}
+                {v.tableCount ? ` · ${v.tableCount} tables` : ""}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <InlineNote>{venueSentence}</InlineNote>
       </Field>
 
@@ -622,7 +688,50 @@ function ScheduleTab({
               Add Weekday
             </button>
           </div>
-        ) : null}
+        ) : (
+          /* Round-58 — Fixed Match Day(s): explicit per-date rows. */
+          <div className="mt-3 space-y-2 rounded-md border border-border bg-background p-3">
+            {data.fixedMatchDates.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Add the specific dates matches will run on.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {data.fixedMatchDates.map((date, idx) => (
+                  <li key={`${date}-${idx}`} className="flex items-center gap-3">
+                    <span className="text-sm text-muted-foreground">
+                      Match day {idx + 1}
+                    </span>
+                    <input
+                      type="date"
+                      value={date}
+                      onChange={(e) => patchFixedDate(idx, e.target.value)}
+                      className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm [color-scheme:dark]"
+                      data-testid={`schedule-fixed-date-${idx}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeFixedDate(idx)}
+                      aria-label="Remove date"
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button
+              type="button"
+              onClick={addFixedDate}
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-primary/40 px-3 py-2 text-sm font-semibold text-primary hover:bg-primary/5"
+              data-testid="schedule-add-fixed-date"
+            >
+              <Plus className="size-4" />
+              Add Match Day
+            </button>
+          </div>
+        )}
       </Field>
 
       <SummaryBox
@@ -876,7 +985,11 @@ function ReviewTab({
     !!data.maxTeams &&
     !!data.maxPlayersPerTeam &&
     (singles + doubles) > 0 &&
-    (!isWeekly || data.weekdaySchedule.length > 0);
+    (isWeekly
+      ? data.weekdaySchedule.length > 0
+      : data.fixedMatchDates.length > 0) &&
+    // Round-58 — central-venue comps must actually have a venue picked.
+    (data.matchVenueMode !== "CENTRAL_VENUE" || !!data.centralVenueId);
 
   return (
     <div className="space-y-4">
@@ -915,11 +1028,15 @@ function ReviewTab({
           ],
           [
             "Match days",
-            data.weekdaySchedule.length
-              ? data.weekdaySchedule
-                  .map((s) => `${WEEKDAYS[s.weekday] ?? "?"} ${s.time}`)
-                  .join(", ")
-              : "—",
+            isWeekly
+              ? data.weekdaySchedule.length
+                ? data.weekdaySchedule
+                    .map((s) => `${WEEKDAYS[s.weekday] ?? "?"} ${s.time}`)
+                    .join(", ")
+                : "—"
+              : data.fixedMatchDates.length
+                ? data.fixedMatchDates.join(", ")
+                : "—",
           ],
         ]}
       />

@@ -57,9 +57,11 @@ export default async function EditCompetitionPage({
           matchVenueMode: (c.matchVenueMode ?? "TEAM_VENUES") as
             | "TEAM_VENUES"
             | "CENTRAL_VENUE",
+          centralVenueId: c.centralVenue?.id ?? null,
           gamesPerOpponent: c.gamesPerOpponent ?? 1,
           schedulingType: c.schedulingType ?? null,
           weekdaySchedule: c.weekdaySchedule ?? [],
+          fixedMatchDates: c.fixedMatchDates ?? [],
           blocks: c.blocks.map((b) => ({
             type: b.type as "SINGLES" | "DOUBLES" | "SCOTCH_DOUBLES",
             games: b.games,

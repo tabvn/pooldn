@@ -60,6 +60,7 @@ export const CompetitionEditableQuery = graphql(/* GraphQL */ `
         weekday
         time
       }
+      fixedMatchDates
       maxGamesPerVenuePerMatchday
       registrationLocked
       rosterLocked

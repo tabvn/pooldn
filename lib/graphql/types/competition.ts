@@ -111,6 +111,16 @@ builder.prismaObject("Competition", {
           .map((x) => ({ weekday: x.weekday, time: x.time }));
       },
     }),
+    // Round-58 — explicit ISO date list for FIXED_MATCHDAYS scheduling.
+    fixedMatchDates: t.field({
+      type: ["String"],
+      nullable: true,
+      resolve: (c) => {
+        const v = c.fixedMatchDates as unknown;
+        if (!Array.isArray(v)) return null;
+        return v.filter((x): x is string => typeof x === "string");
+      },
+    }),
     maxGamesPerVenuePerMatchday: t.exposeInt(
       "maxGamesPerVenuePerMatchday",
       { nullable: true },
@@ -332,6 +342,7 @@ export const CreateCompetitionInput = builder.inputType(
       centralVenueId: t.id(),
       gamesPerOpponent: t.int({ defaultValue: 1 }),
       weekdaySchedule: t.field({ type: [WeekdaySlotInput] }),
+      fixedMatchDates: t.stringList(),
       maxGamesPerVenuePerMatchday: t.int(),
       blocks: t.field({ type: [MatchFormatBlockInput] }),
     }),

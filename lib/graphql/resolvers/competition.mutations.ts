@@ -89,6 +89,7 @@ const UpdateCompetitionInput = builder.inputType("UpdateCompetitionInput", {
     centralVenueId: t.id(),
     gamesPerOpponent: t.int(),
     weekdaySchedule: t.field({ type: [WeekdaySlotInput] }),
+    fixedMatchDates: t.stringList(),
     maxGamesPerVenuePerMatchday: t.int(),
     blocks: t.field({ type: [MatchFormatBlockInput] }),
   }),
@@ -232,6 +233,13 @@ builder.mutationFields((t) => ({
                 weekday: w.weekday,
                 time: w.time,
               }))
+            : undefined,
+          // Round-58 — Fixed Match Day(s) ISO date list. Basic sanity filter
+          // here; the matchday generator re-validates before use.
+          fixedMatchDates: Array.isArray(i.fixedMatchDates)
+            ? i.fixedMatchDates
+                .map(String)
+                .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
             : undefined,
           maxGamesPerVenuePerMatchday:
             i.maxGamesPerVenuePerMatchday === null

@@ -540,6 +540,10 @@ model Competition {
   //   [{"weekday": 2, "time": "21:00"}, {"weekday": 5, "time": "21:00"}]
   // weekday: 0 = Sun, 1 = Mon, …, 6 = Sat (matches JS Date.getDay()).
   weekdaySchedule     Json?
+  // Round-58 — Figma "Scheduling Type" = Fixed Match Day(s): explicit ISO
+  // dates ("2026-07-04") the organizer picks one-by-one. Only read when
+  // schedulingType === FIXED_MATCHDAYS.
+  fixedMatchDates     Json?
   // Round-47 — scheduling cap from Figma. When set, the matchday generator
   // refuses to schedule more than this many matches at the same venue on
   // the same matchday. Null = no cap. UI input on the wizard Schedule step.
