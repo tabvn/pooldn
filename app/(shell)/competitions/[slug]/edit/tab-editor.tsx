@@ -4,6 +4,21 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@apollo/client/react";
 import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   Calendar,
   Check,
   Coffee,
@@ -754,14 +769,138 @@ function ScheduleTab({
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Structure tab
+// Structure tab — Figma node 170:4082 "Match Layout".
+//
+// The design works per-GAME, not per-block: every singles/doubles game is
+// its own numbered draggable row, and "Break Time" rows sit between them.
+// The DB model stays MatchFormatBlock (type, games, raceTo, breakAfterMin)
+// — we expand blocks → rows on render and compress rows → blocks on every
+// edit, mapping a Break row to `breakAfterMin` on the preceding block.
 // ─────────────────────────────────────────────────────────────────────────
 
-const BLOCK_LABEL: Record<string, string> = {
-  SINGLES: "Singles Game (1 vs 1)",
-  DOUBLES: "Doubles Game (2 vs 2)",
-  SCOTCH_DOUBLES: "Scotch Doubles",
+type LayoutItem = {
+  id: string;
+  kind: "SINGLES" | "DOUBLES" | "BREAK";
+  raceTo: number;
 };
+
+let layoutSeq = 0;
+function newItem(kind: LayoutItem["kind"], raceTo = 5): LayoutItem {
+  layoutSeq += 1;
+  return { id: `li-${layoutSeq}`, kind, raceTo };
+}
+
+function expandBlocks(blocks: CompetitionInitial["blocks"]): LayoutItem[] {
+  const out: LayoutItem[] = [];
+  for (const b of blocks) {
+    const kind = b.type === "SINGLES" ? "SINGLES" : "DOUBLES";
+    for (let g = 0; g < Math.max(1, b.games); g++) {
+      out.push(newItem(kind, b.raceTo ?? 5));
+    }
+    if (b.breakAfterMin) out.push(newItem("BREAK"));
+  }
+  return out;
+}
+
+function compressItems(items: LayoutItem[]): CompetitionInitial["blocks"] {
+  const blocks: Array<{
+    type: "SINGLES" | "DOUBLES";
+    games: number;
+    raceTo: number | null;
+    breakAfterMin: number | null;
+  }> = [];
+  for (const item of items) {
+    if (item.kind === "BREAK") {
+      // Attach to the preceding block; a leading break has nothing to
+      // attach to and is dropped (the generator can't start with a break).
+      const prev = blocks[blocks.length - 1];
+      if (prev && !prev.breakAfterMin) prev.breakAfterMin = 10;
+      continue;
+    }
+    const prev = blocks[blocks.length - 1];
+    if (prev && prev.type === item.kind && !prev.breakAfterMin) {
+      prev.games += 1;
+    } else {
+      blocks.push({
+        type: item.kind,
+        games: 1,
+        raceTo: item.raceTo,
+        breakAfterMin: null,
+      });
+    }
+  }
+  return blocks;
+}
+
+function SortableLayoutRow({
+  item,
+  number,
+  onRemove,
+}: {
+  item: LayoutItem;
+  number: number | null;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: item.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+  const isBreak = item.kind === "BREAK";
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      data-testid={`structure-row-${item.id}`}
+      className={cn(
+        "flex items-center gap-2 rounded-md border border-white/10 px-2 py-2.5",
+        isDragging && "z-10 opacity-80 shadow-lg",
+        isBreak
+          ? "bg-white/5"
+          : item.kind === "SINGLES"
+            ? "bg-sky-950"
+            : "bg-purple-950",
+      )}
+    >
+      <button
+        type="button"
+        aria-label="Drag to reorder"
+        className="cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="size-4" />
+      </button>
+      {isBreak ? (
+        <span className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
+          <Coffee className="size-4" />
+          Break Time
+        </span>
+      ) : (
+        <>
+          <span className="w-5 text-center text-sm font-semibold">
+            {number}
+          </span>
+          <span className="flex-1 text-sm text-muted-foreground">
+            {item.kind === "SINGLES" ? "Singles Game" : "Doubles Game"}
+          </span>
+          <span className="rounded bg-primary/20 px-1.5 py-0.5 text-xs font-semibold text-primary">
+            {item.kind === "SINGLES" ? "1 vs 1" : "2 vs 2"}
+          </span>
+        </>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label="Remove"
+        className="rounded-md p-1 text-muted-foreground hover:bg-white/10 hover:text-foreground"
+      >
+        <X className="size-4" />
+      </button>
+    </li>
+  );
+}
 
 function StructureTab({
   data,
@@ -777,183 +916,125 @@ function StructureTab({
   onSave: () => void;
   saving: boolean;
 }) {
-  const blocks = data.blocks;
+  // Per-game row model expanded from the block list; recompressed into
+  // blocks on every edit so the parent's save + Review tab read live data.
+  const [items, setItems] = useState<LayoutItem[]>(() =>
+    expandBlocks(data.blocks),
+  );
 
-  function add(type: Block["type"]) {
-    onChange("blocks", [
-      ...blocks,
-      { type, games: 1, raceTo: 5, breakAfterMin: null },
-    ] as unknown as CompetitionInitial["blocks"]);
-  }
-  function remove(idx: number) {
-    onChange(
-      "blocks",
-      blocks.filter((_, i) => i !== idx),
-    );
-  }
-  function move(idx: number, dir: -1 | 1) {
-    const tgt = idx + dir;
-    if (tgt < 0 || tgt >= blocks.length) return;
-    const next = [...blocks];
-    [next[idx], next[tgt]] = [next[tgt], next[idx]];
-    onChange("blocks", next);
-  }
-  function patch(idx: number, p: Partial<Block>) {
-    onChange(
-      "blocks",
-      blocks.map((b, i) => (i === idx ? { ...b, ...p } : b)),
-    );
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+  );
+
+  function commit(next: LayoutItem[]) {
+    setItems(next);
+    onChange("blocks", compressItems(next));
   }
 
-  const singles = blocks
-    .filter((b) => b.type === "SINGLES")
-    .reduce((a, b) => a + (b.games || 0), 0);
-  const doubles = blocks
-    .filter((b) => b.type === "DOUBLES" || b.type === "SCOTCH_DOUBLES")
-    .reduce((a, b) => a + (b.games || 0), 0);
-  const breaks = blocks.filter((b) => b.breakAfterMin).length;
+  function add(kind: LayoutItem["kind"]) {
+    commit([...items, newItem(kind)]);
+  }
+  function removeAt(idx: number) {
+    commit(items.filter((_, i) => i !== idx));
+  }
+  function onDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const from = items.findIndex((i) => i.id === active.id);
+    const to = items.findIndex((i) => i.id === over.id);
+    if (from === -1 || to === -1) return;
+    commit(arrayMove(items, from, to));
+  }
+
+  const singles = items.filter((i) => i.kind === "SINGLES").length;
+  const doubles = items.filter((i) => i.kind === "DOUBLES").length;
   const total = singles + doubles;
+
+  // Game numbers skip break rows (Figma numbers only the games).
+  let gameNo = 0;
+  const numbered = items.map((item) => {
+    if (item.kind === "BREAK") return { item, number: null };
+    gameNo += 1;
+    return { item, number: gameNo };
+  });
 
   return (
     <div className="space-y-5">
-      <div>
+      <div className="text-center">
         <div className="text-sm font-semibold">
           Build your match layout by adding game blocks
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Drag &amp; drop to reorder match layout
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Drag &amp; Drop to Reorder Match Layout
         </p>
       </div>
 
-      <ul
-        className="space-y-1.5 rounded-md border border-border bg-background p-3"
-        data-testid="structure-block-list"
-      >
-        {blocks.length === 0 ? (
-          <li className="py-4 text-center text-xs text-muted-foreground">
-            No blocks yet — add at least one Singles or Doubles below.
-          </li>
+      <div className="mx-auto w-full max-w-md space-y-4 rounded-xl border border-white/10 bg-white/5 p-2">
+        {items.length === 0 ? (
+          <p className="py-6 text-center text-xs text-muted-foreground">
+            No games yet — add Singles or Doubles below.
+          </p>
         ) : (
-          blocks.map((b, idx) => (
-            <li
-              key={idx}
-              className="space-y-1.5 rounded-md border border-border px-3 py-2"
-              data-testid={`structure-block-${idx}`}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={onDragEnd}
+          >
+            <SortableContext
+              items={items.map((i) => i.id)}
+              strategy={verticalListSortingStrategy}
             >
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => move(idx, -1)}
-                  disabled={idx === 0}
-                  aria-label="Move up"
-                  className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-                >
-                  <GripVertical className="size-4" />
-                </button>
-                <span className="w-6 text-center font-mono text-xs font-bold text-muted-foreground">
-                  {idx + 1}
-                </span>
-                <span className="text-sm font-semibold">
-                  {BLOCK_LABEL[b.type]}
-                </span>
-                <span className="text-xs text-muted-foreground">games</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={b.games}
-                  onChange={(e) =>
-                    patch(idx, { games: Math.max(1, Number(e.target.value)) })
-                  }
-                  className="w-14 rounded-md border border-border bg-background px-2 py-1 text-sm"
-                />
-                <span className="text-xs text-muted-foreground">race to</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={b.raceTo ?? 5}
-                  onChange={(e) =>
-                    patch(idx, {
-                      raceTo: Math.max(1, Number(e.target.value)),
-                    })
-                  }
-                  className="w-14 rounded-md border border-border bg-background px-2 py-1 text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => remove(idx)}
-                  aria-label="Remove block"
-                  className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                >
-                  <X className="size-4" />
-                </button>
-              </div>
-              {/* Break-after — Figma's standalone "Break Time" rows map to
-                  breakAfterMin on the preceding block in this schema.
-                  Surfaced inline so the captain can express the same shape. */}
-              <div className="flex flex-wrap items-center gap-2 pl-9 text-xs">
-                <label className="inline-flex items-center gap-1 text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={!!b.breakAfterMin}
-                    onChange={(e) =>
-                      patch(idx, {
-                        breakAfterMin: e.target.checked ? 10 : null,
-                      })
-                    }
-                    className="size-3 accent-primary"
+              <ul className="space-y-1" data-testid="structure-block-list">
+                {numbered.map(({ item, number }, idx) => (
+                  <SortableLayoutRow
+                    key={item.id}
+                    item={item}
+                    number={number}
+                    onRemove={() => removeAt(idx)}
                   />
-                  <Coffee className="size-3" />
-                  Break after this block
-                </label>
-                {b.breakAfterMin ? (
-                  <>
-                    <input
-                      type="number"
-                      min={1}
-                      value={b.breakAfterMin}
-                      onChange={(e) =>
-                        patch(idx, {
-                          breakAfterMin: Math.max(1, Number(e.target.value)),
-                        })
-                      }
-                      className="w-14 rounded-md border border-border bg-background px-2 py-1 text-xs"
-                    />
-                    <span className="text-muted-foreground">minutes</span>
-                  </>
-                ) : null}
-              </div>
-            </li>
-          ))
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
         )}
-      </ul>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="outline" onClick={() => add("SINGLES")}>
-          <Plus className="size-4" />
-          Singles
-        </Button>
-        <Button type="button" variant="outline" onClick={() => add("DOUBLES")}>
-          <Plus className="size-4" />
-          Doubles
-        </Button>
+        <div className="space-y-2 pb-1 text-center">
+          <p className="text-xs text-muted-foreground">Add Game Block</p>
+          <div className="flex items-stretch gap-2">
+            {(
+              [
+                ["SINGLES", "Singles"],
+                ["DOUBLES", "Doubles"],
+                ["BREAK", "Break"],
+              ] as const
+            ).map(([kind, label]) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => add(kind)}
+                className="flex flex-1 items-center justify-center gap-2 rounded-md border border-dashed border-primary/50 px-3 py-2 text-sm text-primary hover:bg-primary/5"
+                data-testid={`structure-add-${kind.toLowerCase()}`}
+              >
+                <Plus className="size-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <SummaryBox
-        text={
+        items={
           total > 0
-            ? `Teams will play ${total} games per match: ${singles} singles and ${doubles} doubles. Team Captains will assign players before the match and/or during the breaks.` +
-              (breaks > 0
-                ? ` Match includes ${breaks} break${breaks === 1 ? "" : "s"}.`
-                : "")
-            : "Add Singles and/or Doubles blocks to define your match layout."
+            ? [
+                `Teams will play ${total} games per match: ${singles} singles and ${doubles} doubles`,
+                "Team Captains will assign players before the match and/or during the breaks",
+              ]
+            : ["Add Singles and/or Doubles games to define your match layout"]
         }
       />
 
-      <SaveButton
-        loading={saving}
-        onClick={onSave}
-        disabled={total === 0}
-      >
+      <SaveButton loading={saving} onClick={onSave} disabled={total === 0}>
         Save Structure
       </SaveButton>
     </div>
