@@ -35,8 +35,22 @@ export default async function PoolhubDashboard() {
   // is on today.
   const todayMatch = data?.viewerTodayMatch ?? null;
   const nextMatch = todayMatch ?? data?.viewerNextMatch ?? null;
-  const upcoming = data?.upcoming ?? [];
-  const active = data?.active ?? [];
+  // Round-59 — the shared competitions resolver orders by startDate DESC
+  // (furthest-future first, NULLs on top), which buried freshly-published
+  // comps below the dashboard's top-3 cut. For "Upcoming" the actionable
+  // order is soonest-starting first, with date-less comps last — so a comp
+  // an organizer just opened for applications surfaces near the top.
+  const bySoonestStart = (
+    a: { startDate?: string | null },
+    b: { startDate?: string | null },
+  ) => {
+    if (!a.startDate && !b.startDate) return 0;
+    if (!a.startDate) return 1;
+    if (!b.startDate) return -1;
+    return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
+  };
+  const upcoming = [...(data?.upcoming ?? [])].sort(bySoonestStart);
+  const active = [...(data?.active ?? [])].sort(bySoonestStart);
   const followedComps = data?.myFollowedCompetitions ?? [];
   const followedTeams = data?.myFollowedTeams ?? [];
   const hasFollowing = followedComps.length > 0 || followedTeams.length > 0;
