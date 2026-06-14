@@ -314,6 +314,7 @@ export const CompetitionApplicationsQuery = graphql(/* GraphQL */ `
       name
       type
       maxTeams
+      applicationMode
       applications {
         id
         status

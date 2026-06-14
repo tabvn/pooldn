@@ -23,6 +23,7 @@ import {
   InviteTeamsToCompetitionMutation,
   ReviewApplicationMutation,
 } from "@/lib/graphql/operations/competition-mutations.operations";
+import { BallMark } from "@/components/layout/sidebar-icons";
 import { InviteTeamsModal } from "./invite-teams-modal";
 
 /**
@@ -47,9 +48,10 @@ export function ApplicationsList({
   canManage?: boolean;
 }) {
   const toast = useToast();
-  const { data, refetch } = useQuery(CompetitionApplicationsQuery, {
-    variables: { slug },
-  });
+  const { data, refetch, loading: loadingApps } = useQuery(
+    CompetitionApplicationsQuery,
+    { variables: { slug } },
+  );
   const { data: viewerData } = useQuery(ViewerQuery, {
     errorPolicy: "ignore",
     fetchPolicy: "cache-first",
@@ -64,6 +66,9 @@ export function ApplicationsList({
   const competitionId = competition?.id ?? "";
   const competitionName = competition?.name ?? undefined;
   const maxTeams = competition?.maxTeams ?? null;
+  // Round-60 — invite-only comps can't be freely applied to, so the
+  // "Applied" section only makes sense for open competitions.
+  const isInviteOnly = competition?.applicationMode === "INVITE_ONLY";
   const applications = competition?.applications ?? [];
 
   const confirmed = applications.filter((a) => a.status === "APPROVED");
@@ -71,9 +76,6 @@ export function ApplicationsList({
     (a) => a.status === "PENDING" || a.status === "WAITLISTED",
   );
   const invited = applications.filter((a) => a.status === "INVITED");
-  const past = applications.filter(
-    (a) => a.status === "REJECTED" || a.status === "CANCELLED",
-  );
 
   // Server-side inviteTeamsToCompetition skips PENDING/APPROVED/WAITLISTED —
   // mirror that here so the modal disables those checkboxes up-front.
@@ -109,50 +111,75 @@ export function ApplicationsList({
     }
   }
 
+  // First load — avoid flashing the empty-state placeholder before the
+  // applications query resolves (the list is client-rendered, so `data`
+  // is undefined on the initial paint).
+  if (loadingApps && !data) {
+    return (
+      <div className="space-y-3" data-testid="applications-loading">
+        <div className="h-6 w-40 animate-pulse rounded bg-secondary/60" />
+        <div className="h-32 w-full animate-pulse rounded-xl bg-secondary/40" />
+      </div>
+    );
+  }
+
   // Round-60 — non-managers (public / other captains) only see who's
   // confirmed; the review/invite tooling is organizer-only.
   if (!canManage) {
+    if (confirmed.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-card/40 px-6 py-16 text-center">
+          <BallMark className="size-14 text-primary drop-shadow-[0_0_16px_rgba(208,243,13,0.5)]" />
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold">No teams confirmed yet</h2>
+            <p className="text-sm text-muted-foreground">
+              Be the first — apply with your team.
+            </p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="space-y-8">
         <Section title="Confirmed Teams" count={confirmed.length} capacity={maxTeams}>
-          {confirmed.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              No teams have been confirmed yet.
-            </p>
-          ) : (
-            <AppTable
-              rows={confirmed}
-              lastColLabel="Roster"
-              renderLast={(app) => <RosterCell app={app} />}
-            />
-          )}
+          <AppTable
+            rows={confirmed}
+            lastColLabel="Roster"
+            renderLast={(app) => <RosterCell app={app} />}
+          />
         </Section>
       </div>
     );
   }
 
+  // Round-60 — Figma empty state (node 195:4979): a centered placeholder
+  // card with the brand 8-ball mark, "Competition Created!" copy, and an
+  // Invite CTA. Shown to the organizer when nothing's happened yet.
   if (applications.length === 0) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-end">
-          {competitionId ? (
-            <InviteTeamsModal
-              competitionId={competitionId}
-              excludeTeamIds={engagedTeamIds}
-              onInvited={() => refetch()}
-            />
-          ) : null}
+      <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-card/40 px-6 py-16 text-center">
+        <BallMark className="size-14 text-primary drop-shadow-[0_0_16px_rgba(208,243,13,0.5)]" />
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold">Competition Created!</h2>
+          <p className="text-sm text-muted-foreground">
+            Time to start inviting participants
+          </p>
         </div>
-        <p className="rounded-md border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-          No applications yet. Invite teams to get things started.
-        </p>
+        {competitionId ? (
+          <InviteTeamsModal
+            competitionId={competitionId}
+            excludeTeamIds={engagedTeamIds}
+            onInvited={() => refetch()}
+            triggerLabel="Invite"
+          />
+        ) : null}
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
-      {/* Confirmed Teams */}
+      {/* Confirmed Teams — approved by the organizer */}
       {confirmed.length > 0 ? (
         <Section
           title="Confirmed Teams"
@@ -179,8 +206,9 @@ export function ApplicationsList({
         </Section>
       ) : null}
 
-      {/* Applied */}
-      {applied.length > 0 ? (
+      {/* Applied — open competitions only (invite-only comps can't be
+          freely applied to, so there's no Applied list). */}
+      {!isInviteOnly && applied.length > 0 ? (
         <Section title="Applied" count={applied.length}>
           <AppTable
             rows={applied}
@@ -222,7 +250,7 @@ export function ApplicationsList({
         </Section>
       ) : null}
 
-      {/* Invited */}
+      {/* Invited — invited teams + Invite More CTA */}
       <Section
         title="Invited"
         count={invited.length}
@@ -265,21 +293,6 @@ export function ApplicationsList({
           />
         )}
       </Section>
-
-      {/* Declined / Withdrawn — audit trail, low emphasis */}
-      {past.length > 0 ? (
-        <Section title="Declined / Withdrawn" count={past.length}>
-          <AppTable
-            rows={past}
-            lastColLabel="Status"
-            renderLast={(app) => (
-              <span className="text-xs capitalize text-muted-foreground">
-                {app.status.toLowerCase()}
-              </span>
-            )}
-          />
-        </Section>
-      ) : null}
     </div>
   );
 }
