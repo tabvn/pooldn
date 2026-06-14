@@ -5,12 +5,10 @@ import { Button } from "@/components/ui/button";
 import { FollowButton } from "@/components/follow-button";
 import { ApplyCta } from "@/components/competition/apply-cta";
 import { LifecycleActions } from "@/components/competition/lifecycle-actions";
-import { MetaChips } from "@/components/competition/meta-chips";
-import { PageTitle } from "@/components/layout/page-title";
+import { CompetitionHero } from "@/components/competition/competition-hero";
 import { TabNav } from "@/components/layout/tab-nav";
 import { getClient } from "@/lib/apollo/client";
 import { CompetitionHeaderQuery, ViewerQuery } from "@/lib/graphql/operations/competition.operations";
-import { competitionStatusLabel } from "@/components/ui/status-chip";
 
 
 export default async function CompetitionLayout({
@@ -72,17 +70,10 @@ export default async function CompetitionLayout({
 
   return (
     <div className="flex flex-col">
-      <PageTitle
-        title={c.name}
-        bannerUrl={c.bannerUrl}
-        eyebrow={
-          <span>
-            Competition · {competitionStatusLabel[c.status] ?? c.status}
-          </span>
-        }
-        description={c.description}
+      <CompetitionHero
+        competition={c}
         actions={
-          <div className="flex items-center gap-2">
+          <>
             <FollowButton
               entityType="COMPETITION"
               entityId={c.id}
@@ -117,18 +108,17 @@ export default async function CompetitionLayout({
                 Invite only
               </span>
             ) : null}
-          </div>
+          </>
         }
-        meta={<MetaChips c={c} />}
       />
-      <div className="px-8 pt-6">
+      <div className="mx-auto w-full max-w-5xl px-6 pt-6 md:px-10">
         <TabNav items={tabs} />
       </div>
       {/* Round-15/55 — pre-start banner only renders once the comp is
           published (OPEN_FOR_APPLICATIONS); the standalone DRAFT screen
           above already IS the edit wizard, no CTA needed. */}
       {canManage && c.status === "OPEN_FOR_APPLICATIONS" ? (
-        <div className="px-8 pt-4">
+        <div className="mx-auto w-full max-w-5xl px-6 pt-4 md:px-10">
           <Link
             href={`/competitions/${slug}/edit`}
             className="flex items-center justify-between gap-3 rounded-md border border-primary/40 bg-primary/5 px-4 py-2 text-sm hover:border-primary/70"
@@ -146,7 +136,9 @@ export default async function CompetitionLayout({
           </Link>
         </div>
       ) : null}
-      <div className="px-8 py-6">{children}</div>
+      <div className="mx-auto w-full max-w-5xl px-6 py-6 md:px-10">
+        {children}
+      </div>
     </div>
   );
 }

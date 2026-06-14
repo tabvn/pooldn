@@ -152,6 +152,14 @@ builder.prismaObject("Competition", {
         return pendingApps + pendingChanges;
       },
     }),
+    // Round-60 — confirmed participant count for the competition hero
+    // ("N teams" line). Counts APPROVED applications (team or solo).
+    approvedTeamCount: t.int({
+      resolve: (c, _args, ctx) =>
+        ctx.prisma.competitionApplication.count({
+          where: { competitionId: c.id, status: "APPROVED" },
+        }),
+    }),
     /**
      * Round-48 (wizard) — server-computed gate the apply CTA reads. True iff
      *  - viewer is signed in and not the read-only VIEWER role,

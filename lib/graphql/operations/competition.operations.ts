@@ -116,6 +116,7 @@ export const CompetitionHeaderQuery = graphql(/* GraphQL */ `
       isFollowing
       followerCount
       pendingReviewCount
+      approvedTeamCount
       myTeamApplication {
         id
         status
