@@ -24,12 +24,15 @@ export function InviteTeamsModal({
   competitionId,
   excludeTeamIds,
   onInvited,
+  triggerLabel = "Invite teams",
 }: {
   competitionId: string;
   /** Teams with PENDING/APPROVED/WAITLISTED — server skips these, so we
    *  surface that intent in the UI by disabling the checkbox. */
   excludeTeamIds: Set<string>;
   onInvited: () => void;
+  /** Round-60 — the Invited section reuses this modal as "Invite More". */
+  triggerLabel?: string;
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -117,7 +120,7 @@ export function InviteTeamsModal({
         render={
           <Button variant="primary" size="sm">
             <UserPlus className="size-4" />
-            Invite teams
+            {triggerLabel}
           </Button>
         }
       />

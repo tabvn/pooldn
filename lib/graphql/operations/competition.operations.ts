@@ -312,6 +312,7 @@ export const CompetitionApplicationsQuery = graphql(/* GraphQL */ `
       id
       name
       type
+      maxTeams
       applications {
         id
         status
@@ -328,6 +329,21 @@ export const CompetitionApplicationsQuery = graphql(/* GraphQL */ `
             name
             username
           }
+          homeVenue {
+            id
+            name
+          }
+          members {
+            id
+          }
+        }
+        rosterCaptain {
+          id
+          name
+          username
+        }
+        applicationPlayers {
+          id
         }
         applicant {
           id

@@ -60,6 +60,10 @@ export default async function AboutPage({
     (n, b) => n + (b.games || 0),
     0,
   );
+  // Round-60 — "Race to X" is a 1v1 (INDIVIDUAL) concept; a Team / Doubles
+  // match is a fixed set of games (the block list), so we hide the race-to
+  // badges on team-competition frames.
+  const showRaceTo = c.type === "INDIVIDUAL";
 
   return (
     <div className="space-y-6">
@@ -108,9 +112,13 @@ export default async function AboutPage({
                             .replace(/^./, (s) => s.toUpperCase())}
                         </div>
                       </div>
-                      <Badge variant="neutral">
-                        {b.raceTo ? `Race to ${b.raceTo}` : `Race to ${c.raceToFrames}`}
-                      </Badge>
+                      {showRaceTo ? (
+                        <Badge variant="neutral">
+                          {b.raceTo
+                            ? `Race to ${b.raceTo}`
+                            : `Race to ${c.raceToFrames}`}
+                        </Badge>
+                      ) : null}
                     </div>
                   </li>,
                 ];
@@ -130,8 +138,12 @@ export default async function AboutPage({
             </ol>
           )}
           <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
-            <Badge variant="primary">{totalFrames} frames total</Badge>
-            <Badge variant="neutral">Race to {c.raceToFrames}</Badge>
+            <Badge variant="primary">
+              {totalFrames} {showRaceTo ? "frames" : "games"} total
+            </Badge>
+            {showRaceTo ? (
+              <Badge variant="neutral">Race to {c.raceToFrames}</Badge>
+            ) : null}
             {c.breakAndRunRule ? (
               <Badge variant="success">Break &amp; Run rule</Badge>
             ) : null}
