@@ -12,10 +12,23 @@ export type TabNavItem = {
   badge?: number | string | null;
 };
 
-export function TabNav({ items }: { items: TabNavItem[] }) {
+export function TabNav({
+  items,
+  fullWidth = false,
+}: {
+  items: TabNavItem[];
+  /** Round-60 — when true the row stretches edge-to-edge and each tab
+   *  takes an equal slice (matches the Figma competition tab-list). */
+  fullWidth?: boolean;
+}) {
   const pathname = usePathname();
   return (
-    <nav className="inline-flex items-center gap-1 rounded-lg bg-secondary/50 p-1">
+    <nav
+      className={cn(
+        "items-center gap-1 rounded-lg bg-secondary/50 p-1",
+        fullWidth ? "flex w-full" : "inline-flex",
+      )}
+    >
       {items.map((item) => {
         // simple "is current path" match — exact match works since tabs
         // are sibling routes under the same parent.
@@ -29,6 +42,7 @@ export function TabNav({ items }: { items: TabNavItem[] }) {
             data-selected={isActive || undefined}
             className={cn(
               "inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-4 text-sm font-semibold transition-colors",
+              fullWidth && "flex-1",
               isActive
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:text-foreground",

@@ -37,7 +37,15 @@ import { InviteTeamsModal } from "./invite-teams-modal";
  * A compact "Declined / Withdrawn" table tails the page for REJECTED /
  * CANCELLED so the organizer keeps an audit trail without the clutter.
  */
-export function ApplicationsList({ slug }: { slug: string }) {
+export function ApplicationsList({
+  slug,
+  canManage = false,
+}: {
+  slug: string;
+  /** Round-60 — non-managers (public / other teams) see a read-only
+   *  Confirmed Teams list; managers get the review + invite tables. */
+  canManage?: boolean;
+}) {
   const toast = useToast();
   const { data, refetch } = useQuery(CompetitionApplicationsQuery, {
     variables: { slug },
@@ -99,6 +107,28 @@ export function ApplicationsList({ slug }: { slug: string }) {
         e instanceof Error ? e.message : "Try again.",
       );
     }
+  }
+
+  // Round-60 — non-managers (public / other captains) only see who's
+  // confirmed; the review/invite tooling is organizer-only.
+  if (!canManage) {
+    return (
+      <div className="space-y-8">
+        <Section title="Confirmed Teams" count={confirmed.length} capacity={maxTeams}>
+          {confirmed.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+              No teams have been confirmed yet.
+            </p>
+          ) : (
+            <AppTable
+              rows={confirmed}
+              lastColLabel="Roster"
+              renderLast={(app) => <RosterCell app={app} />}
+            />
+          )}
+        </Section>
+      </div>
+    );
   }
 
   if (applications.length === 0) {

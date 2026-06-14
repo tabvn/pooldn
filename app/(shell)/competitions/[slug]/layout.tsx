@@ -33,36 +33,39 @@ export default async function CompetitionLayout({
     !!viewer && viewer.id === c.organizer.id;
   const canManage = isAdmin || ownsThisCompetition;
 
-  // Round-60 — pre-start (Accepting / Applications-closed) competitions
-  // have no standings yet, so the Figma pre-start screen (node 299:9506)
-  // leads with Applications, not Overview. We mirror that: for managers
-  // of a pre-start comp the tab order is Applications · Matchdays ·
-  // Players · About and the bare /competitions/[slug] URL lands them on
-  // Applications (handled in page.tsx). Non-managers keep Overview (it
-  // shows the public confirmed-teams + about view) since they have no
-  // Applications tab.
+  // Round-60 — tab set depends on lifecycle stage:
+  //   • Upcoming (Accepting / Applications-closed) → Applications ·
+  //     Matchdays · Players · About. Standings don't exist yet so the
+  //     Figma pre-start screen leads with Applications. The bare
+  //     /competitions/[slug] URL lands everyone on Applications
+  //     (handled in page.tsx). Non-managers see the read-only confirmed-
+  //     teams view there.
+  //   • Active / Completed → Overview · Matchdays · Players · About.
   const preStart =
     c.status === "OPEN_FOR_APPLICATIONS" ||
     c.status === "APPLICATIONS_CLOSED";
-  const applicationsTab = {
-    href: `/competitions/${slug}/applications`,
-    label: "Applications",
-    // Round-50 — surface pending review items (PENDING applications +
-    // PENDING RosterChangeRequests).
-    badge: c.pendingReviewCount > 0 ? c.pendingReviewCount : null,
-  };
   const secondaryTabs = [
     { href: `/competitions/${slug}/matchdays`, label: "Matchdays" },
     { href: `/competitions/${slug}/players`, label: "Players" },
     { href: `/competitions/${slug}/about`, label: "About" },
   ];
   const tabs: Array<{ href: string; label: string; badge?: number | null }> =
-    preStart && canManage
-      ? [applicationsTab, ...secondaryTabs]
+    preStart
+      ? [
+          {
+            href: `/competitions/${slug}/applications`,
+            label: "Applications",
+            // Pending-review badge only matters to the organizer.
+            badge:
+              canManage && c.pendingReviewCount > 0
+                ? c.pendingReviewCount
+                : null,
+          },
+          ...secondaryTabs,
+        ]
       : [
           { href: `/competitions/${slug}`, label: "Overview" },
           ...secondaryTabs,
-          ...(canManage ? [applicationsTab] : []),
         ];
   // Round-48 (wizard) — single source of truth for "should the apply CTA
   // render?". Server-computed on Competition.viewerCanApply, which returns
@@ -127,7 +130,7 @@ export default async function CompetitionLayout({
         }
       />
       <div className="mx-auto w-full max-w-5xl px-6 pt-6 md:px-10">
-        <TabNav items={tabs} />
+        <TabNav items={tabs} fullWidth />
       </div>
       {/* Round-60 — the "pre-start setup / edit in wizard" banner was
           removed from the published detail screen at the user's request.

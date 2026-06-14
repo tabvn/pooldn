@@ -47,15 +47,13 @@ export default async function CompetitionOverviewPage({
   if (c.status === "DRAFT") {
     redirect(canManage ? `/competitions/${slug}/edit` : "/competitions");
   }
-  // Round-60 — for a pre-start (Accepting / Applications-closed) comp the
-  // manager's landing tab is Applications (the Figma node 299:9506 lead
-  // tab), since standings don't exist yet. The bare overview URL bounces
-  // them there so the default view matches the tab order. Public viewers
-  // keep the Overview (confirmed teams + about) below.
+  // Round-60 — an upcoming (Accepting / Applications-closed) comp leads
+  // with the Applications tab (Figma node 299:9506); there's no Overview
+  // in that stage. Bounce everyone off the bare overview URL onto the
+  // Applications view so the default landing matches the tab bar.
   if (
-    canManage &&
-    (c.status === "OPEN_FOR_APPLICATIONS" ||
-      c.status === "APPLICATIONS_CLOSED")
+    c.status === "OPEN_FOR_APPLICATIONS" ||
+    c.status === "APPLICATIONS_CLOSED"
   ) {
     redirect(`/competitions/${slug}/applications`);
   }
@@ -249,10 +247,10 @@ export default async function CompetitionOverviewPage({
         </div>
       ) : null}
 
-      {/* Round-47 — Confirmed teams strip (Figma "Competition Public View
-          / Apply as a Team"). Visible on every state; once ONGOING / COMPLETED
-          the standings table below carries the team list so we collapse this
-          to a compact strip just to confirm who's in. */}
+      {/* Round-47/60 — Confirmed teams strip. Only ONGOING / COMPLETED
+          comps reach the Overview now (upcoming comps redirect to the
+          Applications tab), so the standings table below carries the team
+          list and this is just a compact "who's in" confirmation. */}
       {c.applications.filter((a) => a.status === "APPROVED").length > 0 ? (
         <ConfirmedTeamsRow
           competitionName={c.name}
@@ -263,13 +261,6 @@ export default async function CompetitionOverviewPage({
           viewerRole={viewer?.role ?? null}
           maxTeams={c.maxTeams ?? null}
         />
-      ) : c.status === "OPEN_FOR_APPLICATIONS" ? (
-        <section
-          className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-8 text-center text-sm text-muted-foreground"
-          data-testid="confirmed-teams-empty"
-        >
-          No teams confirmed yet. Be the first — apply with your team.
-        </section>
       ) : null}
 
       {/* Round-15 — live banner when any IN_PROGRESS matches exist. */}

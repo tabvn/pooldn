@@ -1,32 +1,34 @@
-import { notFound, redirect } from "next/navigation";
-import { requireViewer } from "@/lib/auth/server";
+import { notFound } from "next/navigation";
 import { getClient } from "@/lib/apollo/client";
-import { CompetitionHeaderQuery } from "@/lib/graphql/operations/competition.operations";
+import {
+  CompetitionHeaderQuery,
+  ViewerQuery,
+} from "@/lib/graphql/operations/competition.operations";
 import { ApplicationsList } from "./list";
 
+/**
+ * Round-60 — Applications is the lead tab for an upcoming competition, so
+ * it's viewable by everyone (not just the organizer): non-managers see the
+ * read-only Confirmed Teams list, managers get the full review/invite
+ * tables. Management actions are gated inside ApplicationsList by the
+ * `canManage` flag computed here.
+ */
 export default async function ApplicationsPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  // Round-60 — manage rights are per-competition (the organizer is whoever
-  // created it, regardless of their global role), so gate on ownership +
-  // admin rather than the ORGANIZER role. A signed-in non-owner is sent
-  // back to the public overview instead of seeing the management table.
-  const viewer = await requireViewer({
-    next: `/competitions/${slug}/applications`,
-  });
-  const { data } = await getClient().query({
-    query: CompetitionHeaderQuery,
-    variables: { slug },
-  });
+  const client = getClient();
+  const [{ data }, viewerResult] = await Promise.all([
+    client.query({ query: CompetitionHeaderQuery, variables: { slug } }),
+    client.query({ query: ViewerQuery, errorPolicy: "ignore" }),
+  ]);
   const c = data?.competition;
   if (!c) notFound();
+  const viewer = viewerResult.data?.viewer ?? null;
   const canManage =
-    viewer.role === "SUPER_ADMIN" || viewer.id === c.organizer.id;
-  if (!canManage) {
-    redirect(`/competitions/${slug}`);
-  }
-  return <ApplicationsList slug={slug} />;
+    !!viewer &&
+    (viewer.role === "SUPER_ADMIN" || viewer.id === c.organizer.id);
+  return <ApplicationsList slug={slug} canManage={canManage} />;
 }
