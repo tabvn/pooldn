@@ -332,13 +332,24 @@ builder.mutationFields((t) => ({
           extensions: { code: "INVALID_STRUCTURE" } },
         );
       }
-      return transition(
-        ctx,
-        query,
-        c.id,
-        ["DRAFT"],
-        "OPEN_FOR_APPLICATIONS",
-      );
+      if (c.status !== "DRAFT") {
+        throw new GraphQLError(
+          `Cannot publish from ${c.status}`,
+          { extensions: { code: "INVALID_TRANSITION" } },
+        );
+      }
+      // Round-59 — publishing IS the moment a competition becomes public.
+      // We force isPublic=true here (not just status) so a comp that was
+      // private while DRAFT actually shows up under "Upcoming" on the
+      // dashboard + /competitions once it's accepting teams. The CASL
+      // public-read baseline gates on isPublic, so without this a
+      // published-but-private comp stayed invisible to everyone but the
+      // organizer and teams could never find it to apply.
+      return ctx.prisma.competition.update({
+        ...query,
+        where: { id: c.id },
+        data: { status: "OPEN_FOR_APPLICATIONS", isPublic: true },
+      });
     },
   }),
 
