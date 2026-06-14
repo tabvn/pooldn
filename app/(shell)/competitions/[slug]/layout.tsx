@@ -114,28 +114,10 @@ export default async function CompetitionLayout({
       <div className="mx-auto w-full max-w-5xl px-6 pt-6 md:px-10">
         <TabNav items={tabs} />
       </div>
-      {/* Round-15/55 — pre-start banner only renders once the comp is
-          published (OPEN_FOR_APPLICATIONS); the standalone DRAFT screen
-          above already IS the edit wizard, no CTA needed. */}
-      {canManage && c.status === "OPEN_FOR_APPLICATIONS" ? (
-        <div className="mx-auto w-full max-w-5xl px-6 pt-4 md:px-10">
-          <Link
-            href={`/competitions/${slug}/edit`}
-            className="flex items-center justify-between gap-3 rounded-md border border-primary/40 bg-primary/5 px-4 py-2 text-sm hover:border-primary/70"
-            data-testid="prestart-edit-banner"
-          >
-            <span>
-              <span className="font-semibold">Pre-start setup</span>
-              <span className="ml-2 text-xs text-muted-foreground">
-                Edit basics, participants, schedule, structure, or rules.
-              </span>
-            </span>
-            <Button size="sm" variant="outline">
-              Edit in wizard
-            </Button>
-          </Link>
-        </div>
-      ) : null}
+      {/* Round-60 — the "pre-start setup / edit in wizard" banner was
+          removed from the published detail screen at the user's request.
+          DRAFT comps still own the full editor; organizers manage a
+          published comp through the lifecycle actions in the hero. */}
       <div className="mx-auto w-full max-w-5xl px-6 py-6 md:px-10">
         {children}
       </div>
