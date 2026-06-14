@@ -41,11 +41,23 @@ export default async function CompetitionOverviewPage({
   // /edit — that IS the Figma "Draft Competition" screen. Anyone else
   // who somehow lands here (CASL hides DRAFTs from non-org viewers, so
   // this is mostly a safety net) goes to the browse page.
+  const canManage =
+    !!viewer &&
+    (viewer.role === "SUPER_ADMIN" || viewer.id === c.organizer?.id);
   if (c.status === "DRAFT") {
-    const canManage =
-      !!viewer &&
-      (viewer.role === "SUPER_ADMIN" || viewer.id === c.organizer?.id);
     redirect(canManage ? `/competitions/${slug}/edit` : "/competitions");
+  }
+  // Round-60 — for a pre-start (Accepting / Applications-closed) comp the
+  // manager's landing tab is Applications (the Figma node 299:9506 lead
+  // tab), since standings don't exist yet. The bare overview URL bounces
+  // them there so the default view matches the tab order. Public viewers
+  // keep the Overview (confirmed teams + about) below.
+  if (
+    canManage &&
+    (c.status === "OPEN_FOR_APPLICATIONS" ||
+      c.status === "APPLICATIONS_CLOSED")
+  ) {
+    redirect(`/competitions/${slug}/applications`);
   }
 
   const isCompleted = c.status === "COMPLETED";

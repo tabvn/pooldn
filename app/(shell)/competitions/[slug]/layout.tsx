@@ -28,27 +28,42 @@ export default async function CompetitionLayout({
   if (!c) notFound();
   const viewer = viewerResult.data?.viewer ?? null;
 
-  const tabs: Array<{ href: string; label: string; badge?: number | null }> = [
-    { href: `/competitions/${slug}`, label: "Overview" },
-    { href: `/competitions/${slug}/matchdays`, label: "Matchdays" },
-    { href: `/competitions/${slug}/players`, label: "Players" },
-    { href: `/competitions/${slug}/about`, label: "About" },
-  ];
-
   const isAdmin = viewer?.role === "SUPER_ADMIN";
   const ownsThisCompetition =
     !!viewer && viewer.id === c.organizer.id;
   const canManage = isAdmin || ownsThisCompetition;
-  if (canManage) {
-    tabs.push({
-      href: `/competitions/${slug}/applications`,
-      label: "Applications",
-      // Round-50 — surface pending review items (PENDING applications +
-      // PENDING RosterChangeRequests). Only rendered for org/admin since
-      // the Applications tab itself is gated on canManage.
-      badge: c.pendingReviewCount > 0 ? c.pendingReviewCount : null,
-    });
-  }
+
+  // Round-60 — pre-start (Accepting / Applications-closed) competitions
+  // have no standings yet, so the Figma pre-start screen (node 299:9506)
+  // leads with Applications, not Overview. We mirror that: for managers
+  // of a pre-start comp the tab order is Applications · Matchdays ·
+  // Players · About and the bare /competitions/[slug] URL lands them on
+  // Applications (handled in page.tsx). Non-managers keep Overview (it
+  // shows the public confirmed-teams + about view) since they have no
+  // Applications tab.
+  const preStart =
+    c.status === "OPEN_FOR_APPLICATIONS" ||
+    c.status === "APPLICATIONS_CLOSED";
+  const applicationsTab = {
+    href: `/competitions/${slug}/applications`,
+    label: "Applications",
+    // Round-50 — surface pending review items (PENDING applications +
+    // PENDING RosterChangeRequests).
+    badge: c.pendingReviewCount > 0 ? c.pendingReviewCount : null,
+  };
+  const secondaryTabs = [
+    { href: `/competitions/${slug}/matchdays`, label: "Matchdays" },
+    { href: `/competitions/${slug}/players`, label: "Players" },
+    { href: `/competitions/${slug}/about`, label: "About" },
+  ];
+  const tabs: Array<{ href: string; label: string; badge?: number | null }> =
+    preStart && canManage
+      ? [applicationsTab, ...secondaryTabs]
+      : [
+          { href: `/competitions/${slug}`, label: "Overview" },
+          ...secondaryTabs,
+          ...(canManage ? [applicationsTab] : []),
+        ];
   // Round-48 (wizard) — single source of truth for "should the apply CTA
   // render?". Server-computed on Competition.viewerCanApply, which returns
   // true iff viewer is signed in (not VIEWER), status is OPEN_FOR_APPLICATIONS,
