@@ -91,6 +91,12 @@ export function ApplyForm({
   const teams = isAdmin
     ? allTeams
     : allTeams.filter((t) => t.captain?.id === viewerId);
+  // The captain filter needs BOTH the teams list and the viewer's id. Those
+  // queries resolve independently, so until both settle we must not conclude
+  // "you don't captain any teams" — the filter is empty purely because
+  // viewerId is still undefined. Both flags clear together with their data in
+  // the same render, so this can't get stuck.
+  const teamsLoading = teamsQuery.loading || viewerQuery.loading;
   const team = teamDetailQuery.data?.team;
   const roster = team?.members ?? [];
 
@@ -293,12 +299,14 @@ export function ApplyForm({
             id="teamId"
             {...register("teamId")}
             className={SELECT_CLASS}
-            disabled={teams.length === 0}
+            disabled={teamsLoading || teams.length === 0}
           >
             <option value="">
-              {teams.length === 0
-                ? "You don't captain any teams yet"
-                : "Select a team you captain…"}
+              {teamsLoading
+                ? "Loading your teams…"
+                : teams.length === 0
+                  ? "You don't captain any teams yet"
+                  : "Select a team you captain…"}
             </option>
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
