@@ -53,7 +53,7 @@ export function AccountTab() {
         }}
       />
       <EmailSection
-        currentEmail={viewer.email}
+        currentEmail={viewer.email ?? ""}
         emailVerified={viewer.emailVerified}
         onSaved={async () => {
           await refetch();

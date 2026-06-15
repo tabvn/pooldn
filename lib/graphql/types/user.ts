@@ -1,5 +1,11 @@
 import { builder } from "../builder";
+import type { GraphQLContext } from "../context";
 import { UserRoleEnum } from "./enums";
+
+/** Contact fields (email/phone) are visible only to the user or an admin. */
+function canSeeContact(ctx: GraphQLContext, userId: string): boolean {
+  return ctx.viewer?.id === userId || ctx.viewer?.role === "SUPER_ADMIN";
+}
 
 export const UserType = builder.prismaObject("User", {
   description: "Application user.",
@@ -7,13 +13,23 @@ export const UserType = builder.prismaObject("User", {
     id: t.exposeID("id"),
     name: t.exposeString("name"),
     username: t.exposeString("username"),
-    email: t.exposeString("email"),
+    // Contact details are private: only the user themselves (or an admin)
+    // can read them. Previously exposed publicly, which let anyone harvest
+    // every user's email/phone via the ungated user(s) queries.
+    email: t.string({
+      nullable: true,
+      resolve: (u, _args, ctx) => (canSeeContact(ctx, u.id) ? u.email : null),
+    }),
     emailVerified: t.exposeBoolean("emailVerified"),
     role: t.expose("role", { type: UserRoleEnum }),
     avatarUrl: t.exposeString("avatarUrl", { nullable: true }),
     bio: t.exposeString("bio", { nullable: true }),
     nationality: t.exposeString("nationality", { nullable: true }),
-    phone: t.exposeString("phone", { nullable: true }),
+    phone: t.string({
+      nullable: true,
+      resolve: (u, _args, ctx) =>
+        canSeeContact(ctx, u.id) ? (u.phone ?? null) : null,
+    }),
     city: t.relation("city", { nullable: true }),
     isActive: t.exposeBoolean("isActive"),
     bannedAt: t.expose("bannedAt", { type: "DateTime", nullable: true }),

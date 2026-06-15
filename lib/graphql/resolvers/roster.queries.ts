@@ -1,3 +1,4 @@
+import { accessibleBy } from "@casl/prisma";
 import { builder } from "../builder";
 import { RosterConflict } from "../types/roster";
 
@@ -12,6 +13,19 @@ builder.queryFields((t) => ({
     },
     resolve: async (_root, args, ctx) => {
       const competitionId = String(args.competitionId);
+      // This exposes player names/usernames + team affiliations, so it must
+      // honour competition visibility — don't leak a draft/private comp's
+      // roster to anyone who guesses its id.
+      const readable = await ctx.prisma.competition.findFirst({
+        where: {
+          AND: [
+            accessibleBy(ctx.ability, "read").ofType("Competition"),
+            { id: competitionId },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!readable) return [];
       const excludeTeamId = args.excludeTeamId ? String(args.excludeTeamId) : null;
       const [locked, applied] = await Promise.all([
         ctx.prisma.competitionRoster.findMany({

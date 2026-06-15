@@ -1863,17 +1863,22 @@ builder.mutationFields((t) => ({
         include: { team: { select: { captainId: true } } },
       });
       const isCaptain = app.team?.captainId === ctx.viewer.id;
+      // Solo (INDIVIDUAL) applications have no team — the applicant owns them
+      // and must be able to withdraw their own.
+      const isSoloOwner = app.applicantUserId === ctx.viewer.id;
       const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
-      if (!isCaptain && !isAdmin) {
-        throw new GraphQLError("Only the team captain or admin may withdraw", {
-          extensions: { code: "FORBIDDEN" },
-        });
+      if (!isCaptain && !isSoloOwner && !isAdmin) {
+        throw new GraphQLError(
+          "Only the team captain, the applicant, or an admin may withdraw",
+          { extensions: { code: "FORBIDDEN" } },
+        );
       }
-      if (app.status === "APPROVED") {
-        // Once approved, the roster is locked — withdrawal must also remove the
-        // CompetitionRoster rows so released players can re-apply elsewhere.
+      if (app.status === "APPROVED" && app.teamId) {
+        // Once approved, the team roster is locked — withdrawal must also
+        // remove the CompetitionRoster rows so released players can re-apply
+        // elsewhere. Solo apps have no teamId and no team roster to clear.
         await ctx.prisma.competitionRoster.deleteMany({
-          where: { competitionId: app.competitionId, teamId: app.teamId! },
+          where: { competitionId: app.competitionId, teamId: app.teamId },
         });
       }
       return ctx.prisma.competitionApplication.update({

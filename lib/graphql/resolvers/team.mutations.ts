@@ -266,13 +266,19 @@ builder.mutationFields((t) => ({
         ...team,
         __caslSubjectType__: "Team",
       });
-      await ctx.prisma.teamMember.delete({
-        where: {
-          teamId_userId: {
-            teamId: team.id,
-            userId: String(args.userId),
-          },
-        },
+      // The captain can't be removed — that would orphan team.captainId and
+      // break every captaincy-gated flow (apply, score submission, invites).
+      // Captaincy must be transferred first.
+      if (String(args.userId) === team.captainId) {
+        throw new GraphQLError(
+          "The team captain can't be removed. Transfer captaincy to another member first.",
+          { extensions: { code: "CAPTAIN_CANNOT_BE_REMOVED" } },
+        );
+      }
+      // deleteMany (not delete) so a double-click / already-removed member is
+      // a no-op instead of a P2025 crash.
+      await ctx.prisma.teamMember.deleteMany({
+        where: { teamId: team.id, userId: String(args.userId) },
       });
       return true;
     },

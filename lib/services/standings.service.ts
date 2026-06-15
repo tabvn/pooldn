@@ -90,10 +90,17 @@ export async function recomputeMvp(
       agg.singlesWon * 3 +
       agg.doublesWon * 2 +
       agg.brWon * 1;
+    // framesWon = every frame the player took (each win lands in exactly one
+    // of singles/doubles). framesPlayed must be persisted too: the MVP
+    // eligibility filter below keys off the stored framesPlayed column, so
+    // omitting it left every row at 0 and no MVP was ever selected.
+    const framesWon = agg.singlesWon + agg.doublesWon;
     writes.push(
       prisma.playerCompStat.upsert({
         where: { competitionId_userId: { competitionId, userId } },
         update: {
+          framesPlayed: agg.framesPlayed,
+          framesWon,
           singlesWon: agg.singlesWon,
           doublesWon: agg.doublesWon,
           brWon: agg.brWon,
@@ -102,6 +109,8 @@ export async function recomputeMvp(
         create: {
           competitionId,
           userId,
+          framesPlayed: agg.framesPlayed,
+          framesWon,
           singlesWon: agg.singlesWon,
           doublesWon: agg.doublesWon,
           brWon: agg.brWon,
