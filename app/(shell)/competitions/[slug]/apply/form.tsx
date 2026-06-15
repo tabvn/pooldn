@@ -382,7 +382,7 @@ export function ApplyForm({
               This team has no members yet.
             </p>
           ) : (
-            <ul className="grid max-h-[320px] grid-cols-1 gap-2 overflow-y-auto md:grid-cols-2">
+            <ul className="grid max-h-[320px] grid-cols-1 gap-2 overflow-y-auto">
               {roster.map((m) => {
                 const checked = selectedPlayers.includes(m.user.id);
                 const conflict = conflictMap.get(m.user.id);
