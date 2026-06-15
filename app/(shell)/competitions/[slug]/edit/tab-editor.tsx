@@ -174,7 +174,13 @@ export function TabEditor({ initial }: { initial: CompetitionInitial }) {
             centralVenueId: patch.centralVenueId,
             gamesPerOpponent: patch.gamesPerOpponent,
             schedulingType: patch.schedulingType,
-            weekdaySchedule: patch.weekdaySchedule,
+            // Strip Apollo's __typename — the slots come straight off the
+            // CompetitionEditableQuery result, and WeekdaySlotInput only
+            // accepts { weekday, time }.
+            weekdaySchedule: patch.weekdaySchedule?.map((s) => ({
+              weekday: s.weekday,
+              time: s.time,
+            })),
             fixedMatchDates: patch.fixedMatchDates,
             blocks: patch.blocks?.map((b) => ({
               type: b.type as "SINGLES" | "DOUBLES" | "SCOTCH_DOUBLES",
