@@ -66,9 +66,6 @@ export function ApplicationsList({
   const competitionId = competition?.id ?? "";
   const competitionName = competition?.name ?? undefined;
   const maxTeams = competition?.maxTeams ?? null;
-  // Round-60 — invite-only comps can't be freely applied to, so the
-  // "Applied" section only makes sense for open competitions.
-  const isInviteOnly = competition?.applicationMode === "INVITE_ONLY";
   const applications = competition?.applications ?? [];
 
   const confirmed = applications.filter((a) => a.status === "APPROVED");
@@ -206,9 +203,10 @@ export function ApplicationsList({
         </Section>
       ) : null}
 
-      {/* Applied — open competitions only (invite-only comps can't be
-          freely applied to, so there's no Applied list). */}
-      {!isInviteOnly && applied.length > 0 ? (
+      {/* Applied — teams awaiting the organizer's decision (PENDING /
+          WAITLISTED). Shown for every competition, including invite-only
+          ones where invited teams accept and land here for approval. */}
+      {applied.length > 0 ? (
         <Section title="Applied" count={applied.length}>
           <AppTable
             rows={applied}
