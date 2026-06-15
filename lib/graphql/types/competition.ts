@@ -372,6 +372,10 @@ export const ApplyToCompetitionInput = builder.inputType(
       // based on competition.type.
       teamId: t.id(),
       message: t.string(),
+      // Round-61 — Figma apply form (node 356:19621) lets the captain pick
+      // the team's home venue inline. When provided, the resolver sets it on
+      // the team before the home-venue gate runs (Home & Away comps need it).
+      homeVenueId: t.id(),
       playerUserIds: t.idList({ defaultValue: [] }),
       // Round-48 — when the Team Captain isn't in playerUserIds, they MUST
       // nominate one of the roster players to be the Roster Captain. The

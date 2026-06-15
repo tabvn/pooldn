@@ -111,6 +111,8 @@ export const CompetitionHeaderQuery = graphql(/* GraphQL */ `
       minPlayersPerTeam
       maxPlayersPerTeam
       requiresHomeVenue
+      gamesPerOpponent
+      matchVenueMode
       applicationMode
       viewerCanApply
       isFollowing

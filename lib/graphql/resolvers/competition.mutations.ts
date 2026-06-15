@@ -629,10 +629,31 @@ builder.mutationFields((t) => ({
           { extensions: { code: "DOUBLES_TEAM_SIZE" } },
         );
       }
-      // Round-48 — Figma gate "This competition requires each team to have a
-      // home venue." Server-side enforcement runs alongside the apply form's
-      // client-side gate so the rule can't be bypassed by direct API calls.
-      if (competition.requiresHomeVenue && !team.homeVenueId) {
+      // Round-61 — the Figma apply form lets the captain choose the team's
+      // home venue inline. Persist it on the team first so the gate below
+      // sees the just-picked venue (the applicant is the captain, who's
+      // authorized to set it).
+      let teamHomeVenueId = team.homeVenueId;
+      if (args.input.homeVenueId) {
+        const venueId = String(args.input.homeVenueId);
+        if (venueId !== teamHomeVenueId) {
+          await ctx.prisma.team.update({
+            where: { id: team.id },
+            data: { homeVenueId: venueId },
+          });
+          teamHomeVenueId = venueId;
+        }
+      }
+      // Round-48 / Round-61 — Figma gate "This competition requires each team
+      // to have a home venue." Required when the organizer set it explicitly
+      // OR the schedule is Home & Away on team venues (every team hosts, so
+      // each needs a venue). Server-side enforcement runs alongside the apply
+      // form's gate so the rule can't be bypassed by direct API calls.
+      const homeAndAway =
+        (competition.gamesPerOpponent ?? 1) >= 2 &&
+        competition.matchVenueMode !== "CENTRAL_VENUE";
+      const needsHomeVenue = competition.requiresHomeVenue || homeAndAway;
+      if (needsHomeVenue && !teamHomeVenueId) {
         throw new GraphQLError(
           "This competition requires each team to have a home venue.",
           { extensions: { code: "HOME_VENUE_REQUIRED" } },
