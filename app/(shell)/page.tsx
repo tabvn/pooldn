@@ -60,6 +60,22 @@ export default async function PoolhubDashboard() {
   const myDrafts = (data?.myCompetitions ?? []).filter(
     (c) => c.status === "DRAFT",
   );
+  // Round-61 — organizer-tracking rail: every competition the viewer runs
+  // that's still in play (draft / upcoming / ongoing). Ordered most-
+  // actionable first: live, then accepting/closed applications, then drafts.
+  const YOUR_COMP_RANK: Record<string, number> = {
+    ONGOING: 0,
+    OPEN_FOR_APPLICATIONS: 1,
+    APPLICATIONS_CLOSED: 2,
+    DRAFT: 3,
+  };
+  const yourCompetitions = (data?.myCompetitions ?? [])
+    .filter((c) => c.status in YOUR_COMP_RANK)
+    .sort(
+      (a, b) =>
+        (YOUR_COMP_RANK[a.status] ?? 9) - (YOUR_COMP_RANK[b.status] ?? 9) ||
+        bySoonestStart(a, b),
+    );
   const greetingName = firstName(viewer?.name);
 
   return (
@@ -126,6 +142,29 @@ export default async function PoolhubDashboard() {
                   </span>
                 </div>
               </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {/* Round-61 — "Your Competitions": organizer rail tracking the
+          viewer's draft, upcoming, and ongoing competitions in one place.
+          Reuses the dashboard row card; ONGOING rows get the teal accent so
+          live comps read the same as in the Active section below. */}
+      {viewer && yourCompetitions.length > 0 ? (
+        <section className="space-y-3" data-testid="dashboard-your-competitions">
+          <SectionHeader
+            title="Your Competitions"
+            href="/competitions"
+            showLink={yourCompetitions.length > 4}
+          />
+          <div className="space-y-2.5">
+            {yourCompetitions.slice(0, 4).map((c) => (
+              <CompetitionRowCard
+                key={c.id}
+                c={c}
+                accent={c.status === "ONGOING" ? "active" : "muted"}
+              />
             ))}
           </div>
         </section>
