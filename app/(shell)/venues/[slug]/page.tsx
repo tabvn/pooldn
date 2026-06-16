@@ -4,7 +4,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PageTitle } from "@/components/layout/page-title";
+import { DetailHero } from "@/components/layout/detail-hero";
 import { getClient } from "@/lib/apollo/client";
 import { getViewer } from "@/lib/auth/server";
 import { VenueDetailQuery } from "@/lib/graphql/operations/venue.operations";
@@ -26,9 +26,8 @@ export default async function VenueDetailPage({
 
   return (
     <div className="flex flex-col">
-      <PageTitle
+      <DetailHero
         title={v.name}
-        eyebrow={<span>Venue</span>}
         actions={
           canEdit ? (
             <Link href={`/venues/${slug}/edit`}>
@@ -38,6 +37,9 @@ export default async function VenueDetailPage({
         }
         meta={
           <>
+            <span className="inline-flex items-center rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
+              Venue
+            </span>
             <span>{v.city.name}</span>
             {v.tableCount ? (
               <Badge variant="primary">{v.tableCount} tables</Badge>
@@ -45,7 +47,7 @@ export default async function VenueDetailPage({
           </>
         }
       />
-      <div className="p-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-4 px-6 py-6 md:grid-cols-2 md:px-10">
         {v.imageUrl ? (
           <Card className="md:col-span-2 overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}

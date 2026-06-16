@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { TeamActionsMenu } from "@/components/team/team-actions-menu";
 import { FollowButton } from "@/components/follow-button";
-import { PageTitle } from "@/components/layout/page-title";
+import { DetailHero } from "@/components/layout/detail-hero";
 import { TabNav } from "@/components/layout/tab-nav";
 import { InviteBanner } from "@/components/team/invite-banner";
 import { JoinTeamButton } from "@/components/team/join-team-button";
@@ -46,22 +46,18 @@ export default async function TeamLayout({
 
   return (
     <div className="flex flex-col">
-      <PageTitle
+      <DetailHero
         title={team.name}
-        eyebrow={
-          <span className="flex items-center gap-3">
-            <Avatar
-              size="sm"
-              src={team.logoUrl ?? undefined}
-              fallback={team.name}
-              shape="team"
-            />
-            Team
-          </span>
+        media={
+          <Avatar
+            size="lg"
+            src={team.logoUrl ?? undefined}
+            fallback={team.name}
+            shape="team"
+          />
         }
-        description={team.description}
         actions={
-          <div className="flex items-center gap-2">
+          <>
             <FollowButton
               entityType="TEAM"
               entityId={team.id}
@@ -84,10 +80,13 @@ export default async function TeamLayout({
               isCaptain={isCaptain}
               isAdmin={isAdmin}
             />
-          </div>
+          </>
         }
         meta={
           <>
+            <span className="inline-flex items-center rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
+              Team
+            </span>
             <span>Captain: {team.captain.name}</span>
             <Badge variant="primary">
               {team.members.length}{" "}
@@ -107,16 +106,20 @@ export default async function TeamLayout({
           </>
         }
       />
-      <div className="px-8 pt-6">
-        <TabNav items={tabs} />
+      <div className="mx-auto w-full max-w-5xl px-6 pt-6 md:px-10">
+        <TabNav items={tabs} fullWidth />
       </div>
       {team.myInvitation ? (
-        <InviteBanner
-          invitation={team.myInvitation}
-          team={{ name: team.name, logoUrl: team.logoUrl ?? null }}
-        />
+        <div className="mx-auto w-full max-w-5xl px-6 pt-4 md:px-10">
+          <InviteBanner
+            invitation={team.myInvitation}
+            team={{ name: team.name, logoUrl: team.logoUrl ?? null }}
+          />
+        </div>
       ) : null}
-      <div className="px-4 md:px-8 py-6">{children}</div>
+      <div className="mx-auto w-full max-w-5xl px-6 py-6 md:px-10">
+        {children}
+      </div>
     </div>
   );
 }

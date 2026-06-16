@@ -47,7 +47,7 @@ export function InviteBanner({
   const by = invitation.invitedBy?.name;
   return (
     <div
-      className="mx-4 mt-4 flex flex-col gap-3 rounded-xl border border-primary/40 bg-primary/5 px-4 py-3 md:mx-8 md:flex-row md:items-center"
+      className="flex flex-col gap-3 rounded-xl border border-primary/40 bg-primary/5 px-4 py-3 md:flex-row md:items-center"
       data-testid="invite-banner"
     >
       <Avatar
