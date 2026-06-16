@@ -480,10 +480,8 @@ builder.mutationFields((t) => ({
         data: {
           name: args.name ?? undefined,
           bio: args.bio === null ? null : args.bio ?? undefined,
-          nationality:
-            args.nationality === null
-              ? null
-              : args.nationality ?? undefined,
+          // Nationality is required, so a cleared value is ignored.
+          nationality: args.nationality ?? undefined,
           role: (args.role as never) ?? undefined,
           isActive: args.isActive ?? undefined,
         },

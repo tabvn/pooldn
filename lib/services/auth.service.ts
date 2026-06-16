@@ -2,7 +2,7 @@ import { GraphQLError } from "graphql";
 import bcrypt from "bcryptjs";
 import type { PrismaClient, User } from "@/lib/generated/prisma/client";
 import { signSessionToken, signRefreshToken } from "@/lib/auth/jwt";
-import { defaultCityId } from "@/lib/services/user.service";
+import { defaultUserLocation } from "@/lib/services/user.service";
 
 const BCRYPT_ROUNDS = 10;
 
@@ -84,7 +84,7 @@ export async function registerUser(
       email,
       password,
       role: "PLAYER",
-      cityId: await defaultCityId(prisma),
+      ...(await defaultUserLocation(prisma)),
     },
   });
   const token = await signSessionToken({

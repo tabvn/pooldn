@@ -214,10 +214,12 @@ model User {
   avatarUrl     String?
   bio           String?
   phone         String?
-  nationality   String?
+  // Country of origin — required. PoolDN is for international players, so
+  // every player has a nationality (2-letter country code).
+  nationality   String
   // Location is required — city is the app's top-level content filter, so
   // every player belongs to one. New accounts default to the home city in
-  // code (see defaultCityId) until onboarding / geolocation refines it.
+  // code (see defaultUserLocation) until onboarding / geolocation refines it.
   cityId        String
   emailVerified Boolean  @default(false)
   isActive      Boolean  @default(true)

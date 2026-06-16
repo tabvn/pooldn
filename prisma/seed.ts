@@ -120,7 +120,7 @@ async function main() {
         password: pw,
         role: input.role,
         cityId: input.cityId ?? daNang.id,
-        nationality: input.nationality ?? null,
+        nationality: input.nationality ?? "VN",
         avatarUrl: avatarFor(input.username),
       },
       create: {
@@ -130,7 +130,7 @@ async function main() {
         password: pw,
         role: input.role,
         cityId: input.cityId ?? daNang.id,
-        nationality: input.nationality ?? null,
+        nationality: input.nationality ?? "VN",
         avatarUrl: avatarFor(input.username),
       },
     });
