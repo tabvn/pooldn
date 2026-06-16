@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CountryFlag } from "@/components/ui/country-flag";
+import { SearchInput } from "@/components/ui/search-input";
 import { useToast } from "@/components/ui/toast";
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
 import {
@@ -54,6 +55,7 @@ export function CommunityFeed({
     router.replace(`/community${qs ? `?${qs}` : ""}`);
   }
   const [mode, setMode] = useState<"latest" | "trending" | "players">("latest");
+  const [playerQ, setPlayerQ] = useState("");
   const [body, setBody] = useState("");
   const [draftImages, setDraftImages] = useState<string[]>([]);
   const [quotedPost, setQuotedPost] = useState<FeedPost | null>(null);
@@ -343,17 +345,33 @@ export function CommunityFeed({
       {/* Feed */}
       {mode === "players" ? (
         <div className="space-y-3" data-testid="community-players">
+          <SearchInput
+            value={playerQ}
+            onChange={setPlayerQ}
+            placeholder="Search players…"
+            testId="players-search"
+          />
           {players.loading && !players.data ? (
             <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" /> Loading players…
             </p>
-          ) : (players.data?.users ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No players in this city yet.
-            </p>
-          ) : (
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              {(players.data?.users ?? []).map((u) => (
+          ) : (() => {
+              const needle = playerQ.trim().toLowerCase();
+              const list = (players.data?.users ?? []).filter(
+                (u) =>
+                  !needle ||
+                  u.name.toLowerCase().includes(needle) ||
+                  u.username.toLowerCase().includes(needle),
+              );
+              return list.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {playerQ
+                    ? "No players match your search."
+                    : "No players in this city yet."}
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  {list.map((u) => (
                 <Link
                   key={u.id}
                   href={`/players/${u.username}`}
@@ -379,9 +397,10 @@ export function CommunityFeed({
                     </div>
                   </div>
                 </Link>
-              ))}
-            </div>
-          )}
+                  ))}
+                </div>
+              );
+            })()}
         </div>
       ) : mode === "trending" ? (
         <div className="space-y-3">

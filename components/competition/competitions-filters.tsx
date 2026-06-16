@@ -1,19 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SearchInput } from "@/components/ui/search-input";
 import {
   CompetitionStatus,
   GameType,
 } from "@/lib/generated/prisma/enums";
 
 /**
- * Round-49 — filter bar for /competitions.
- *
- * Search is intentionally absent: the global header search already covers
- * find-by-name across the whole app, so the browse page sticks to bucket
- * filters (status + game) and surfaces what's active.
+ * Filter bar for /competitions — a content-scoped search box (by name) plus
+ * status + game bucket chips. There is no global search; each list filters
+ * its own content.
  */
 
 type ChipOption<V extends string> = { value: V; label: string };
@@ -53,6 +53,9 @@ export function CompetitionsFilters({ resultCount }: Props) {
 
   const status = searchParams.get("status") ?? "";
   const gameType = searchParams.get("gameType") ?? "";
+  // Local mirror so typing stays smooth while each change also updates the
+  // URL (the server page re-queries on ?search=).
+  const [search, setSearch] = useState(searchParams.get("search") ?? "");
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(searchParams.toString());
@@ -82,6 +85,17 @@ export function CompetitionsFilters({ resultCount }: Props) {
       data-testid="competitions-filters"
       className="space-y-3 border-b border-border pb-4"
     >
+      <SearchInput
+        value={search}
+        onChange={(v) => {
+          setSearch(v);
+          setParam("search", v);
+        }}
+        placeholder="Search competitions…"
+        testId="competitions-search"
+        className="max-w-md"
+      />
+
       {/* Chip rows + result count */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <ChipRow

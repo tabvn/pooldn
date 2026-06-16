@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAppShell } from "./app-shell";
 import { CitySelector } from "./city-selector";
-import { GlobalSearch } from "./global-search";
 import { NotificationBell } from "./notification-bell";
 import { ViewerMenu } from "./viewer-menu";
 
@@ -55,14 +54,6 @@ export function Header({
       </Link>
       <div className="hidden md:block">
         <CitySelector city={city} />
-      </div>
-      <div
-        className={cn(
-          "flex flex-1 justify-center px-2 md:px-4",
-          scrolled && "md:px-2",
-        )}
-      >
-        <GlobalSearch />
       </div>
       <div className="flex items-center gap-2 md:gap-3 ml-auto">
         {signedIn ? (

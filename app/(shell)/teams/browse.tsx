@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CountryFlag } from "@/components/ui/country-flag";
+import { SearchInput } from "@/components/ui/search-input";
 import { MyTeamsQuery } from "@/lib/graphql/operations/team.operations";
 
 type Team = {
@@ -48,6 +49,7 @@ export function TeamsBrowse({
   canCreate: boolean;
 }) {
   const [visible, setVisible] = useState(PAGE);
+  const [q, setQ] = useState("");
 
   // Pull the viewer's teams so we can exclude them from the discover grid.
   const { data } = useQuery(MyTeamsQuery, { skip: !viewerId });
@@ -57,11 +59,19 @@ export function TeamsBrowse({
   );
 
   const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
     return teams
       .filter((t) => !myTeamIds.has(t.id))
+      .filter(
+        (t) =>
+          !needle ||
+          t.name.toLowerCase().includes(needle) ||
+          t.captain.name.toLowerCase().includes(needle) ||
+          t.captain.username.toLowerCase().includes(needle),
+      )
       .slice()
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [teams, myTeamIds]);
+  }, [teams, myTeamIds, q]);
 
   const shown = filtered.slice(0, visible);
   const hasMore = visible < filtered.length;
@@ -91,11 +101,21 @@ export function TeamsBrowse({
         </span>
       </div>
 
+      <SearchInput
+        value={q}
+        onChange={(v) => {
+          setQ(v);
+          setVisible(PAGE);
+        }}
+        placeholder="Search teams or captains…"
+        testId="teams-search"
+      />
+
       {/* Grid */}
       {shown.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            No other teams to discover yet.
+            {q ? "No teams match your search." : "No other teams to discover yet."}
           </CardContent>
         </Card>
       ) : (
