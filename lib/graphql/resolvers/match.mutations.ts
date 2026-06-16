@@ -7,7 +7,10 @@ import {
 } from "../types/match";
 import { ensure, requireUser } from "@/lib/casl/guard";
 import { findCaptainSide } from "@/lib/auth/match-actor";
-import { recomputeStandings } from "@/lib/services/standings.service";
+import {
+  recomputeMvp,
+  recomputeStandings,
+} from "@/lib/services/standings.service";
 import { scaffoldMatchFramesFromStructure } from "@/lib/services/match-frame-scaffold";
 import { NotificationService } from "@/lib/services/notification.service";
 import {
@@ -154,6 +157,7 @@ builder.mutationFields((t) => ({
           },
         });
         await recomputeStandings(tx as never, competitionId);
+        await recomputeMvp(tx as never, competitionId);
         // Fan-out: notify both captains + organizer in the same txn.
         const full = await tx.match.findUniqueOrThrow({
           where: { id: match.id },
@@ -503,10 +507,8 @@ builder.mutationFields((t) => ({
             completionMode: "FORFEIT",
           },
         });
-        const { recomputeStandings } = await import(
-          "@/lib/services/standings.service"
-        );
         await recomputeStandings(tx as never, match.matchday.competition.id);
+        await recomputeMvp(tx as never, match.matchday.competition.id);
         await new NotificationService(tx).create({
           type: "MATCH_RESULT_RECORDED",
           title: both

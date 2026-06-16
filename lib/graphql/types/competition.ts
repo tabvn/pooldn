@@ -207,6 +207,12 @@ builder.prismaObject("Competition", {
     matchdays: t.relation("matchdays", {
       query: () => ({ orderBy: { number: "asc" } }),
     }),
+    // Denominator for the Players tab's appearance % (matchesPlayed / total
+    // matchdays scheduled for the competition).
+    matchdayCount: t.int({
+      resolve: (c, _args, ctx) =>
+        ctx.prisma.matchday.count({ where: { competitionId: c.id } }),
+    }),
     standings: t.relation("standings", {
       query: () => ({ orderBy: [{ position: "asc" }, { points: "desc" }] }),
     }),

@@ -279,6 +279,7 @@ export const CompetitionPlayersQuery = graphql(/* GraphQL */ `
   query CompetitionPlayers($slug: String!) {
     competition(slug: $slug) {
       id
+      matchdayCount
       rosters {
         id
         user {
@@ -299,7 +300,9 @@ export const CompetitionPlayersQuery = graphql(/* GraphQL */ `
           matchesPlayed
           framesWon
           framesPlayed
+          singlesPlayed
           singlesWon
+          doublesPlayed
           doublesWon
           brWon
           mvpScore

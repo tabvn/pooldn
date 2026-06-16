@@ -33,6 +33,7 @@ export async function recomputeMvp(
       homeWon: { not: null },
     },
     select: {
+      matchId: true,
       homeWon: true,
       blockType: true,
       breakAndRun: true,
@@ -42,8 +43,12 @@ export async function recomputeMvp(
   });
 
   type Agg = {
+    matches: Set<string>;
     framesPlayed: number;
+    framesWon: number;
+    singlesPlayed: number;
     singlesWon: number;
+    doublesPlayed: number;
     doublesWon: number;
     brWon: number;
   };
@@ -51,7 +56,16 @@ export async function recomputeMvp(
   const get = (id: string): Agg => {
     let a = byUser.get(id);
     if (!a) {
-      a = { framesPlayed: 0, singlesWon: 0, doublesWon: 0, brWon: 0 };
+      a = {
+        matches: new Set<string>(),
+        framesPlayed: 0,
+        framesWon: 0,
+        singlesPlayed: 0,
+        singlesWon: 0,
+        doublesPlayed: 0,
+        doublesWon: 0,
+        brWon: 0,
+      };
       byUser.set(id, a);
     }
     return a;
@@ -62,8 +76,12 @@ export async function recomputeMvp(
       f.blockType === "DOUBLES" || f.blockType === "SCOTCH_DOUBLES";
     if (f.homePlayerId) {
       const a = get(f.homePlayerId);
+      a.matches.add(f.matchId);
       a.framesPlayed += 1;
+      if (isSingles) a.singlesPlayed += 1;
+      if (isDoubles) a.doublesPlayed += 1;
       if (f.homeWon) {
+        a.framesWon += 1;
         if (isSingles) a.singlesWon += 1;
         if (isDoubles) a.doublesWon += 1;
         if (f.breakAndRun) a.brWon += 1;
@@ -71,8 +89,12 @@ export async function recomputeMvp(
     }
     if (f.awayPlayerId) {
       const a = get(f.awayPlayerId);
+      a.matches.add(f.matchId);
       a.framesPlayed += 1;
+      if (isSingles) a.singlesPlayed += 1;
+      if (isDoubles) a.doublesPlayed += 1;
       if (f.homeWon === false) {
+        a.framesWon += 1;
         if (isSingles) a.singlesWon += 1;
         if (isDoubles) a.doublesWon += 1;
         if (f.breakAndRun) a.brWon += 1;
@@ -85,37 +107,35 @@ export async function recomputeMvp(
   // who just made their first appearance, so upsert.
   const writes: Promise<unknown>[] = [];
   for (const [userId, agg] of byUser) {
+    const matchesPlayed = agg.matches.size;
+    // Figma MVP formula (node 299:9872 footnote):
+    //   #Appearances*1 + SinglesWon*3 + DoublesWon*2 + B&R*1
     const mvpScore =
-      agg.framesPlayed +
+      matchesPlayed +
       agg.singlesWon * 3 +
       agg.doublesWon * 2 +
       agg.brWon * 1;
-    // framesWon = every frame the player took (each win lands in exactly one
-    // of singles/doubles). framesPlayed must be persisted too: the MVP
-    // eligibility filter below keys off the stored framesPlayed column, so
-    // omitting it left every row at 0 and no MVP was ever selected.
-    const framesWon = agg.singlesWon + agg.doublesWon;
+    // framesWon counts every frame the player won, regardless of block type
+    // (frames may carry no SINGLES/DOUBLES type, so deriving it from
+    // singlesWon+doublesWon would undercount the Total column). framesPlayed
+    // must be persisted too: the MVP eligibility filter below keys off the
+    // stored framesPlayed column, so omitting it left every row at 0.
+    const row = {
+      matchesPlayed,
+      framesPlayed: agg.framesPlayed,
+      framesWon: agg.framesWon,
+      singlesPlayed: agg.singlesPlayed,
+      singlesWon: agg.singlesWon,
+      doublesPlayed: agg.doublesPlayed,
+      doublesWon: agg.doublesWon,
+      brWon: agg.brWon,
+      mvpScore,
+    };
     writes.push(
       prisma.playerCompStat.upsert({
         where: { competitionId_userId: { competitionId, userId } },
-        update: {
-          framesPlayed: agg.framesPlayed,
-          framesWon,
-          singlesWon: agg.singlesWon,
-          doublesWon: agg.doublesWon,
-          brWon: agg.brWon,
-          mvpScore,
-        },
-        create: {
-          competitionId,
-          userId,
-          framesPlayed: agg.framesPlayed,
-          framesWon,
-          singlesWon: agg.singlesWon,
-          doublesWon: agg.doublesWon,
-          brWon: agg.brWon,
-          mvpScore,
-        },
+        update: row,
+        create: { competitionId, userId, ...row },
       }),
     );
   }

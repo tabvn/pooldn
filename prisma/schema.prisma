@@ -967,8 +967,12 @@ model PlayerCompStat {
   // Round-47 — Figma MVP formula breakdown. `singlesWon` counts frames
   // won where blockType=SINGLES; `doublesWon` covers DOUBLES + SCOTCH_DOUBLES;
   // `brWon` counts frames won where breakAndRun=true (subset of frames-won).
-  // `mvpScore` = framesPlayed + singlesWon*3 + doublesWon*2 + brWon*1.
+  // `singlesPlayed`/`doublesPlayed` count participation (won or lost) so the
+  // Players table can show PL/W/L/W% per category.
+  // `mvpScore` = matchesPlayed + singlesWon*3 + doublesWon*2 + brWon*1.
+  singlesPlayed Int         @default(0)
   singlesWon    Int         @default(0)
+  doublesPlayed Int         @default(0)
   doublesWon    Int         @default(0)
   brWon         Int         @default(0)
   mvpScore      Int         @default(0)
