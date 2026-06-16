@@ -42,15 +42,20 @@ export function OnboardingForm({
   const [nationality, setNationality] = useState(viewer?.nationality ?? "");
   const [cityId, setCityId] = useState(viewer?.city?.id ?? "");
 
+  // Location + country of origin are required: city is the app's top-level
+  // content filter, and PoolDN is for international players.
+  const valid = cityId.length > 0 && nationality.trim().length === 2;
+
   async function onSave(redirectTo: string) {
+    if (!valid) return;
     try {
       await update({
         variables: {
           input: {
             name,
             bio: bio || null,
-            nationality: nationality || null,
-            cityId: cityId || null,
+            nationality,
+            cityId,
           },
         },
       });
@@ -103,7 +108,10 @@ export function OnboardingForm({
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="nationality">Nationality (2-letter code)</Label>
+                <Label htmlFor="nationality">
+                  Country of origin (2-letter code){" "}
+                  <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="nationality"
                   placeholder="VN"
@@ -115,23 +123,17 @@ export function OnboardingForm({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Home city</Label>
+                <Label>
+                  Current location <span className="text-destructive">*</span>
+                </Label>
                 <Select
                   value={cityId}
                   onValueChange={setCityId}
                   placeholder="— pick a city —"
-                  options={[
-                    {
-                      value: "",
-                      label: (
-                        <span className="text-muted-foreground">— none —</span>
-                      ),
-                    },
-                    ...cities.map((c) => ({
-                      value: c.id,
-                      label: `${c.name}, ${c.country.name}`,
-                    })),
-                  ]}
+                  options={cities.map((c) => ({
+                    value: c.id,
+                    label: `${c.name}, ${c.country.name}`,
+                  }))}
                 />
               </div>
             </div>
@@ -163,11 +165,17 @@ export function OnboardingForm({
           </CardContent>
         </Card>
 
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="ghost" onClick={() => router.push("/")}>
-            Skip for now
-          </Button>
-          <Button loading={loading} onClick={() => onSave("/")}>
+        <div className="flex flex-col items-end gap-2">
+          {!valid ? (
+            <p className="text-xs text-muted-foreground">
+              Pick your country of origin and current location to continue.
+            </p>
+          ) : null}
+          <Button
+            loading={loading}
+            disabled={!valid}
+            onClick={() => onSave("/")}
+          >
             Save and continue
           </Button>
         </div>

@@ -91,11 +91,9 @@ builder.mutationFields((t) => ({
           nationality: args.input.nationality ?? undefined,
           phone: args.input.phone ?? undefined,
           avatarUrl: args.input.avatarUrl ?? undefined,
-          cityId: args.input.cityId
-            ? String(args.input.cityId)
-            : args.input.cityId === null
-              ? null
-              : undefined,
+          // City is required (the app's top-level location filter), so an
+          // empty/cleared value is ignored rather than nulling it out.
+          cityId: args.input.cityId ? String(args.input.cityId) : undefined,
         },
       });
     },

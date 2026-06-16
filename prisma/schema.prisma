@@ -215,7 +215,10 @@ model User {
   bio           String?
   phone         String?
   nationality   String?
-  cityId        String?
+  // Location is required — city is the app's top-level content filter, so
+  // every player belongs to one. New accounts default to the home city in
+  // code (see defaultCityId) until onboarding / geolocation refines it.
+  cityId        String
   emailVerified Boolean  @default(false)
   isActive      Boolean  @default(true)
   // Round-46 — admin-managed lockout. When `bannedAt` is set the user can't
@@ -229,7 +232,7 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  city                  City?              @relation(fields: [cityId], references: [id])
+  city                  City               @relation(fields: [cityId], references: [id])
   organizedCompetitions Competition[]      @relation("OrganizedBy")
   captainedTeams        Team[]             @relation("CaptainedBy")
   teamMemberships       TeamMember[]

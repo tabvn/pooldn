@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { defaultCityId } from "@/lib/services/user.service";
 import {
   signSessionToken,
   signRefreshToken,
@@ -89,6 +90,7 @@ async function resolveUser(
       avatarUrl: id.picture ?? undefined,
       emailVerified: true,
       role: "PLAYER",
+      cityId: await defaultCityId(prisma),
     },
   });
   return { user, isNew: true };
