@@ -16,6 +16,7 @@ import {
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApplicationStatusChip } from "@/components/ui/status-chip";
@@ -227,6 +228,10 @@ export function ApplicationDetailView({
               >
                 {app.team.captain.name}
               </Link>
+              <CountryFlag
+                code={app.team.captain.nationality}
+                className="ml-1 leading-none"
+              />
               {" · "}
               Applied {fmtDate(app.submittedAt)}
               {app.rosterCaptain ? (
@@ -238,6 +243,10 @@ export function ApplicationDetailView({
                   >
                     {app.rosterCaptain.name}
                   </Link>
+                  <CountryFlag
+                    code={app.rosterCaptain.nationality}
+                    className="ml-1 leading-none"
+                  />
                 </>
               ) : null}
             </div>
@@ -589,6 +598,10 @@ function PlayerGrid({ players }: { players: SimplePlayer[] }) {
               className="truncate font-semibold hover:underline"
             >
               {p.name}
+              <CountryFlag
+                code={p.nationality}
+                className="ml-1 leading-none"
+              />
             </Link>
             <div className="truncate text-xs text-muted-foreground">
               @{p.username}
@@ -673,7 +686,13 @@ function RosterDiffPanel({
                     src={p.avatarUrl ?? undefined}
                     fallback={p.name}
                   />
-                  <span className="truncate font-medium">{p.name}</span>
+                  <span className="truncate font-medium">
+                    {p.name}
+                    <CountryFlag
+                      code={p.nationality}
+                      className="ml-1 leading-none"
+                    />
+                  </span>
                   <span className="ml-auto text-xs text-muted-foreground">
                     @{p.username}
                   </span>
@@ -739,6 +758,10 @@ function DiffColumn({
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium text-foreground">
                   {p.name}
+                  <CountryFlag
+                    code={p.nationality}
+                    className="ml-1 leading-none"
+                  />
                 </div>
                 <div className="truncate text-[11px] text-muted-foreground">
                   @{p.username}
@@ -852,6 +875,10 @@ function RosterEditor({
                   <div className="flex items-center gap-2">
                     <span className="truncate font-semibold">
                       {m.user.name}
+                      <CountryFlag
+                        code={m.user.nationality}
+                        className="ml-1 leading-none"
+                      />
                     </span>
                     {isCaptainRow ? (
                       <Badge variant="primary" size="sm">

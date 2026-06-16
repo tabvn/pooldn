@@ -11,6 +11,7 @@ import {
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { ApplicationStatusChip } from "@/components/ui/status-chip";
 import { ApplicationDetailView } from "@/components/competition/application-detail-view";
 import { getClient } from "@/lib/apollo/client";
@@ -124,6 +125,10 @@ export default async function ApplicationDetailPage({
                   >
                     {app.team.captain.name}
                   </Link>
+                  <CountryFlag
+                    code={app.team.captain.nationality}
+                    className="ml-1 leading-none"
+                  />
                 </span>
                 <span className="inline-flex items-center gap-1">
                   <Calendar className="size-3.5" />

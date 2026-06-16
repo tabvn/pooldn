@@ -230,6 +230,10 @@ export default async function CompetitionOverviewPage({
                         />
                         <span className="min-w-0 flex-1 text-sm">
                           {p.user.name}
+                          <CountryFlag
+                            code={p.user.nationality}
+                            className="ml-1.5 leading-none"
+                          />
                         </span>
                         <span className="text-xs text-muted-foreground tabular-nums">
                           {p.framesWon}/{p.framesPlayed}

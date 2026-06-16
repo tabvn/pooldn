@@ -8,6 +8,7 @@ import { RelativeTime } from "@/components/ui/relative-time";
 import { TeamActionsMenu } from "@/components/team/team-actions-menu";
 import { FollowButton } from "@/components/follow-button";
 import { DetailHero } from "@/components/layout/detail-hero";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { TabNav } from "@/components/layout/tab-nav";
 import { InviteBanner } from "@/components/team/invite-banner";
 import { JoinTeamButton } from "@/components/team/join-team-button";
@@ -87,7 +88,13 @@ export default async function TeamLayout({
             <span className="inline-flex items-center rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
               Team
             </span>
-            <span>Captain: {team.captain.name}</span>
+            <span>
+              Captain: {team.captain.name}
+              <CountryFlag
+                code={team.captain.nationality}
+                className="ml-1 leading-none"
+              />
+            </span>
             <Badge variant="primary">
               {team.members.length}{" "}
               {team.members.length === 1 ? "member" : "members"}

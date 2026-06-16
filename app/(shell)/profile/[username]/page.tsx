@@ -4,6 +4,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { flagEmoji } from "@/components/ui/country-flag";
 import { LocalDateTime } from "@/components/ui/local-datetime";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { Users } from "lucide-react";
@@ -44,7 +45,7 @@ export default async function ProfilePage({
   return (
     <div className="flex flex-col">
       <PageTitle
-        title={user.name}
+        title={user.nationality ? `${user.name} ${flagEmoji(user.nationality)}` : user.name}
         eyebrow={<span>@{user.username}</span>}
         actions={
           <div className="flex items-center gap-2">

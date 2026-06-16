@@ -7,6 +7,7 @@ import type { ResultOf } from "@graphql-typed-document-node/core";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { FollowedTeamsQuery } from "@/lib/graphql/operations/follow.operations";
 
 type TeamRow = NonNullable<
@@ -73,7 +74,12 @@ export function FollowedTeamsList({ userId }: { userId: string }) {
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold">{t.name}</div>
                 <div className="truncate text-xs text-muted-foreground">
-                  Captain {t.captain.name} · {t.members.length} member
+                  Captain {t.captain.name}
+                  <CountryFlag
+                    code={t.captain.nationality}
+                    className="ml-1 leading-none"
+                  />{" "}
+                  · {t.members.length} member
                   {t.members.length === 1 ? "" : "s"}
                 </div>
               </div>

@@ -7,6 +7,7 @@ import { Search, UserPlus, X } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { TeamsListQuery } from "@/lib/graphql/operations/team.operations";
@@ -211,6 +212,10 @@ export function InviteTeamsModal({
                         <div className="truncate font-medium">{team.name}</div>
                         <div className="truncate text-xs text-muted-foreground">
                           Captain: {team.captain.name}
+                          <CountryFlag
+                            code={team.captain.nationality}
+                            className="ml-1 leading-none"
+                          />
                           {team.homeVenue
                             ? ` · ${team.homeVenue.city?.name ?? team.homeVenue.name}`
                             : ""}

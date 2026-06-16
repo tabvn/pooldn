@@ -193,6 +193,7 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
             id
             name
             username
+            nationality
           }
           members {
             id
@@ -332,6 +333,7 @@ export const CompetitionApplicationsQuery = graphql(/* GraphQL */ `
             id
             name
             username
+            nationality
           }
           homeVenue {
             id
@@ -345,6 +347,7 @@ export const CompetitionApplicationsQuery = graphql(/* GraphQL */ `
           id
           name
           username
+          nationality
         }
         applicationPlayers {
           id
@@ -354,6 +357,7 @@ export const CompetitionApplicationsQuery = graphql(/* GraphQL */ `
           name
           username
           avatarUrl
+          nationality
         }
       }
     }
@@ -414,6 +418,7 @@ export const CompetitionApplicationDetailQuery = graphql(/* GraphQL */ `
           id
           name
           username
+          nationality
         }
         members {
           id
@@ -431,6 +436,7 @@ export const CompetitionApplicationDetailQuery = graphql(/* GraphQL */ `
         id
         name
         username
+        nationality
       }
       applicationPlayers {
         id

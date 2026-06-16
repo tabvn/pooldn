@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@apollo/client/react";
 import Link from "next/link";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { CountryFlag } from "@/components/ui/country-flag";
 import {
   Table,
   TableBody,
@@ -336,11 +337,21 @@ type AnyApp = {
     name: string;
     slug: string;
     logoUrl?: string | null;
-    captain: { id: string; name: string; username: string };
+    captain: {
+      id: string;
+      name: string;
+      username: string;
+      nationality?: string | null;
+    };
     homeVenue?: { id: string; name: string } | null;
     members: Array<{ id: string }>;
   } | null;
-  rosterCaptain?: { id: string; name: string; username: string } | null;
+  rosterCaptain?: {
+    id: string;
+    name: string;
+    username: string;
+    nationality?: string | null;
+  } | null;
   applicationPlayers: Array<{ id: string }>;
   applicant?: {
     id: string;
@@ -405,11 +416,19 @@ function AppTable({
                       className="hover:underline"
                     >
                       {app.team.captain.name}
+                      <CountryFlag
+                        code={app.team.captain.nationality}
+                        className="ml-1 leading-none"
+                      />
                     </Link>
                     {app.rosterCaptain &&
                     app.rosterCaptain.id !== app.team.captain.id ? (
                       <div className="text-xs text-muted-foreground">
                         Roster: {app.rosterCaptain.name}
+                        <CountryFlag
+                          code={app.rosterCaptain.nationality}
+                          className="ml-1 leading-none"
+                        />
                       </div>
                     ) : null}
                   </div>

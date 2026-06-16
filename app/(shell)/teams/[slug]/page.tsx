@@ -4,6 +4,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CompetitionStatusChip } from "@/components/ui/status-chip";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { CaptainJoinRequestsPanel } from "@/components/team/captain-join-requests-panel";
 import { getClient } from "@/lib/apollo/client";
 import { TeamDetailQuery } from "@/lib/graphql/operations/team.operations";
@@ -63,7 +64,13 @@ export default async function TeamOverviewPage({
                 fallback={m.user.name}
               />
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold">{m.user.name}</div>
+                <div className="text-sm font-semibold">
+                  {m.user.name}
+                  <CountryFlag
+                    code={m.user.nationality}
+                    className="ml-1.5 leading-none"
+                  />
+                </div>
                 <div className="text-xs text-muted-foreground">
                   @{m.user.username}
                 </div>

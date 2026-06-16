@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { LocalDateTime } from "@/components/ui/local-datetime";
 import { getClient } from "@/lib/apollo/client";
 import { TeamDetailQuery } from "@/lib/graphql/operations/team.operations";
@@ -62,7 +63,13 @@ export default async function TeamAboutPage({
               fallback={team.captain.name}
             />
             <div>
-              <div className="text-sm font-semibold">{team.captain.name}</div>
+              <div className="text-sm font-semibold">
+                {team.captain.name}
+                <CountryFlag
+                  code={team.captain.nationality}
+                  className="ml-1.5 leading-none"
+                />
+              </div>
               <div className="text-xs text-muted-foreground">
                 @{team.captain.username}
               </div>

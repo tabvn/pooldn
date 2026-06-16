@@ -12,6 +12,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CountryFlag } from "@/components/ui/country-flag";
 import {
   Card,
   CardContent,
@@ -422,6 +423,10 @@ export function ApplyForm({
                       <div className="flex flex-col">
                         <span className="font-semibold">
                           {m.user.name}
+                          <CountryFlag
+                            code={m.user.nationality}
+                            className="ml-1 leading-none"
+                          />
                           {isCaptain ? (
                             <Badge variant="primary" size="sm" className="ml-2">
                               Captain
@@ -430,7 +435,6 @@ export function ApplyForm({
                         </span>
                         <span className="text-xs text-muted-foreground">
                           @{m.user.username}
-                          {m.user.nationality ? ` · ${m.user.nationality}` : ""}
                         </span>
                         {conflict ? (
                           <span className="mt-1 text-[11px] font-medium text-amber-400">
@@ -504,7 +508,13 @@ export function ApplyForm({
                         fallback={u.name}
                       />
                       <div className="flex flex-col">
-                        <span className="font-semibold">{u.name}</span>
+                        <span className="font-semibold">
+                          {u.name}
+                          <CountryFlag
+                            code={u.nationality}
+                            className="ml-1 leading-none"
+                          />
+                        </span>
                         <span className="text-xs text-muted-foreground">
                           @{u.username}
                         </span>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Lock, Settings, Users } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { ApplicationDetailDialog } from "./application-detail-dialog";
 
 /**
@@ -17,7 +18,12 @@ import { ApplicationDetailDialog } from "./application-detail-dialog";
  * routes to the dedicated /applications/[appId] page. Both flows mount the
  * same ApplicationDetailView underneath.
  */
-type TeamCaptain = { id: string; name: string; username: string };
+type TeamCaptain = {
+  id: string;
+  name: string;
+  username: string;
+  nationality?: string | null;
+};
 type ConfirmedTeamApp = {
   id: string;
   status: string;
@@ -190,6 +196,10 @@ function TeamCard({
               className="hover:underline"
             >
               {app.team.captain.name}
+              <CountryFlag
+                code={app.team.captain.nationality}
+                className="ml-1 leading-none"
+              />
             </Link>
           </div>
           <div className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">

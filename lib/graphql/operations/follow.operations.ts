@@ -65,6 +65,7 @@ export const FollowedTeamsQuery = graphql(/* GraphQL */ `
         id
         name
         username
+        nationality
       }
       members {
         id

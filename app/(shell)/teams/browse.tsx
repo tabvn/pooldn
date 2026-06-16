@@ -7,6 +7,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { MyTeamsQuery } from "@/lib/graphql/operations/team.operations";
 
 type Team = {
@@ -16,7 +17,12 @@ type Team = {
   logoUrl: string | null;
   isActive: boolean;
   memberCount: number;
-  captain: { id: string; name: string; username: string };
+  captain: {
+    id: string;
+    name: string;
+    username: string;
+    nationality?: string | null;
+  };
 };
 
 const PAGE = 12;
@@ -129,7 +135,11 @@ export function TeamsBrowse({
                   </div>
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground">
-                  Captain {t.captain.name}{" "}
+                  Captain {t.captain.name}
+                  <CountryFlag
+                    code={t.captain.nationality}
+                    className="ml-1 leading-none"
+                  />{" "}
                   <span className="text-muted-foreground/70">
                     @{t.captain.username}
                   </span>

@@ -8,6 +8,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { PageTitle } from "@/components/layout/page-title";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -190,7 +191,13 @@ export function ManageRoster({ slug }: { slug: string }) {
                       fallback={m.user.name}
                     />
                     <div className="flex-1">
-                      <div className="font-semibold">{m.user.name}</div>
+                      <div className="font-semibold">
+                        {m.user.name}
+                        <CountryFlag
+                          code={m.user.nationality}
+                          className="ml-1.5 leading-none"
+                        />
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         @{m.user.username}
                       </div>

@@ -5,6 +5,21 @@
  * Uses Unicode regional-indicator symbols so we don't ship any flag images —
  * the OS renders them as the country flag. Server-safe (pure function).
  */
+/**
+ * Bare flag emoji string for a 2-letter ISO code, or "" when the code isn't
+ * a valid 2-letter code. Use where a component can't be rendered (e.g. a
+ * string-typed page title): `${name} ${flagEmoji(nationality)}`.
+ */
+export function flagEmoji(code: string | null | undefined): string {
+  if (!code) return "";
+  const c = code.trim().toUpperCase();
+  if (c.length !== 2 || !/^[A-Z]{2}$/.test(c)) return "";
+  return String.fromCodePoint(
+    0x1f1e6 + (c.charCodeAt(0) - 65),
+    0x1f1e6 + (c.charCodeAt(1) - 65),
+  );
+}
+
 export function CountryFlag({
   code,
   className,

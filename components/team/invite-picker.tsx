@@ -5,6 +5,7 @@ import { useQuery } from "@apollo/client/react";
 import { Mail, Search, UserPlus } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { Input } from "@/components/ui/input";
 import { UsersDirectoryQuery } from "@/lib/graphql/operations/team-mutations.operations";
 
@@ -167,7 +168,13 @@ export function InvitePicker({
                         fallback={u.name}
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="truncate font-semibold">{u.name}</div>
+                        <div className="truncate font-semibold">
+                          {u.name}
+                          <CountryFlag
+                            code={u.nationality}
+                            className="ml-1 leading-none"
+                          />
+                        </div>
                         <div className="truncate text-xs text-muted-foreground">
                           @{u.username}
                           {u.role ? ` · ${u.role.toLowerCase()}` : ""}

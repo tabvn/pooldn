@@ -7,6 +7,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -599,7 +600,13 @@ export function LineupSubmission({
                       src={m.user.avatarUrl ?? undefined}
                       fallback={m.user.name}
                     />
-                    <span className="font-medium">{m.user.name}</span>
+                    <span className="font-medium">
+                      {m.user.name}
+                      <CountryFlag
+                        code={m.user.nationality}
+                        className="ml-1 leading-none"
+                      />
+                    </span>
                     {used ? (
                       <span className="opacity-70">
                         · #{slots.map((s) => s.frameNumber).join(", ")}
@@ -708,7 +715,12 @@ export function LineupSubmission({
 
 type RosterMember = {
   id: string;
-  user: { id: string; name: string; avatarUrl?: string | null };
+  user: {
+    id: string;
+    name: string;
+    avatarUrl?: string | null;
+    nationality?: string | null;
+  };
 };
 
 type LineupRowIssue =
@@ -934,7 +946,13 @@ function PlayerSelect({
             src={m.user.avatarUrl ?? undefined}
             fallback={m.user.name}
           />
-          <span className="truncate">{m.user.name}</span>
+          <span className="truncate">
+            {m.user.name}
+            <CountryFlag
+              code={m.user.nationality}
+              className="ml-1 leading-none"
+            />
+          </span>
         </span>
       ),
     };

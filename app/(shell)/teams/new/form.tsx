@@ -11,6 +11,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { ImageUpload } from "@/components/ui/image-upload";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -65,7 +66,7 @@ export function NewTeamForm() {
   const [draftLogoUrl, setDraftLogoUrl] = useState<string | null>(null);
   const [invites, setInvites] = useState<
     Array<
-      | { kind: "user"; userId: string; name: string; username: string; avatarUrl?: string | null }
+      | { kind: "user"; userId: string; name: string; username: string; avatarUrl?: string | null; nationality?: string | null }
       | { kind: "email"; email: string }
     >
   >([]);
@@ -392,12 +393,12 @@ function InvitesStep({
   setInvites,
 }: {
   invites: Array<
-    | { kind: "user"; userId: string; name: string; username: string; avatarUrl?: string | null }
+    | { kind: "user"; userId: string; name: string; username: string; avatarUrl?: string | null; nationality?: string | null }
     | { kind: "email"; email: string }
   >;
   setInvites: (
     next: Array<
-      | { kind: "user"; userId: string; name: string; username: string; avatarUrl?: string | null }
+      | { kind: "user"; userId: string; name: string; username: string; avatarUrl?: string | null; nationality?: string | null }
       | { kind: "email"; email: string }
     >,
   ) => void;
@@ -423,6 +424,7 @@ function InvitesStep({
     name: string;
     username: string;
     avatarUrl?: string | null;
+    nationality?: string | null;
   }) {
     if (invites.some((i) => i.kind === "user" && i.userId === user.id)) return;
     setInvites([
@@ -433,6 +435,7 @@ function InvitesStep({
         name: user.name,
         username: user.username,
         avatarUrl: user.avatarUrl,
+        nationality: user.nationality,
       },
     ]);
     setQ("");
@@ -485,7 +488,13 @@ function InvitesStep({
                       >
                         <Avatar size="sm" src={u.avatarUrl ?? undefined} fallback={u.name} />
                         <div className="min-w-0 flex-1">
-                          <div className="text-sm font-semibold">{u.name}</div>
+                          <div className="text-sm font-semibold">
+                            {u.name}
+                            <CountryFlag
+                              code={u.nationality}
+                              className="ml-1 leading-none"
+                            />
+                          </div>
                           <div className="text-xs text-muted-foreground">
                             @{u.username}
                           </div>
@@ -538,7 +547,13 @@ function InvitesStep({
                       fallback={i.name}
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold truncate">{i.name}</div>
+                      <div className="font-semibold truncate">
+                        {i.name}
+                        <CountryFlag
+                          code={i.nationality}
+                          className="ml-1 leading-none"
+                        />
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         @{i.username}
                       </div>
@@ -576,7 +591,7 @@ function ReviewStep({
 }: {
   values: BasicsValues;
   invites: Array<
-    | { kind: "user"; userId: string; name: string; username: string; avatarUrl?: string | null }
+    | { kind: "user"; userId: string; name: string; username: string; avatarUrl?: string | null; nationality?: string | null }
     | { kind: "email"; email: string }
   >;
   cities: Array<{ id: string; name: string }>;
@@ -602,7 +617,11 @@ function ReviewStep({
               <li key={idx} className="text-sm">
                 {i.kind === "user" ? (
                   <span>
-                    {i.name}{" "}
+                    {i.name}
+                    <CountryFlag
+                      code={i.nationality}
+                      className="ml-1 leading-none"
+                    />{" "}
                     <span className="text-muted-foreground">@{i.username}</span>
                   </span>
                 ) : (
