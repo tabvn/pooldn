@@ -188,3 +188,22 @@ export const DeleteCommunityCommentMutation = graphql(/* GraphQL */ `
     deleteCommunityComment(id: $id)
   }
 `);
+
+// Community "Players" tab — players in the active city (location-scoped
+// directory). Ordered newest-first by the resolver.
+export const CityPlayersQuery = graphql(/* GraphQL */ `
+  query CityPlayers($cityId: ID, $first: Int) {
+    users(cityId: $cityId, first: $first) {
+      id
+      name
+      username
+      avatarUrl
+      nationality
+      role
+      city {
+        id
+        name
+      }
+    }
+  }
+`);

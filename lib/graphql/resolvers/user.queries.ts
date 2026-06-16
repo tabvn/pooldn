@@ -16,16 +16,20 @@ builder.queryFields((t) => ({
   users: t.prismaField({
     type: ["User"],
     description:
-      "List all users, newest first. Cursor-paginated by id when first/after are supplied.",
+      "List users, newest first. Cursor-paginated by id when first/after are supplied. Optional cityId scopes to players in that city (the app's top-level location filter).",
     args: {
       first: t.arg.int(),
       after: t.arg.id(),
+      cityId: t.arg.id(),
     },
     resolve: (query, _root, args, ctx) => {
       const take = Math.min(Math.max(args.first ?? 100, 1), 100);
       return ctx.prisma.user.findMany({
         ...query,
-        where: { isActive: true },
+        where: {
+          isActive: true,
+          ...(args.cityId ? { cityId: String(args.cityId) } : {}),
+        },
         orderBy: [{ createdAt: "desc" }, { id: "asc" }],
         take,
         ...(args.after ? { skip: 1, cursor: { id: String(args.after) } } : {}),

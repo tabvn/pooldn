@@ -5,14 +5,17 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@apollo/client/react";
 import type { ResultOf } from "@graphql-typed-document-node/core";
-import { Flame, Hash, ImagePlus, Loader2, X } from "lucide-react";
+import { Flame, Hash, ImagePlus, Loader2, Users, X } from "lucide-react";
 import { QuoteCard } from "@/components/community/quote-card";
+import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { useToast } from "@/components/ui/toast";
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
 import {
+  CityPlayersQuery,
   CommunityFeedQuery,
   CreatePostMutation,
   TrendingCommunityPostsQuery,
@@ -50,7 +53,7 @@ export function CommunityFeed({
     const qs = sp.toString();
     router.replace(`/community${qs ? `?${qs}` : ""}`);
   }
-  const [mode, setMode] = useState<"latest" | "trending">("latest");
+  const [mode, setMode] = useState<"latest" | "trending" | "players">("latest");
   const [body, setBody] = useState("");
   const [draftImages, setDraftImages] = useState<string[]>([]);
   const [quotedPost, setQuotedPost] = useState<FeedPost | null>(null);
@@ -65,6 +68,13 @@ export function CommunityFeed({
   const trending = useQuery(TrendingCommunityPostsQuery, {
     variables: { limit: 20 },
     skip: mode !== "trending",
+    fetchPolicy: "cache-and-network",
+  });
+
+  // Players tab — the city's player directory (location-scoped).
+  const players = useQuery(CityPlayersQuery, {
+    variables: { cityId: cityId ?? undefined, first: 100 },
+    skip: mode !== "players",
     fetchPolicy: "cache-and-network",
   });
 
@@ -197,6 +207,18 @@ export function CommunityFeed({
         >
           <Flame className="size-3" /> Trending
         </button>
+        <button
+          type="button"
+          onClick={() => setMode("players")}
+          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
+            mode === "players"
+              ? "bg-primary text-primary-foreground"
+              : "bg-secondary/60 text-muted-foreground hover:bg-secondary"
+          }`}
+          data-testid="community-tab-players"
+        >
+          <Users className="size-3" /> Players
+        </button>
         {tag ? (
           <Badge
             variant="primary"
@@ -208,8 +230,8 @@ export function CommunityFeed({
         ) : null}
       </div>
 
-      {/* Composer */}
-      {signedIn ? (
+      {/* Composer — hidden on the Players directory tab. */}
+      {mode === "players" ? null : signedIn ? (
         <Card>
           <CardContent className="space-y-2">
             {quotedPost ? (
@@ -319,7 +341,49 @@ export function CommunityFeed({
       )}
 
       {/* Feed */}
-      {mode === "trending" ? (
+      {mode === "players" ? (
+        <div className="space-y-3" data-testid="community-players">
+          {players.loading && !players.data ? (
+            <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" /> Loading players…
+            </p>
+          ) : (players.data?.users ?? []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No players in this city yet.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              {(players.data?.users ?? []).map((u) => (
+                <Link
+                  key={u.id}
+                  href={`/players/${u.username}`}
+                  data-testid={`community-player-${u.username}`}
+                  className="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 transition-colors hover:border-primary/40"
+                >
+                  <Avatar
+                    size="md"
+                    src={u.avatarUrl ?? undefined}
+                    fallback={u.name}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate font-semibold">{u.name}</span>
+                      <CountryFlag
+                        code={u.nationality}
+                        className="leading-none"
+                      />
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      @{u.username}
+                      {u.city?.name ? ` · ${u.city.name}` : ""}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : mode === "trending" ? (
         <div className="space-y-3">
           {trending.loading && !trending.data ? (
             <p className="text-sm text-muted-foreground inline-flex items-center gap-2">
