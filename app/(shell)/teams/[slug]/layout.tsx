@@ -38,7 +38,7 @@ export default async function TeamLayout({
 
   const tabs = [
     { href: `/teams/${slug}`, label: "Overview" },
-    { href: `/teams/${slug}/roster`, label: "Roster" },
+    { href: `/teams/${slug}/players`, label: "Players" },
     { href: `/teams/${slug}/competitions`, label: "Competitions" },
     { href: `/teams/${slug}/matches`, label: "Matches" },
     { href: `/teams/${slug}/about`, label: "About" },

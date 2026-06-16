@@ -7,7 +7,7 @@ import { CountryFlag } from "@/components/ui/country-flag";
 import { getClient } from "@/lib/apollo/client";
 import { TeamDetailQuery } from "@/lib/graphql/operations/team.operations";
 
-export default async function TeamRosterPage({
+export default async function TeamPlayersPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
@@ -21,9 +21,9 @@ export default async function TeamRosterPage({
   if (!team) notFound();
 
   return (
-    <Card data-testid="team-roster">
+    <Card data-testid="team-players">
       <CardHeader>
-        <CardTitle>Roster · {team.members.length}</CardTitle>
+        <CardTitle>Players · {team.members.length}</CardTitle>
       </CardHeader>
       <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {team.members.map((m) => (

@@ -18,7 +18,7 @@ test.describe("Teams directory", () => {
     await expect(
       page.getByRole("heading", { name: "Gen Filling Station" }),
     ).toBeVisible();
-    await expect(page.getByText("Roster")).toBeVisible();
+    await expect(page.getByText("Players")).toBeVisible();
   });
 
   test("team cards navigate when clicking on the card body (not text)", async ({

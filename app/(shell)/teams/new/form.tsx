@@ -458,7 +458,7 @@ function InvitesStep({
         <CardContent className="space-y-3">
           <Field
             label="Add players by name, username, or email"
-            hint="Skip this step if you'd rather invite later from the Manage roster page."
+            hint="Skip this step if you'd rather invite later from the Manage players page."
           >
             <div className="relative">
               <Input
@@ -594,7 +594,7 @@ function ReviewStep({
       <ReviewGroup title="Invites" onEdit={() => onEdit(1)}>
         {invites.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No invitations queued — invite people later from Manage roster.
+            No invitations queued — invite people later from Manage players.
           </p>
         ) : (
           <ul className="space-y-1.5">

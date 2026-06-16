@@ -38,12 +38,12 @@ export default async function TeamOverviewPage({
         teamSlug={slug}
         captainId={team.captain.id}
       />
-      <Card data-testid="overview-roster">
+      <Card data-testid="overview-players">
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Roster</CardTitle>
+            <CardTitle>Players</CardTitle>
             <Link
-              href={`/teams/${slug}/roster`}
+              href={`/teams/${slug}/players`}
               className="text-xs text-primary hover:underline"
             >
               See all →

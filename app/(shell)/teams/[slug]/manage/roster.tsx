@@ -73,7 +73,7 @@ export function ManageRoster({ slug }: { slug: string }) {
   async function onRemove(userId: string, name: string) {
     const ok = await confirm({
       title: `Remove ${name}?`,
-      description: "They'll be dropped from the roster immediately.",
+      description: "They'll be dropped from the team immediately.",
       confirmLabel: "Remove",
       destructive: true,
     });
@@ -134,7 +134,7 @@ export function ManageRoster({ slug }: { slug: string }) {
     const ok = await confirm({
       title: `Transfer captaincy to ${name}?`,
       description:
-        "You'll stop being the team captain. You can stay on the roster as a regular member.",
+        "You'll stop being the team captain. You can stay on the team as a regular member.",
       confirmLabel: "Transfer captaincy",
       destructive: true,
     });
@@ -158,7 +158,7 @@ export function ManageRoster({ slug }: { slug: string }) {
     <div className="flex flex-col">
       <PageTitle
         title={team.name}
-        eyebrow={<span>Manage roster</span>}
+        eyebrow={<span>Manage players</span>}
         meta={
           <Badge variant="primary">
             {team.members.length}{" "}
@@ -169,7 +169,7 @@ export function ManageRoster({ slug }: { slug: string }) {
       <div className="p-8 max-w-3xl space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>Current roster</CardTitle>
+            <CardTitle>Current players</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {team.members.length === 0 ? (

@@ -61,7 +61,7 @@ test("anonymous viewer can browse teams and venues", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Gen Filling Station" }),
   ).toBeVisible();
-  await expect(page.getByText("Roster")).toBeVisible();
+  await expect(page.getByText("Players")).toBeVisible();
 
   await page.goto("/venues");
   await expect(page.getByRole("heading", { name: "Venues" })).toBeVisible();
