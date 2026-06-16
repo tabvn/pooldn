@@ -85,7 +85,9 @@ export function CitySelector({ city: initialLabel }: { city: string }) {
         <span className="text-base leading-none" aria-hidden>
           {flagFor(onlyLabel)}
         </span>
-        <span className="hidden sm:inline">{onlyLabel}</span>
+        <span className="inline-block max-w-[40vw] truncate align-middle sm:max-w-none">
+          {onlyLabel}
+        </span>
       </div>
     );
   }
@@ -100,7 +102,9 @@ export function CitySelector({ city: initialLabel }: { city: string }) {
         <span className="text-base leading-none" aria-hidden>
           {flagFor(label)}
         </span>
-        <span className="hidden sm:inline">{label}</span>
+        <span className="inline-block max-w-[40vw] truncate align-middle sm:max-w-none">
+          {label}
+        </span>
         <ChevronDown className="size-4 text-muted-foreground" />
       </PopoverPrimitive.Trigger>
       <PopoverPrimitive.Portal>

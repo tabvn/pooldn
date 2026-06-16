@@ -52,7 +52,7 @@ export function Header({
           8
         </span>
       </Link>
-      <div className="hidden md:block">
+      <div className="shrink-0">
         <CitySelector city={city} />
       </div>
       <div className="flex items-center gap-2 md:gap-3 ml-auto">
