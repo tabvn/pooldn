@@ -72,6 +72,7 @@ export const CompetitionEditableQuery = graphql(/* GraphQL */ `
         name
         username
         avatarUrl
+        nationality
       }
       city {
         id
