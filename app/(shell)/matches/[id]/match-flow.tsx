@@ -61,10 +61,13 @@ export function MatchFlow({ id }: { id: string }) {
     SubmitMatchResultMutation,
   );
   const [markWalkover] = useMutation(MarkFrameWalkoverMutation);
-  const viewerQuery = useQuery(ViewerQuery);
+  // errorPolicy "ignore" so guests (no viewer / no access to submissions)
+  // still get the read-only match view instead of an errored component.
+  const viewerQuery = useQuery(ViewerQuery, { errorPolicy: "ignore" });
   const submissionsQuery = useQuery(MatchScoreSubmissionsForMatchQuery, {
     variables: { matchId: id },
     fetchPolicy: "cache-and-network",
+    errorPolicy: "ignore",
   });
   const [submitScore, { loading: scoreSubmitting, error: scoreSubmitError }] =
     useMutation(SubmitMatchScoreMutation);
