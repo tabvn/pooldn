@@ -10,7 +10,7 @@ import { RelativeTime } from "@/components/ui/relative-time";
 import { Users } from "lucide-react";
 import { BanUserButton } from "@/components/admin/ban-user-button";
 import { FollowButton } from "@/components/follow-button";
-import { PageTitle } from "@/components/layout/page-title";
+import { DetailHero } from "@/components/layout/detail-hero";
 import { getClient } from "@/lib/apollo/client";
 import { getViewer } from "@/lib/auth/server";
 import {
@@ -44,11 +44,21 @@ export default async function ProfilePage({
 
   return (
     <div className="flex flex-col">
-      <PageTitle
-        title={user.nationality ? `${user.name} ${flagEmoji(user.nationality)}` : user.name}
-        eyebrow={<span>@{user.username}</span>}
+      <DetailHero
+        title={
+          user.nationality
+            ? `${user.name} ${flagEmoji(user.nationality)}`
+            : user.name
+        }
+        media={
+          <Avatar
+            size="lg"
+            src={user.avatarUrl ?? undefined}
+            fallback={user.name}
+          />
+        }
         actions={
-          <div className="flex items-center gap-2">
+          <>
             {/* Round-50 — surface following count separately from the
                 follower chip the button renders. Both link to their list
                 pages so the audience can drill into either side. */}
@@ -100,10 +110,11 @@ export default async function ProfilePage({
                 bannedAt={user.bannedAt ?? null}
               />
             ) : null}
-          </div>
+          </>
         }
         meta={
           <>
+            <span>@{user.username}</span>
             {/* Round-54 — dropped Level + Rank chips with the rating
                 system; profile meta is just role + banned status now. */}
             <Badge variant="primary">{user.role.replace(/_/g, " ")}</Badge>
@@ -131,42 +142,31 @@ export default async function ProfilePage({
           </>
         }
       />
-      <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
+      <div className="mx-auto w-full max-w-5xl space-y-8 px-6 py-6 md:px-10">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {/* Round-50 — About card. PageTitle above already shows name +
-              @username + meta + actions; this card used to repeat the
-              avatar, name and username inside its own CardHeader which
-              read as duplicate content. Keep the avatar as a visual
-              anchor and let the bio carry the rest. */}
+          {/* About card. The hero above carries the avatar, name, @username,
+              meta and actions, so this card is just the bio (+ the viewer's
+              own email). */}
           <Card className="md:col-span-2" data-testid="player-about-card">
-            <CardContent className="pt-6">
-              <div className="flex items-start gap-4">
-                <Avatar
-                  size="xl"
-                  src={user.avatarUrl ?? undefined}
-                  fallback={user.name}
-                />
-                <div className="min-w-0 flex-1 space-y-3 text-sm">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                    About
-                  </div>
-                  {user.bio ? (
-                    <p className="text-foreground">{user.bio}</p>
-                  ) : (
-                    <p className="italic text-muted-foreground">
-                      {isSelf
-                        ? "Your bio is empty — tell people who you are."
-                        : "This player hasn't written a bio yet."}
-                    </p>
-                  )}
-                  {isSelf ? (
-                    <div className="text-xs">
-                      <span className="text-muted-foreground">Email · </span>
-                      <span className="font-mono">{user.email}</span>
-                    </div>
-                  ) : null}
+            <CardHeader>
+              <CardTitle>About</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {user.bio ? (
+                <p className="text-foreground">{user.bio}</p>
+              ) : (
+                <p className="italic text-muted-foreground">
+                  {isSelf
+                    ? "Your bio is empty — tell people who you are."
+                    : "This player hasn't written a bio yet."}
+                </p>
+              )}
+              {isSelf ? (
+                <div className="text-xs">
+                  <span className="text-muted-foreground">Email · </span>
+                  <span className="font-mono">{user.email}</span>
                 </div>
-              </div>
+              ) : null}
             </CardContent>
           </Card>
 
