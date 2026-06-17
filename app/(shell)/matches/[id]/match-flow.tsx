@@ -96,6 +96,9 @@ export function MatchFlow({ id }: { id: string }) {
     return <div className="p-8 text-sm text-muted-foreground">Match not found.</div>;
   }
   const raceTo = match.matchday.competition.raceToFrames;
+  // "Race to X" is a 1v1 (INDIVIDUAL) concept. A team / doubles match is a
+  // fixed set of games (the block list), so we don't show a race target.
+  const showRaceTo = match.matchday.competition.type === "INDIVIDUAL";
   const homeWins = match.frames.filter((f) => f.homeWon === true).length;
   const awayWins = match.frames.filter((f) => f.homeWon === false).length;
   const undecided = match.frames.filter((f) => f.homeWon == null).length;
@@ -315,7 +318,9 @@ export function MatchFlow({ id }: { id: string }) {
               </Badge>
             ) : null}
             {match.venue ? <span>{match.venue.name}</span> : null}
-            <Badge variant="primary">Race to {raceTo}</Badge>
+            {showRaceTo ? (
+              <Badge variant="primary">Race to {raceTo}</Badge>
+            ) : null}
           </>
         }
       />
@@ -329,7 +334,7 @@ export function MatchFlow({ id }: { id: string }) {
               slug={match.homeTeam?.slug}
               logoUrl={match.homeTeam?.logoUrl}
               score={match.homeScore ?? homeWins}
-              raceTo={raceTo}
+              raceTo={showRaceTo ? raceTo : null}
               leading={homeWins > awayWins}
             />
             <span className="text-muted-foreground text-3xl">–</span>
@@ -338,7 +343,7 @@ export function MatchFlow({ id }: { id: string }) {
               slug={match.awayTeam?.slug}
               logoUrl={match.awayTeam?.logoUrl}
               score={match.awayScore ?? awayWins}
-              raceTo={raceTo}
+              raceTo={showRaceTo ? raceTo : null}
               leading={awayWins > homeWins}
             />
           </CardContent>
@@ -642,7 +647,7 @@ function TeamSide({
   slug?: string | null;
   logoUrl?: string | null;
   score: number;
-  raceTo: number;
+  raceTo: number | null;
   leading: boolean;
 }) {
   const inner = (
@@ -678,7 +683,9 @@ function TeamSide({
         >
           {score}
         </span>
-        <span className="text-xs text-muted-foreground">/ {raceTo}</span>
+        {raceTo != null ? (
+          <span className="text-xs text-muted-foreground">/ {raceTo}</span>
+        ) : null}
       </div>
     </div>
   );

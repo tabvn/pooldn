@@ -67,6 +67,7 @@ export const MatchDetailQuery = graphql(/* GraphQL */ `
           id
           slug
           name
+          type
           bannerUrl
           raceToFrames
           breakAndRunRule
