@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MatchStatusChip } from "@/components/ui/status-chip";
-import { PageTitle } from "@/components/layout/page-title";
+import { DetailHero } from "@/components/layout/detail-hero";
 import { useToast } from "@/components/ui/toast";
 import {
   MarkFrameWalkoverMutation,
@@ -288,27 +288,25 @@ export function MatchFlow({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col">
-      <PageTitle
+      <DetailHero
         title={`${match.homeTeam?.name ?? "TBD"} vs ${match.awayTeam?.name ?? "TBD"}`}
-        eyebrow={
-          <Link
-            href={`/competitions/${match.matchday.competition.slug}`}
-            className="inline-flex items-center gap-2 hover:underline"
-          >
-            <Avatar
-              size="sm"
-              src={match.matchday.competition.bannerUrl ?? undefined}
-              fallback={match.matchday.competition.name}
-              shape="competition"
-            />
-            <span>
-              {match.matchday.competition.name} · Matchday{" "}
-              {match.matchday.number}
-            </span>
-          </Link>
-        }
         meta={
           <>
+            <Link
+              href={`/competitions/${match.matchday.competition.slug}`}
+              className="inline-flex items-center gap-2 hover:underline"
+            >
+              <Avatar
+                size="sm"
+                src={match.matchday.competition.bannerUrl ?? undefined}
+                fallback={match.matchday.competition.name}
+                shape="competition"
+              />
+              <span>
+                {match.matchday.competition.name} · Matchday{" "}
+                {match.matchday.number}
+              </span>
+            </Link>
             <MatchStatusChip status={match.status} />
             {match.winType && match.winType !== "NORMAL" ? (
               <Badge variant="warning">
@@ -325,7 +323,7 @@ export function MatchFlow({ id }: { id: string }) {
         }
       />
 
-      <div className="p-4 md:p-8 space-y-6">
+      <div className="mx-auto w-full max-w-5xl space-y-6 px-6 py-6 md:px-10">
         {/* Scoreboard — mirrors the Team Match Card in the Figma */}
         <Card>
           <CardContent className="flex items-center justify-center gap-6 py-6 md:gap-12 md:py-8">
