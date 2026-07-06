@@ -1,23 +1,15 @@
-import { getViewer } from "@/lib/auth/server";
-import { getHeaderCityId } from "@/lib/headers/city";
-import { CommunityFeed } from "./feed";
+import { getHeaderCityId, getHeaderCityName } from "@/lib/headers/city";
+import { CommunityPlayers } from "./players";
 
-export default async function CommunityPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const sp = await searchParams;
-  const [viewer, headerCityId] = await Promise.all([
-    getViewer(),
+export default async function CommunityPage() {
+  const [headerCityId, headerCityName] = await Promise.all([
     getHeaderCityId(),
+    getHeaderCityName(),
   ]);
-  const tag = typeof sp.tag === "string" ? sp.tag : undefined;
   return (
-    <CommunityFeed
-      signedIn={!!viewer}
-      initialTag={tag ?? null}
+    <CommunityPlayers
       cityId={headerCityId ?? null}
+      cityName={headerCityName ?? null}
     />
   );
 }

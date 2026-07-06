@@ -22,14 +22,12 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
+  MyTeamsQuery,
   TeamsListQuery,
   TeamDetailQuery,
 } from "@/lib/graphql/operations/team.operations";
 import { ApplyToCompetitionMutation } from "@/lib/graphql/operations/competition-mutations.operations";
-import {
-  CompetitionHeaderQuery,
-  ViewerQuery,
-} from "@/lib/graphql/operations/competition.operations";
+import { CompetitionHeaderQuery } from "@/lib/graphql/operations/competition.operations";
 import { VenuesListQuery } from "@/lib/graphql/operations/venue.operations";
 import { RosterConflictsQuery } from "@/lib/graphql/operations/roster.operations";
 
@@ -55,14 +53,26 @@ export function ApplyForm({
   const router = useRouter();
   const toast = useToast();
   const compQuery = useQuery(CompetitionHeaderQuery, { variables: { slug } });
-  const teamsQuery = useQuery(TeamsListQuery);
-  const viewerQuery = useQuery(ViewerQuery, { errorPolicy: "ignore" });
+  // `myTeams` is server-scoped to the viewer (captain or member) and returns
+  // viewer.id + role in the SAME payload — no cross-query race / stale-viewer
+  // leak that previously made the dropdown show "no teams" or every team.
+  const myTeamsQuery = useQuery(MyTeamsQuery);
+  const viewer = myTeamsQuery.data?.viewer;
+  const viewerId = viewer?.id;
+  const isAdmin = viewer?.role === "SUPER_ADMIN";
+  // Admins may apply on behalf of ANY team (server allows captain-or-admin), so
+  // they additionally load the full list. The Apollo cache is cleared on every
+  // login/logout, so `isAdmin` can never be a stale value from a prior session.
+  const teamsQuery = useQuery(TeamsListQuery, { skip: !isAdmin });
   const [selectedTeamId, setSelectedTeamId] = useState<string>(
     initialTeamId ?? "",
   );
   const teamDetailQuery = useQuery(TeamDetailQuery, {
     variables: {
-      slug: teamForSlug(teamsQuery.data?.teams, selectedTeamId) ?? "",
+      slug:
+        teamForSlug(myTeamsQuery.data?.myTeams, selectedTeamId) ??
+        teamForSlug(teamsQuery.data?.teams, selectedTeamId) ??
+        "",
     },
     skip: !selectedTeamId,
   });
@@ -85,21 +95,26 @@ export function ApplyForm({
   });
 
   const competition = compQuery.data?.competition;
-  // Round-43 — restrict the dropdown to teams the viewer actually captains.
-  const viewerId = viewerQuery.data?.viewer?.id;
-  const isAdmin = viewerQuery.data?.viewer?.role === "SUPER_ADMIN";
+  // Captains see only teams they captain (viewer-scoped `myTeams`); admins see
+  // every team (they may apply on any team's behalf). Both derive from a cache
+  // that's cleared on auth change, so there's no stale-role / cross-session leak.
   const allTeams = teamsQuery.data?.teams ?? [];
   const teams = isAdmin
     ? allTeams
-    : allTeams.filter((t) => t.captain?.id === viewerId);
-  // The captain filter needs BOTH the teams list and the viewer's id. Those
-  // queries resolve independently, so until both settle we must not conclude
-  // "you don't captain any teams" — the filter is empty purely because
-  // viewerId is still undefined. Both flags clear together with their data in
-  // the same render, so this can't get stuck.
-  const teamsLoading = teamsQuery.loading || viewerQuery.loading;
+    : (myTeamsQuery.data?.myTeams ?? []).filter(
+        (t) => t.captain?.id === viewerId,
+      );
+  const teamsLoading = myTeamsQuery.loading || (isAdmin && teamsQuery.loading);
   const team = teamDetailQuery.data?.team;
   const roster = team?.members ?? [];
+
+  // Round-62 — an invited team can't be swapped: the invitation was extended
+  // to one specific team, so lock the team selector (and, when the comp
+  // requires it, the home-venue selector) to that team.
+  const invitedTeamId =
+    competition?.myTeamApplication?.status === "INVITED"
+      ? competition.myTeamApplication.team?.id ?? null
+      : null;
 
   // Round-61 — Home venue is required for Home & Away competitions on team
   // venues (every team hosts, so each needs a venue), or whenever the
@@ -144,29 +159,41 @@ export function ApplyForm({
     setValue("homeVenueId", "");
   }
 
-  // Pre-select the team's existing home venue once its detail loads.
+  // Autopopulate the home venue from the selected team whenever the loaded
+  // team changes — picking a team fills in its home venue, and switching teams
+  // swaps it. Manual edits within the same team are preserved (this only fires
+  // on a new team id).
   useEffect(() => {
-    if (team?.homeVenue?.id && !watchedHomeVenue) {
-      setValue("homeVenueId", team.homeVenue.id);
-    }
+    if (!team?.id) return;
+    setValue("homeVenueId", team.homeVenue?.id ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [team?.homeVenue?.id]);
+  }, [team?.id]);
 
   // Round-49 — pre-select the team when the captain landed here via an
   // invite accept link (?teamId=…).
   useEffect(() => {
     if (!initialTeamId || watchedTeamId) return;
-    if (!teamsQuery.data) return;
+    if (!myTeamsQuery.data) return;
     const inViewerTeams = teams.some((t) => t.id === initialTeamId);
     if (inViewerTeams || isAdmin) {
       setValue("teamId", initialTeamId, { shouldValidate: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialTeamId, teamsQuery.data, isAdmin]);
+  }, [initialTeamId, myTeamsQuery.data, teamsQuery.data, isAdmin]);
+
+  // Round-62 — for an invited team, force + hold the selection on the invited
+  // team regardless of how the captain arrived (covers a direct /apply visit).
+  useEffect(() => {
+    if (invitedTeamId && watchedTeamId !== invitedTeamId) {
+      setValue("teamId", invitedTeamId, { shouldValidate: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invitedTeamId]);
 
   const togglePlayer = (id: string) => {
     const cur = new Set(selectedPlayers);
-    cur.has(id) ? cur.delete(id) : cur.add(id);
+    if (cur.has(id)) cur.delete(id);
+    else cur.add(id);
     const next = Array.from(cur);
     setValue("playerUserIds", next, { shouldValidate: true });
     // Clear the Roster Leader if they just got unchecked.
@@ -293,14 +320,14 @@ export function ApplyForm({
         onSubmit={(e) => e.preventDefault()}
         className="mx-auto w-full max-w-[480px] space-y-5 px-6 py-6"
       >
-        {/* Team */}
+        {/* Team — locked to the invited team for invite-only entries. */}
         <div className="space-y-1.5">
           <Label htmlFor="teamId">Team</Label>
           <select
             id="teamId"
             {...register("teamId")}
             className={SELECT_CLASS}
-            disabled={teamsLoading || teams.length === 0}
+            disabled={teamsLoading || teams.length === 0 || !!invitedTeamId}
           >
             <option value="">
               {teamsLoading
@@ -315,6 +342,12 @@ export function ApplyForm({
               </option>
             ))}
           </select>
+          {invitedTeamId ? (
+            <p className="text-xs text-muted-foreground">
+              This team was invited to the competition — it can&rsquo;t be
+              changed.
+            </p>
+          ) : null}
           {errors.teamId ? (
             <p className="text-xs text-destructive">{errors.teamId.message}</p>
           ) : null}
@@ -338,7 +371,14 @@ export function ApplyForm({
                 })
               }
               className={SELECT_CLASS}
-              disabled={!selectedTeamId || venues.length === 0}
+              disabled={
+                !selectedTeamId ||
+                venues.length === 0 ||
+                // Lock to the invited team's home venue — but only when it has
+                // one; otherwise leave it editable so the captain can still
+                // satisfy the requirement.
+                (!!invitedTeamId && !!team?.homeVenue?.id)
+              }
             >
               <option value="">
                 {venues.length === 0

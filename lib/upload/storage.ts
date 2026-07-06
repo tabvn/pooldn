@@ -22,7 +22,6 @@ export type UploadKind =
   | "team-logo-draft"
   | "competition-banner"
   | "venue-image"
-  | "community-image"
   | "score-board";
 
 /**
@@ -32,7 +31,6 @@ export type UploadKind =
  * and lives independently — deletes remove only that one URL.
  */
 export const MULTI_KINDS: ReadonlySet<UploadKind> = new Set([
-  "community-image",
   "score-board",
   "team-logo-draft",
 ]);

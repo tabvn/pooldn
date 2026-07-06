@@ -12,6 +12,7 @@ builder.queryFields((t) => ({
         ...query,
         where: {
           status: { in: ["SCHEDULED", "IN_PROGRESS"] },
+          ...ACTIVE_COMPETITION,
           OR: viewerMatchOR(ctx.viewer.id),
         },
         orderBy: { scheduledAt: "asc" },
@@ -36,6 +37,7 @@ builder.queryFields((t) => ({
         where: {
           status: { in: ["SCHEDULED", "IN_PROGRESS"] },
           scheduledAt: { gte: start, lte: end },
+          ...ACTIVE_COMPETITION,
           OR: viewerMatchOR(ctx.viewer.id),
         },
         orderBy: { scheduledAt: "asc" },
@@ -43,6 +45,14 @@ builder.queryFields((t) => ({
     },
   }),
 }));
+
+// Only matches in an ONGOING competition are real upcoming games. Cancelled
+// (and any non-active) competitions leave their matches behind as SCHEDULED
+// orphans — without this filter they'd keep surfacing on the dashboard's
+// "Today's Match" / next-match cards even though the competition is gone.
+const ACTIVE_COMPETITION = {
+  matchday: { is: { competition: { is: { status: "ONGOING" as const } } } },
+};
 
 // Shared OR clause for "matches the viewer is involved in" — captain on
 // either side, or organizer of the competition. Extracted so viewer*Match

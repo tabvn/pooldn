@@ -12,7 +12,7 @@
 
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
-import { pushOutbox, type OutboxEntry } from "./email-outbox";
+import { pushOutbox } from "./email-outbox";
 
 export { getOutbox, type OutboxEntry } from "./email-outbox";
 

@@ -130,6 +130,14 @@ export function ApplicationDetailView({
     !app.competition.rosterLocked &&
     !pendingChange;
 
+  // In-place roster edit (saves immediately). Captains may edit while their
+  // application is still PENDING/WAITLISTED (pre-approval); org/admin may edit
+  // an APPROVED roster directly. Captains on APPROVED use the propose flow.
+  const canEditInPlace =
+    ((isCaptain || canOrgEdit) &&
+      (app.status === "PENDING" || app.status === "WAITLISTED")) ||
+    (canOrgEdit && app.status === "APPROVED");
+
   // Stable non-null id closure for callbacks (TS narrowing doesn't survive
   // the async closures otherwise).
   const appId = app.id;
@@ -361,7 +369,7 @@ export function ApplicationDetailView({
                 <Pencil className="size-4" /> Propose change
               </Button>
             ) : null}
-            {canOrgEdit && app.status === "APPROVED" && mode === "view" ? (
+            {canEditInPlace && mode === "view" ? (
               <Button
                 size="sm"
                 variant="secondary"

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation } from "@apollo/client/react";
+import { useApolloClient, useMutation } from "@apollo/client/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,14 +29,10 @@ const schema = z
 
 type FormValues = z.infer<typeof schema>;
 
-function deriveUsername(email: string, firstName: string) {
-  const local = email.split("@")[0] || firstName;
-  return local.toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 24);
-}
-
 export default function SignUpPage() {
   const router = useRouter();
   const toast = useToast();
+  const client = useApolloClient();
   const [registerUser, { error, loading: registering }] = useMutation(
     RegisterMutation,
   );
@@ -61,6 +57,7 @@ export default function SignUpPage() {
         },
       });
       if (result.data?.register) {
+        await client.clearStore();
         toast.success("Account created", "Set up your profile next.");
         router.push("/onboarding?new=1");
         router.refresh();
@@ -167,7 +164,7 @@ export default function SignUpPage() {
           ) : null}
 
           <Button type="submit" block loading={isSubmitting || registering}>
-            Create Account
+            Join
           </Button>
           <Link href="/" className="block">
             <Button type="button" variant="outline" block>

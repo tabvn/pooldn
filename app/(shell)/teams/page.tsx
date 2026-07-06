@@ -4,12 +4,15 @@ import { getClient } from "@/lib/apollo/client";
 import { TeamsListQuery } from "@/lib/graphql/operations/team.operations";
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
 import { MyTeamsBand } from "@/components/team/my-teams-band";
-import { getHeaderCityId } from "@/lib/headers/city";
+import { getHeaderCityId, getHeaderCityName } from "@/lib/headers/city";
 import { TeamsBrowse } from "./browse";
 
 export default async function TeamsPage() {
   const client = getClient();
-  const cityId = await getHeaderCityId();
+  const [cityId, cityName] = await Promise.all([
+    getHeaderCityId(),
+    getHeaderCityName(),
+  ]);
   const [{ data }, viewerResult] = await Promise.all([
     client.query({
       query: TeamsListQuery,
@@ -26,9 +29,13 @@ export default async function TeamsPage() {
     <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-3xl font-semibold">Teams</h1>
+          <h1 className="text-3xl font-semibold">
+            {cityName ? `Teams in ${cityName}` : "Teams"}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            All active teams on PoolDN.
+            {cityName
+              ? `Active teams in ${cityName}.`
+              : "All active teams on PoolDN."}
           </p>
         </div>
         {canCreate ? (

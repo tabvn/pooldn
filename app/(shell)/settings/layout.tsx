@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Shield, User } from "lucide-react";
+import { User } from "lucide-react";
 import { PageTitle } from "@/components/layout/page-title";
 import { TabNav } from "@/components/layout/tab-nav";
 import { requireViewer } from "@/lib/auth/server";
@@ -22,19 +22,17 @@ export default async function SettingsLayout({
         }
         description="Profile, account, and security."
       />
-      <div className="px-8 pt-6">
+      <div className="mx-auto w-full max-w-5xl px-6 pt-6 md:px-10">
         <TabNav
           items={[
             { href: "/settings", label: "Profile" },
             { href: "/settings/account", label: "Account" },
             { href: "/settings/notifications", label: "Notifications" },
           ]}
+          fullWidth
         />
       </div>
-      <div className="px-8 py-6">
-        {/* The Account tab uses the same shield icon in the Figma; keep the
-            inline import grounded so the tree-shaker doesn't drop it. */}
-        <Shield className="hidden" />
+      <div className="mx-auto w-full max-w-5xl px-6 py-6 md:px-10">
         {children}
       </div>
     </div>

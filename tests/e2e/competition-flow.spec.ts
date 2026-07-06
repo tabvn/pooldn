@@ -38,16 +38,13 @@ test.describe("Competition lifecycle (organizer)", () => {
       await page.getByTestId("basics-startdate").fill("2027-09-01");
       await page.getByTestId("basics-create").click();
 
-      // Lands on the four-tab draft editor. Slug is auto-generated.
+      // Lands on the tabbed draft editor. Slug is auto-generated.
       await page.waitForURL(/\/competitions\/[^/]+\/edit$/);
 
-      // Title block carries the new name + DRAFT badge.
-      await expect(
-        page.getByRole("heading", { name, exact: true }),
-      ).toBeVisible();
-      await expect(page.getByText("DRAFT")).toBeVisible();
+      // Opens on the Details tab, prefilled with the new name.
+      await expect(page.getByTestId("details-name")).toHaveValue(name);
 
-      // Fill the four tabs end-to-end and publish.
+      // Fill the tabs end-to-end and publish.
       await page.getByTestId("edit-tab-participants").click();
       await page.getByTestId("participants-max-teams").fill("8");
       await page.getByTestId("participants-min-players").fill("3");

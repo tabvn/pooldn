@@ -2,9 +2,13 @@ import { test, expect } from "@playwright/test";
 import { signInAs } from "./helpers";
 
 test.describe("Match flow", () => {
-  test("anonymous user is redirected to sign-in", async ({ page }) => {
+  test("anonymous user can reach a match (guests view details)", async ({
+    page,
+  }) => {
+    // Guests can view match details for public competitions (no sign-in
+    // redirect); a bad id renders the not-found state read-only.
     await page.goto("/matches/nonexistent-id");
-    await page.waitForURL(/\/sign-in\?next=/);
+    await expect(page.getByText(/match not found/i)).toBeVisible();
   });
 
   test("authenticated viewer renders match-not-found for bad id", async ({
@@ -30,7 +34,9 @@ test.describe("Match flow", () => {
 
     await signInAs(page, "gen");
     await page.goto(`/matches/${matchId}`);
-    await expect(page.getByText(/race to/i)).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Match Details" }),
+    ).toBeVisible();
     await expect(page.getByText("Match Lineups")).toBeVisible();
   });
 

@@ -130,13 +130,68 @@ export function planMatchdays(input: ScheduleInput): MatchdayPreview[] {
 }
 
 /**
+ * Round-65 — re-slot `count` matchdays onto a weekday schedule starting at (or
+ * just after) `newDate`. Used when an organizer MOVES a matchday: rather than
+ * shifting every later matchday by a raw day-count (which lands them on random
+ * weekdays), we re-lay the moved matchday and all its successors onto the
+ * configured (weekday, time) slots — so a Tue/Thu league stays Tue/Thu.
+ *
+ * The cycle is anchored so the FIRST returned date is the soonest configured
+ * slot on-or-after `newDate`, then it walks the slots in their configured order.
+ * Returns exactly `count` ISO strings (empty if there are no valid slots).
+ */
+export function replanFromDate(
+  newDate: string | Date,
+  weekdaySchedule: Array<{ weekday: number; time: string }> | null | undefined,
+  count: number,
+): string[] {
+  const slots = (weekdaySchedule ?? []).filter(
+    (s) =>
+      typeof s?.weekday === "number" &&
+      s.weekday >= 0 &&
+      s.weekday <= 6 &&
+      typeof s?.time === "string",
+  );
+  const n = Math.max(0, count);
+  if (slots.length === 0 || n === 0) return [];
+
+  // Anchor at midnight of the picked day minus 1ms, so a slot falling exactly
+  // on that day (at its own time) still counts as "on-or-after".
+  const anchor = new Date(toDate(newDate).getTime());
+  anchor.setHours(0, 0, 0, 0);
+  const from = new Date(anchor.getTime() - 1);
+
+  // Which slot yields the earliest date on-or-after the anchor? Start the
+  // cycle there so we don't skip a valid earlier weekday.
+  let startIdx = 0;
+  let best = Infinity;
+  for (let i = 0; i < slots.length; i++) {
+    const t = nextWeekdayAt(from, slots[i].weekday, slots[i].time).getTime();
+    if (t < best) {
+      best = t;
+      startIdx = i;
+    }
+  }
+
+  const out: string[] = [];
+  let cursor = new Date(from.getTime());
+  for (let i = 0; i < n; i++) {
+    const slot = slots[(startIdx + i) % slots.length];
+    const target = nextWeekdayAt(cursor, slot.weekday, slot.time);
+    out.push(target.toISOString());
+    cursor = new Date(target.getTime() + 1);
+  }
+  return out;
+}
+
+/**
  * Find the next occurrence of `weekday` at HH:mm on or after `from`. If
  * `from` is already that weekday at or before the target time, returns the
  * same day; otherwise advances 1–7 days.
  */
 function nextWeekdayAt(from: Date, weekday: number, time: string): Date {
-  let day = from.getDay();
-  let delta = (weekday - day + 7) % 7;
+  const day = from.getDay();
+  const delta = (weekday - day + 7) % 7;
   let candidate = new Date(from.getTime() + delta * DAY_MS);
   candidate = applyTime(candidate, time);
   if (candidate.getTime() <= from.getTime()) {

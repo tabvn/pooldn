@@ -15,10 +15,15 @@ import { TabEditor } from "./tab-editor";
  */
 export default async function EditCompetitionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const { slug } = await params;
+  // The create flow sends the organizer here with ?tab=participants; plain
+  // edits omit it and open on Details (the TabEditor default).
+  const { tab: initialTab } = await searchParams;
   const viewer = await requireViewer({
     next: `/competitions/${slug}/edit`,
     roles: ["ORGANIZER", "SUPER_ADMIN"],
@@ -36,6 +41,7 @@ export default async function EditCompetitionPage({
   return (
     <div className="min-h-full">
       <TabEditor
+        initialTab={initialTab}
         initial={{
           id: c.id,
           slug: c.slug,
@@ -44,6 +50,7 @@ export default async function EditCompetitionPage({
           format: c.format ?? "ROUND_ROBIN",
           gameType: c.gameType ?? "EIGHT_BALL",
           type: c.type ?? "TEAMS",
+          description: c.description ?? null,
           startDate: c.startDate ?? null,
           prizePool: c.prizePool ?? null,
           currency: c.currency ?? "VND",

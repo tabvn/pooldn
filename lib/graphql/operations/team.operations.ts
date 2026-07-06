@@ -33,6 +33,7 @@ export const MyTeamsQuery = graphql(/* GraphQL */ `
   query MyTeams {
     viewer {
       id
+      role
     }
     myTeams {
       id
@@ -66,8 +67,6 @@ export const TeamDetailQuery = graphql(/* GraphQL */ `
       isActive
       bannedAt
       banReason
-      isFollowing
-      followerCount
       createdAt
       myInvitation {
         id

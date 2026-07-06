@@ -5,7 +5,9 @@ test.describe("Teams directory", () => {
     page,
   }) => {
     await page.goto("/teams");
-    await expect(page.getByRole("heading", { name: "Teams" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /^Teams( in .+)?$/ }),
+    ).toBeVisible();
 
     // Click the card body via the test-id Link wrapper. We want to assert
     // the URL actually changes — a passing test that uses getByText().click()
@@ -58,12 +60,12 @@ test.describe("Venues directory", () => {
 });
 
 test.describe("Community", () => {
-  test("renders the feed page (signed-out CTA)", async ({ page }) => {
+  test("renders the player directory", async ({ page }) => {
     await page.goto("/community");
     await expect(
       page.getByRole("heading", { name: "Community" }),
     ).toBeVisible();
-    // Signed-out viewers see the sign-in prompt in the compose strip.
-    await expect(page.getByText(/sign in to post/i)).toBeVisible();
+    // Community is now just the city player directory.
+    await expect(page.getByTestId("community-players")).toBeVisible();
   });
 });

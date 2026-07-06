@@ -39,6 +39,8 @@ export function ApplicationDetailDialog({
   triggerVariant = "secondary",
   triggerIcon,
   triggerClassName,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   applicationId: string;
   /** When provided, the sheet title reads "{teamName} roster" instead of the
@@ -54,8 +56,14 @@ export function ApplicationDetailDialog({
   triggerVariant?: "primary" | "secondary" | "ghost";
   triggerIcon?: ReactNode;
   triggerClassName?: string;
+  /** Controlled open state — pass with `triggerLabel={null}` to drive the
+   *  sheet from an external control (e.g. a kebab dropdown item). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const icon = triggerIcon ?? <Eye className="size-4" />;
   const title = teamName ? `${teamName} roster` : "Roster";
   const description = competitionName

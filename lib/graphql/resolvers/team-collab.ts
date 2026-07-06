@@ -262,7 +262,9 @@ builder.mutationFields((t) => ({
           teamId_userId: { teamId, userId: ctx.viewer.id },
         },
       });
-      if (existingMember) {
+      // Only an ACTIVE membership blocks a request. A member who left leaves
+      // behind a soft-deleted (isActive=false) row — they may re-request.
+      if (existingMember?.isActive) {
         throw new GraphQLError("You're already on this team", {
           extensions: { code: "ALREADY_MEMBER" },
         });
@@ -331,11 +333,19 @@ builder.mutationFields((t) => ({
           },
         });
         if (args.approve) {
+          // A returning member has a soft-deleted (isActive=false) row — an
+          // empty update would leave them inactive, so reactivate it and
+          // clear the leave metadata. A brand-new member is created active.
           await tx.teamMember.upsert({
             where: {
               teamId_userId: { teamId: req.teamId, userId: req.userId },
             },
-            update: {},
+            update: {
+              isActive: true,
+              leftAt: null,
+              leaveReason: null,
+              joinedAt: new Date(),
+            },
             create: { teamId: req.teamId, userId: req.userId },
           });
         }

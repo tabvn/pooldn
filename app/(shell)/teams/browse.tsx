@@ -119,7 +119,7 @@ export function TeamsBrowse({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4">
           {shown.map((t) => (
             <Link
               key={t.id}

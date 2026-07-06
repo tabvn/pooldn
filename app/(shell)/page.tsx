@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { Pencil, Plus } from "lucide-react";
-import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { CompetitionRowCard } from "@/components/competition/competition-row-card";
 import { TodayMatchCard } from "@/components/dashboard/today-match-card";
 import { getClient } from "@/lib/apollo/client";
@@ -51,9 +49,6 @@ export default async function PoolhubDashboard() {
   };
   const upcoming = [...(data?.upcoming ?? [])].sort(bySoonestStart);
   const active = [...(data?.active ?? [])].sort(bySoonestStart);
-  const followedComps = data?.myFollowedCompetitions ?? [];
-  const followedTeams = data?.myFollowedTeams ?? [];
-  const hasFollowing = followedComps.length > 0 || followedTeams.length > 0;
   // Round-57 — surface DRAFT comps the viewer is organizing so they can
   // resume editing without hunting through /competitions. Filter from
   // the broader `myCompetitions` so we don't add a new resolver.
@@ -208,50 +203,6 @@ export default async function PoolhubDashboard() {
         )}
       </section>
 
-      {/* Following */}
-      {viewer && hasFollowing ? (
-        <section className="space-y-3" data-testid="dashboard-following">
-          <SectionHeader title="Following" />
-          {followedComps.length > 0 ? (
-            <div className="space-y-2.5">
-              {followedComps.slice(0, 3).map((c) => (
-                <CompetitionRowCard key={c.id} c={c} />
-              ))}
-            </div>
-          ) : null}
-          {followedTeams.length > 0 ? (
-            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-              {followedTeams.slice(0, 6).map((t) => (
-                <Link
-                  key={t.id}
-                  href={`/teams/${t.slug}`}
-                  data-testid={`followed-team-${t.slug}`}
-                >
-                  <Card className="transition-colors hover:border-primary/40">
-                    <CardContent className="flex items-center gap-3 py-3">
-                      <Avatar
-                        size="sm"
-                        src={t.logoUrl ?? undefined}
-                        fallback={t.name}
-                        shape="team"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-semibold">
-                          {t.name}
-                        </div>
-                        <div className="truncate text-xs text-muted-foreground">
-                          @{t.captain.username} · {t.members.length} member
-                          {t.members.length === 1 ? "" : "s"}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
-            </div>
-          ) : null}
-        </section>
-      ) : null}
     </div>
   );
 }

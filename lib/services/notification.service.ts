@@ -109,22 +109,6 @@ export function notificationDeeplink(n: {
       return n.entitySlug ? `/teams/${n.entitySlug}` : null;
     case "USER":
       return n.entitySlug ? `/profile/${n.entitySlug}` : null;
-    case "COMMUNITY_POST": {
-      if (!n.entityId) return "/community";
-      // Round-A4 — if the notification was emitted from a specific comment
-      // (e.g. a reply/mention on a comment), include ?c=<commentId> so the
-      // permalink view scroll-highlights it on landing.
-      const commentId =
-        typeof n.metadata === "object" &&
-        n.metadata &&
-        "commentId" in (n.metadata as Record<string, unknown>) &&
-        typeof (n.metadata as { commentId?: unknown }).commentId === "string"
-          ? (n.metadata as { commentId: string }).commentId
-          : null;
-      return commentId
-        ? `/community/${n.entityId}?c=${commentId}`
-        : `/community/${n.entityId}`;
-    }
     default:
       return null;
   }

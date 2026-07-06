@@ -26,7 +26,10 @@ export function TabNav({
     <nav
       className={cn(
         "items-center gap-1 rounded-lg bg-secondary/50 p-1",
-        fullWidth ? "flex w-full" : "inline-flex",
+        // Mobile-friendly: scroll the row horizontally instead of squishing or
+        // wrapping the tabs. Scrollbar is hidden — touch/trackpad scroll it.
+        "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        fullWidth ? "flex w-full" : "inline-flex max-w-full",
       )}
     >
       {items.map((item) => {
@@ -41,8 +44,10 @@ export function TabNav({
             href={item.href}
             data-selected={isActive || undefined}
             className={cn(
-              "inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-4 text-sm font-semibold transition-colors",
-              fullWidth && "flex-1",
+              "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-4 text-sm font-semibold transition-colors",
+              // fullWidth stretches tabs into equal slices on desktop; on
+              // mobile they keep their natural width and the row scrolls.
+              fullWidth && "md:flex-1 md:shrink",
               isActive
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:text-foreground",

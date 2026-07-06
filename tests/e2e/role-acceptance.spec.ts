@@ -69,10 +69,9 @@ test.describe("Role acceptance · Captain", () => {
     await expect(
       page.getByRole("link", { name: /apply with my team/i }),
     ).toBeVisible();
-    await page.goto("/teams/hai-crew/manage");
-    // Manage page eyebrow "Manage roster" appears above the team heading.
-    await expect(page.getByText(/manage roster/i).first()).toBeVisible();
-    // Invite + join requests sections exist (round-12 TASK 3).
+    // Round-66 — player management lives on the Players tab now.
+    await page.goto("/teams/hai-crew/players");
+    // Invite + join requests sections show for the captain.
     await expect(page.getByTestId("invite-card")).toBeVisible();
     await expect(page.getByTestId("join-requests-card")).toBeVisible();
   });

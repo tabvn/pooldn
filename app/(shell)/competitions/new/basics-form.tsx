@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation } from "@apollo/client/react";
-import { Check, Info } from "lucide-react";
+import { Check, Info, Trophy } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -99,6 +99,7 @@ const schema = z.object({
   ]),
   startDate: z.string().min(1, "Pick a start date"),
   prizePool: z.string().optional(),
+  currency: z.string(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -134,6 +135,7 @@ export function BasicsForm() {
       format: "ROUND_ROBIN",
       startDate: "",
       prizePool: "",
+      currency: "VND",
     },
   });
 
@@ -167,13 +169,16 @@ export function BasicsForm() {
             format: values.format,
             startDate,
             prizePool: values.prizePool?.trim() || null,
+            currency: values.currency,
           },
         },
       });
       const created = result.data?.createCompetition;
       if (!created) throw new Error("Could not create competition");
       toast.success("Competition Draft has been created");
-      router.push(`/competitions/${created.slug}/edit`);
+      // Details are prefilled from this form, so land the organizer on the
+      // Participants tab to continue setup. (Editing later opens on Details.)
+      router.push(`/competitions/${created.slug}/edit?tab=participants`);
       router.refresh();
     } catch (e) {
       toast.error(
@@ -315,14 +320,29 @@ export function BasicsForm() {
           />
         </Field>
 
-        {/* Prize */}
+        {/* Prize + currency — same control as the Edit competition Details tab. */}
         <Field label="Prize (Optional)">
-          <input
-            {...register("prizePool")}
-            placeholder="Prize Info (money or gifts)"
-            className="block w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-            data-testid="basics-prize"
-          />
+          <div className="flex items-stretch gap-2">
+            <div className="flex flex-1 items-center gap-2 rounded-md border border-border bg-background px-3">
+              <Trophy className="size-4 text-muted-foreground" />
+              <input
+                {...register("prizePool")}
+                inputMode="numeric"
+                placeholder="e.g. 10,000,000"
+                className="block w-full bg-transparent py-2 text-sm outline-none"
+                data-testid="basics-prize"
+              />
+            </div>
+            <select
+              {...register("currency")}
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+              data-testid="basics-currency"
+            >
+              <option value="VND">VND</option>
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+            </select>
+          </div>
         </Field>
 
         {/* After-creating helper */}

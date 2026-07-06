@@ -55,24 +55,3 @@ export function findUserById(
     ...(select ? { select } : {}),
   }) as Promise<User | null>;
 }
-
-export function findUserByUsername(
-  prisma: PrismaClient,
-  username: string,
-  select?: Prisma.UserSelect,
-): Promise<User | null> {
-  return prisma.user.findUnique({
-    where: { username },
-    ...(select ? { select } : {}),
-  }) as Promise<User | null>;
-}
-
-export function listUsers(
-  prisma: PrismaClient,
-  select?: Prisma.UserSelect,
-): Promise<User[]> {
-  return prisma.user.findMany({
-    orderBy: { createdAt: "desc" },
-    ...(select ? { select } : {}),
-  }) as Promise<User[]>;
-}

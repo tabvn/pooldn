@@ -116,8 +116,6 @@ export const CompetitionHeaderQuery = graphql(/* GraphQL */ `
       matchVenueMode
       applicationMode
       viewerCanApply
-      isFollowing
-      followerCount
       pendingReviewCount
       approvedTeamCount
       myTeamApplication {
@@ -249,6 +247,7 @@ export const CompetitionMatchdaysQuery = graphql(/* GraphQL */ `
         id
         number
         label
+        note
         scheduledDate
         matches {
           id
@@ -260,11 +259,13 @@ export const CompetitionMatchdaysQuery = graphql(/* GraphQL */ `
             id
             name
             slug
+            logoUrl
           }
           awayTeam {
             id
             name
             slug
+            logoUrl
           }
           venue {
             id

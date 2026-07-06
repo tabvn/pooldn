@@ -9,7 +9,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Flag,
   Gavel,
   Lightbulb,
   Mail,
@@ -294,11 +293,6 @@ const ADMIN_ITEMS: AdminItem[] = [
     href: "/admin/feedback",
     label: "Feedback",
     icon: <Lightbulb className="size-5" />,
-  },
-  {
-    href: "/admin/reports",
-    label: "Reports",
-    icon: <Flag className="size-5" />,
   },
   {
     href: "/admin/score-submissions",

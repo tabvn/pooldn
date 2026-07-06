@@ -72,7 +72,9 @@ builder.queryFields((t) => ({
           isActive: true,
           OR: [
             { captainId: ctx.viewer.id },
-            { members: { some: { userId: ctx.viewer.id } } },
+            // Active memberships only — a member who left (isActive=false)
+            // must drop out of "My Teams".
+            { members: { some: { userId: ctx.viewer.id, isActive: true } } },
           ],
         },
         orderBy: [{ captainId: "desc" }, { name: "asc" }],

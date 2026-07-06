@@ -2,14 +2,11 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { flagEmoji } from "@/components/ui/country-flag";
 import { LocalDateTime } from "@/components/ui/local-datetime";
 import { RelativeTime } from "@/components/ui/relative-time";
-import { Users } from "lucide-react";
-import { BanUserButton } from "@/components/admin/ban-user-button";
-import { FollowButton } from "@/components/follow-button";
+import { ProfileActionsMenu } from "@/components/profile/profile-actions-menu";
 import { DetailHero } from "@/components/layout/detail-hero";
 import { getClient } from "@/lib/apollo/client";
 import { getViewer } from "@/lib/auth/server";
@@ -33,14 +30,10 @@ export default async function ProfilePage({
   const user = data?.userByUsername;
   if (!user) notFound();
 
-  // Self OR admin can drive the Edit affordance (Round-15 admin rule).
+  // Self OR admin can drive the Edit/moderation affordances (Round-15 admin
+  // rule). The kebab menu decides which items to show from these flags.
   const isSelf = viewer?.id === user.id;
   const isAdmin = viewer?.role === "SUPER_ADMIN";
-  const canEdit = isSelf || isAdmin;
-  // user.createdAt is stable across server/client (it's a fixed UTC instant),
-  // but the *formatted* string depends on tz/locale. Render via the client
-  // LocalDateTime helper to stay hydration-clean.
-  void user.createdAt;
 
   return (
     <div className="flex flex-col">
@@ -58,66 +51,18 @@ export default async function ProfilePage({
           />
         }
         actions={
-          <>
-            {/* Round-50 — surface following count separately from the
-                follower chip the button renders. Both link to their list
-                pages so the audience can drill into either side. */}
-            <Link
-              href={`/players/${user.username}/following`}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-semibold text-muted-foreground hover:border-primary/50 hover:text-foreground"
-              data-testid="following-count-link"
-            >
-              <Users className="size-3.5" />
-              {user.followingCount} following
-            </Link>
-            {isSelf ? (
-              <Link
-                href={`/players/${user.username}/followers`}
-                className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-semibold text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                data-testid="self-followers-count-link"
-              >
-                <Users className="size-3.5" />
-                {user.followerCount} followers
-              </Link>
-            ) : null}
-            {!isSelf ? (
-              <FollowButton
-                entityType="USER"
-                entityId={user.id}
-                isFollowing={user.isFollowing}
-                followerCount={user.followerCount}
-                followersHref={`/players/${user.username}/followers`}
-                signedIn={!!viewer}
-              />
-            ) : null}
-            {canEdit ? (
-              isSelf ? (
-                <Link href="/settings">
-                  <Button variant="outline">Edit profile</Button>
-                </Link>
-              ) : (
-                <Link href={`/admin/players/${user.username}/edit`}>
-                  <Button variant="outline" data-testid="admin-edit-player">
-                    Edit player (admin)
-                  </Button>
-                </Link>
-              )
-            ) : null}
-            {isAdmin && !isSelf ? (
-              <BanUserButton
-                userId={user.id}
-                userName={user.name}
-                bannedAt={user.bannedAt ?? null}
-              />
-            ) : null}
-          </>
+          <ProfileActionsMenu
+            userId={user.id}
+            username={user.username}
+            userName={user.name}
+            bannedAt={user.bannedAt ?? null}
+            isSelf={isSelf}
+            isAdmin={isAdmin}
+          />
         }
         meta={
           <>
             <span>@{user.username}</span>
-            {/* Round-54 — dropped Level + Rank chips with the rating
-                system; profile meta is just role + banned status now. */}
-            <Badge variant="primary">{user.role.replace(/_/g, " ")}</Badge>
             {user.bannedAt ? (
               <Badge variant="danger" data-testid="profile-banned-badge">
                 Banned
@@ -132,53 +77,47 @@ export default async function ProfilePage({
                 {user.city.name}, {user.city.country.name}
               </span>
             ) : null}
-            <span
+          </>
+        }
+      />
+      <div className="mx-auto w-full max-w-5xl space-y-8 px-6 py-6 md:px-10">
+        {/* About card — full width. The hero above carries the avatar, name,
+            @username, meta and actions, so this card is just the bio (+ the
+            viewer's own email + join date). */}
+        <Card data-testid="player-about-card">
+          <CardHeader>
+            <CardTitle>About</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {user.bio ? (
+              <p className="text-foreground">{user.bio}</p>
+            ) : (
+              <p className="italic text-muted-foreground">
+                {isSelf
+                  ? "Your bio is empty — tell people who you are."
+                  : "This player hasn't written a bio yet."}
+              </p>
+            )}
+            {isSelf ? (
+              <div className="text-xs">
+                <span className="text-muted-foreground">Email · </span>
+                <span className="font-mono">{user.email}</span>
+              </div>
+            ) : null}
+            <p
+              className="text-xs text-muted-foreground"
               title={new Date(user.createdAt).toLocaleDateString()}
               data-testid="profile-joined-at"
             >
               Joined <RelativeTime value={user.createdAt} /> ·{" "}
               <LocalDateTime value={user.createdAt} variant="date" />
-            </span>
-          </>
-        }
-      />
-      <div className="mx-auto w-full max-w-5xl space-y-8 px-6 py-6 md:px-10">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {/* About card. The hero above carries the avatar, name, @username,
-              meta and actions, so this card is just the bio (+ the viewer's
-              own email). */}
-          <Card className="md:col-span-2" data-testid="player-about-card">
-            <CardHeader>
-              <CardTitle>About</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {user.bio ? (
-                <p className="text-foreground">{user.bio}</p>
-              ) : (
-                <p className="italic text-muted-foreground">
-                  {isSelf
-                    ? "Your bio is empty — tell people who you are."
-                    : "This player hasn't written a bio yet."}
-                </p>
-              )}
-              {isSelf ? (
-                <div className="text-xs">
-                  <span className="text-muted-foreground">Email · </span>
-                  <span className="font-mono">{user.email}</span>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
+            </p>
+          </CardContent>
+        </Card>
 
-          {/* Round-54 — Rating card removed with the rating system. We'll
-              add a points card back once the new scoring model lands. */}
-        </div>
-
-        {/* Round-50 — Teams strip. Horizontal-scrolling card row so the
-            page handles users in many teams without ballooning. Captain
-            badge on teams the user captains, member count on the rest.
-            "+N more" tail card links to a richer view if there are more
-            than the limit (currently the strip caps at 8). */}
+        {/* Teams — full-width stacked cards. Captain badge on teams the user
+            captains, member count on the rest. "+N more" tail links to a
+            richer view if there are more than the limit (caps at 8). */}
         {user.teams.length > 0 ? (
           <section
             className="space-y-3"
@@ -192,14 +131,14 @@ export default async function ProfilePage({
                 {user.teamsCount}
               </Badge>
             </header>
-            <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory">
+            <div className="space-y-2">
               {user.teams.map((t) => {
                 const isCaptain = t.captain.id === user.id;
                 return (
                   <Link
                     key={t.id}
                     href={`/teams/${t.slug}`}
-                    className="flex w-60 shrink-0 snap-start flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40"
+                    className="flex w-full flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40"
                     data-testid={`player-team-${t.id}`}
                   >
                     <div className="flex items-center gap-3">
@@ -231,7 +170,7 @@ export default async function ProfilePage({
               })}
               {user.teamsCount > user.teams.length ? (
                 <div
-                  className="flex w-40 shrink-0 snap-start items-center justify-center rounded-xl border border-dashed border-border bg-card/40 text-xs text-muted-foreground"
+                  className="flex w-full items-center justify-center rounded-xl border border-dashed border-border bg-card/40 p-3 text-xs text-muted-foreground"
                   data-testid="player-teams-more"
                 >
                   +{user.teamsCount - user.teams.length} more

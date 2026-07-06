@@ -4,7 +4,6 @@ import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@apollo/client/react";
 import { Mail, Search, UserPlus } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { Input } from "@/components/ui/input";
 import { UsersDirectoryQuery } from "@/lib/graphql/operations/team-mutations.operations";

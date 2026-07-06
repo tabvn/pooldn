@@ -59,6 +59,16 @@ function pickMessage(body: { errors?: Array<{ message?: string }> }) {
 }
 
 test.describe("rate-limit · auth", () => {
+  // The bulk e2e run sets RATE_LIMIT_DISABLED=1 (the suite logs in 100+ times
+  // from localhost, which would otherwise trip the limits). These tests verify
+  // the limiter actually fires, so they can't run with it disabled — skip
+  // them in that mode. Run `RATE_LIMIT_DISABLED= yarn test:e2e rate-limit-auth`
+  // to exercise them.
+  test.skip(
+    process.env.RATE_LIMIT_DISABLED === "1",
+    "rate limiting disabled for the bulk e2e run",
+  );
+
   test("login: 11th attempt against the same identifier is RATE_LIMITED", async ({
     request,
   }) => {

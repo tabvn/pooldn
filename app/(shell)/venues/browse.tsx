@@ -41,7 +41,7 @@ export function VenuesBrowse({ venues }: { venues: Venue[] }) {
         onChange={setQ}
         placeholder="Search venues…"
         testId="venues-search"
-        className="max-w-md"
+        className="w-full"
       />
 
       {filtered.length === 0 ? (
@@ -68,7 +68,6 @@ export function VenuesBrowse({ venues }: { venues: Venue[] }) {
                 </CardHeader>
                 <CardContent className="space-y-1 text-sm">
                   <div className="text-muted-foreground">{v.address}</div>
-                  <div className="text-muted-foreground">{v.city.name}</div>
                   {v.tableCount ? (
                     <Badge variant="primary" size="sm">
                       {v.tableCount} tables

@@ -82,10 +82,10 @@ export function CaptainJoinRequestsPanel({
             </Badge>
           </CardTitle>
           <Link
-            href={`/teams/${teamSlug}/manage`}
+            href={`/teams/${teamSlug}/players`}
             className="text-xs text-primary hover:underline"
           >
-            Manage roster →
+            Manage players →
           </Link>
         </div>
       </CardHeader>

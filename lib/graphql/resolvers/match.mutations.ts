@@ -33,6 +33,21 @@ async function composeDuoLabel(
   return ids.map((id) => byId.get(id) ?? "?").join(" & ");
 }
 
+// Round-60 — a block is "published" once BOTH sides have submitted their
+// lineup for it; only then can its frames' winners be recorded.
+async function blockIsPublished(
+  tx: import("@/lib/generated/prisma/client").PrismaClient | Parameters<Parameters<import("@/lib/generated/prisma/client").PrismaClient["$transaction"]>[0]>[0],
+  matchId: string,
+  blockOrder: number,
+): Promise<boolean> {
+  const rows = await tx.matchBlockLineup.findMany({
+    where: { matchId, blockOrder },
+    select: { side: true },
+  });
+  const sides = new Set(rows.map((r) => r.side));
+  return sides.has("HOME") && sides.has("AWAY");
+}
+
 async function loadMatchForAdmin(
   ctx: import("../context").GraphQLContext,
   matchId: string,
@@ -64,11 +79,52 @@ builder.mutationFields((t) => ({
       requireUser(ctx.viewer);
       const match = await ctx.prisma.match.findUniqueOrThrow({
         where: { id: String(args.input.matchId) },
+        include: {
+          homeTeam: { select: { captainId: true } },
+          awayTeam: { select: { captainId: true } },
+          matchday: {
+            select: { competition: { select: { id: true, organizerId: true } } },
+          },
+        },
       });
-      ensure(ctx.ability, "update", {
-        ...match,
-        __caslSubjectType__: "Match",
+      // Round-60 — authorize a frame winner the same way as the lineup +
+      // walkover paths: Team Captain / per-comp Roster Captain, organizer, or
+      // admin. (CASL's relation conditions can't match against an unpopulated
+      // match row, which is why this uses the explicit helper.)
+      const isOrganizer =
+        match.matchday.competition.organizerId === ctx.viewer.id;
+      const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
+      const isCaptain =
+        (await findCaptainSide(ctx, match, ctx.viewer.id)) !== null;
+      if (!isOrganizer && !isCaptain && !isAdmin) {
+        throw new GraphQLError("Only a captain or organizer may record a frame", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+      // Round-60 — a frame's winner can only be set once its block's lineup is
+      // published (both captains submitted). Skip for legacy/INDIVIDUAL frames
+      // that have no blockOrder.
+      const targetFrame = await ctx.prisma.matchFrame.findUnique({
+        where: {
+          matchId_frameNumber: {
+            matchId: match.id,
+            frameNumber: args.input.frameNumber,
+          },
+        },
+        select: { blockOrder: true },
       });
+      if (targetFrame?.blockOrder != null) {
+        const published = await blockIsPublished(
+          ctx.prisma,
+          match.id,
+          targetFrame.blockOrder,
+        );
+        if (!published) {
+          throw new GraphQLError("This block's lineup isn't published yet", {
+            extensions: { code: "INVALID_TRANSITION" },
+          });
+        }
+      }
       const frame = await ctx.prisma.matchFrame.upsert({
         ...query,
         where: {
@@ -92,6 +148,15 @@ builder.mutationFields((t) => ({
           breakAndRun: args.input.breakAndRun ?? false,
         },
       });
+      // Round-60 — first recorded frame flips the match to IN_PROGRESS so the
+      // scoreboard reads "In Progress" (matches Figma). Completion still only
+      // happens via the dual-captain score submission.
+      if (match.status === "SCHEDULED") {
+        await ctx.prisma.match.update({
+          where: { id: match.id },
+          data: { status: "IN_PROGRESS", startedAt: match.startedAt ?? new Date() },
+        });
+      }
       // Live: notify everyone watching this match. Standings don't move on
       // a frame change (only on full-match completion), so we don't publish
       // a standings event here.
@@ -212,11 +277,12 @@ builder.mutationFields((t) => ({
   submitLineup: t.prismaField({
     type: "Match",
     description:
-      "A captain submits their lineup for a match. The opponent's lineup stays hidden until BOTH sides submit (Round-14 gating).",
+      "Round-60 — a captain submits their lineup for ONE block. Blocks are played in order: a block's frames unlock for winner entry once BOTH sides submit it; the next block can only be submitted after the previous block is fully decided. A side may freely re-submit its own block until the opponent submits the same block.",
     args: { input: t.arg({ type: SubmitLineupInput, required: true }) },
     resolve: async (query, _root, args, ctx) => {
       requireUser(ctx.viewer);
       const matchId = String(args.input.matchId);
+      const blockOrder = args.input.blockOrder;
       const match = await ctx.prisma.match.findUniqueOrThrow({
         where: { id: matchId },
         include: {
@@ -237,6 +303,11 @@ builder.mutationFields((t) => ({
           matchday: { select: { competitionId: true, competition: { select: { id: true, slug: true } } } },
         },
       });
+      if (match.status === "COMPLETED") {
+        throw new GraphQLError("This match is already complete", {
+          extensions: { code: "INVALID_TRANSITION" },
+        });
+      }
       // Round-48 — accept Team Captain OR per-competition Roster Captain.
       const side = await findCaptainSide(ctx, match, ctx.viewer.id);
       if (!side && ctx.viewer.role !== "SUPER_ADMIN") {
@@ -244,17 +315,32 @@ builder.mutationFields((t) => ({
           extensions: { code: "FORBIDDEN" },
         });
       }
+      const sideUpper: "HOME" | "AWAY" = side === "home" ? "HOME" : "AWAY";
+      // Lineups are limited to the roster the team locked in when it applied
+      // to THIS competition, not the full team membership. Fall back to team
+      // members only when no competition roster was captured (legacy data).
+      const teamId = side === "home" ? match.homeTeam?.id : match.awayTeam?.id;
+      const compRoster = teamId
+        ? await ctx.prisma.competitionRoster.findMany({
+            where: { competitionId: match.matchday.competitionId, teamId },
+            select: { userId: true },
+          })
+        : [];
       const teamMembers =
         side === "home"
           ? match.homeTeam?.members ?? []
           : match.awayTeam?.members ?? [];
-      const allowedIds = new Set(teamMembers.map((m) => m.userId));
+      const allowedIds = new Set(
+        compRoster.length > 0
+          ? compRoster.map((r) => r.userId)
+          : teamMembers.map((m) => m.userId),
+      );
       for (const slot of args.input.slots) {
         for (const pid of [slot.playerId, slot.partnerPlayerId]) {
           if (!pid) continue;
           const id = String(pid);
           if (!allowedIds.has(id) && ctx.viewer.role !== "SUPER_ADMIN") {
-            throw new GraphQLError("Player isn't on this team's roster", {
+            throw new GraphQLError("Player isn't on this team's competition roster", {
               extensions: { code: "BAD_USER_INPUT" },
             });
           }
@@ -270,51 +356,84 @@ builder.mutationFields((t) => ({
         }
       }
 
-      // Block edits once BOTH sides have submitted.
-      const otherSideSubmitted =
-        (side === "home" ? match.awayLineupSubmittedAt : match.homeLineupSubmittedAt) !== null;
-      const ourSideSubmitted =
-        (side === "home" ? match.homeLineupSubmittedAt : match.awayLineupSubmittedAt) !== null;
-      if (ourSideSubmitted && otherSideSubmitted) {
-        throw new GraphQLError("Both lineups are locked", {
+      // Round-60 — once BOTH sides have submitted THIS block it's locked
+      // (re-open via the edit-request flow). A side may still re-submit its
+      // own block while the opponent hasn't.
+      const blockRows = await ctx.prisma.matchBlockLineup.findMany({
+        where: { matchId: match.id, blockOrder },
+        select: { side: true },
+      });
+      const existingSides = new Set(blockRows.map((r) => r.side));
+      if (existingSides.has("HOME") && existingSides.has("AWAY")) {
+        throw new GraphQLError("This block's lineup is locked", {
           extensions: { code: "INVALID_TRANSITION" },
         });
       }
+      const otherSideSubmitted = existingSides.has(
+        sideUpper === "HOME" ? "AWAY" : "HOME",
+      );
 
-      return ctx.prisma.$transaction(async (tx) => {
+      const result = await ctx.prisma.$transaction(async (tx) => {
         await scaffoldMatchFramesFromStructure(tx, match.id);
-        // Round-50 — once the scaffold is in place each frame has a known
-        // blockType. New rule: a player can hold AT MOST one SINGLES slot
-        // AND at most one DOUBLES/SCOTCH slot (so a singles player can
-        // also be a doubles partner, but not the singles for two games
-        // or the partner in two doubles couples).
-        const scaffoldedFrames = await tx.matchFrame.findMany({
+        const frames = await tx.matchFrame.findMany({
           where: { matchId: match.id },
-          select: { frameNumber: true, blockType: true },
+          select: {
+            frameNumber: true,
+            blockType: true,
+            blockOrder: true,
+            homeWon: true,
+            homePlayerId: true,
+            awayPlayerId: true,
+          },
         });
-        const blockTypeByFrame = new Map(
-          scaffoldedFrames.map((f) => [f.frameNumber, f.blockType]),
+        const blockFrames = frames.filter((f) => f.blockOrder === blockOrder);
+        if (blockFrames.length === 0) {
+          throw new GraphQLError("No such block in this match", {
+            extensions: { code: "BAD_USER_INPUT" },
+          });
+        }
+        const blockFrameNumbers = new Set(blockFrames.map((f) => f.frameNumber));
+
+        // (a) Sequential gate — every earlier block must be fully decided.
+        const earlierUndecided = frames.some(
+          (f) =>
+            f.blockOrder != null &&
+            f.blockOrder < blockOrder &&
+            f.homeWon === null,
         );
-        const seenSingles = new Set<string>();
-        const seenDoubles = new Set<string>();
+        if (earlierUndecided) {
+          throw new GraphQLError(
+            "Finish the previous block before submitting this one",
+            { extensions: { code: "INVALID_TRANSITION" } },
+          );
+        }
+
+        // (b) Slots must belong to this block.
         for (const slot of args.input.slots) {
-          const blockType = blockTypeByFrame.get(slot.frameNumber);
-          for (const pid of [slot.playerId, slot.partnerPlayerId]) {
-            if (!pid) continue;
-            const id = String(pid);
-            const isSingles = blockType === "SINGLES";
-            const set = isSingles ? seenSingles : seenDoubles;
-            if (set.has(id)) {
-              throw new GraphQLError(
-                isSingles
-                  ? "Player can't be in two singles frames"
-                  : "Player can't be in two doubles couples",
-                { extensions: { code: "BAD_USER_INPUT" } },
-              );
-            }
-            set.add(id);
+          if (!blockFrameNumbers.has(slot.frameNumber)) {
+            throw new GraphQLError(
+              "Lineup slot doesn't belong to this block",
+              { extensions: { code: "BAD_USER_INPUT" } },
+            );
           }
         }
+
+        // (c) Captains may assign any roster player to any games — there's no
+        // cap on how many singles/doubles a player appears in. The only guard
+        // is that a doubles couple can't be the same person twice (a slip, not
+        // a valid lineup).
+        for (const slot of args.input.slots) {
+          if (
+            slot.partnerPlayerId &&
+            String(slot.partnerPlayerId) === String(slot.playerId)
+          ) {
+            throw new GraphQLError(
+              "A doubles couple needs two different players",
+              { extensions: { code: "BAD_USER_INPUT" } },
+            );
+          }
+        }
+
         for (const slot of args.input.slots) {
           await tx.matchFrame.update({
             where: {
@@ -341,19 +460,26 @@ builder.mutationFields((t) => ({
                   },
           });
         }
-        const tsField =
-          side === "home" ? "homeLineupSubmittedAt" : "awayLineupSubmittedAt";
-        const idField =
-          side === "home" ? "homeLineupSubmittedById" : "awayLineupSubmittedById";
-        const updated = await tx.match.update({
-          ...query,
-          where: { id: match.id },
-          data: {
-            [tsField]: new Date(),
-            [idField]: ctx.viewer!.id,
-          } as never,
+
+        // Upsert this side's per-block submission (re-submit refreshes it).
+        await tx.matchBlockLineup.upsert({
+          where: {
+            matchId_side_blockOrder: {
+              matchId: match.id,
+              side: sideUpper,
+              blockOrder,
+            },
+          },
+          create: {
+            matchId: match.id,
+            side: sideUpper,
+            blockOrder,
+            submittedById: ctx.viewer!.id,
+          },
+          update: { submittedById: ctx.viewer!.id, submittedAt: new Date() },
         });
-        // Notify opponent captain (if not yet submitted).
+
+        // Notify opponent captain when they haven't submitted THIS block yet.
         if (!otherSideSubmitted) {
           const otherCaptain =
             side === "home"
@@ -362,20 +488,23 @@ builder.mutationFields((t) => ({
           if (otherCaptain) {
             await new NotificationService(tx).create({
               type: "MATCH_SCHEDULED",
-              title: "Opponent submitted lineup",
-              message: "Submit yours to unlock the match.",
+              title: "Opponent submitted a lineup",
+              message: "Submit yours to unlock these games.",
               recipients: [otherCaptain],
               entity: {
                 type: "MATCH",
                 id: match.id,
                 slug: match.matchday.competition.slug,
               },
-              groupKey: `lineup-${match.id}`,
+              groupKey: `lineup-${match.id}-block-${blockOrder}`,
             });
           }
         }
-        return updated;
+
+        return tx.match.findUniqueOrThrow({ ...query, where: { id: match.id } });
       });
+      publishMatchUpdate(matchId);
+      return result;
     },
   }),
 
@@ -410,6 +539,25 @@ builder.mutationFields((t) => ({
         throw new GraphQLError("Only a captain or organizer may mark a walkover", {
           extensions: { code: "FORBIDDEN" },
         });
+      }
+      // Round-60 — same published-block guard as recordMatchFrame.
+      const woFrame = await ctx.prisma.matchFrame.findUnique({
+        where: {
+          matchId_frameNumber: { matchId: match.id, frameNumber: args.frameNumber },
+        },
+        select: { blockOrder: true },
+      });
+      if (woFrame?.blockOrder != null) {
+        const published = await blockIsPublished(
+          ctx.prisma,
+          match.id,
+          woFrame.blockOrder,
+        );
+        if (!published) {
+          throw new GraphQLError("This block's lineup isn't published yet", {
+            extensions: { code: "INVALID_TRANSITION" },
+          });
+        }
       }
       return ctx.prisma.matchFrame.upsert({
         ...query,
@@ -729,11 +877,15 @@ builder.mutationFields((t) => ({
   requestLineupEdit: t.prismaField({
     type: "Match",
     description:
-      "Captain asks the opponent captain to re-open both lineups for editing. Only valid after both lineups are submitted and before the match starts.",
-    args: { matchId: t.arg.id({ required: true }) },
+      "Round-60 — captain asks the opponent to re-open ONE published block for editing. Valid only while that block is the current (not-yet-decided) block.",
+    args: {
+      matchId: t.arg.id({ required: true }),
+      blockOrder: t.arg.int({ required: true }),
+    },
     resolve: async (query, _root, args, ctx) => {
       requireUser(ctx.viewer);
       const matchId = String(args.matchId);
+      const blockOrder = args.blockOrder;
       const match = await ctx.prisma.match.findUniqueOrThrow({
         where: { id: matchId },
         include: {
@@ -751,14 +903,25 @@ builder.mutationFields((t) => ({
           extensions: { code: "FORBIDDEN" },
         });
       }
-      if (!match.homeLineupSubmittedAt || !match.awayLineupSubmittedAt) {
-        throw new GraphQLError("Both lineups must be submitted first", {
+      if (match.status === "COMPLETED") {
+        throw new GraphQLError("This match is already complete", {
           extensions: { code: "INVALID_TRANSITION" },
         });
       }
-      if (match.status !== "SCHEDULED") {
+      if (!(await blockIsPublished(ctx.prisma, match.id, blockOrder))) {
+        throw new GraphQLError("This block isn't published yet", {
+          extensions: { code: "INVALID_TRANSITION" },
+        });
+      }
+      // Can only re-open the CURRENT block (one whose frames aren't all
+      // decided) — a finished block stays locked so earlier results hold.
+      const blockFrames = await ctx.prisma.matchFrame.findMany({
+        where: { matchId: match.id, blockOrder },
+        select: { homeWon: true },
+      });
+      if (blockFrames.length > 0 && blockFrames.every((f) => f.homeWon !== null)) {
         throw new GraphQLError(
-          "Lineup edit requests aren't allowed once the match has started",
+          "This block is already finished and can't be re-opened",
           { extensions: { code: "INVALID_TRANSITION" } },
         );
       }
@@ -775,6 +938,7 @@ builder.mutationFields((t) => ({
             lineupEditRequestedById: ctx.viewer!.id,
             lineupEditRequestedAt: new Date(),
             lineupEditRequestedSide: side ?? "HOME",
+            lineupEditRequestedBlockOrder: blockOrder,
           },
         });
         const otherCaptain =
@@ -805,7 +969,7 @@ builder.mutationFields((t) => ({
   approveLineupEdit: t.prismaField({
     type: "Match",
     description:
-      "Opponent captain approves a pending lineup-edit request. Clears BOTH lineup-submitted timestamps so both sides can re-edit; player assignments stay so each side only adjusts what changed.",
+      "Opponent captain approves a pending lineup-edit request. Re-opens the requested block (deletes both sides' submission for it) so both re-submit; player assignments stay so each side only adjusts what changed.",
     args: { matchId: t.arg.id({ required: true }) },
     resolve: async (query, _root, args, ctx) => {
       requireUser(ctx.viewer);
@@ -834,18 +998,23 @@ builder.mutationFields((t) => ({
           extensions: { code: "FORBIDDEN" },
         });
       }
+      const reopenBlock = match.lineupEditRequestedBlockOrder;
       const updated = await ctx.prisma.$transaction(async (tx) => {
+        // Re-open the requested block: drop both sides' submission so each
+        // captain re-submits that block. Frame player assignments stay.
+        if (reopenBlock != null) {
+          await tx.matchBlockLineup.deleteMany({
+            where: { matchId: match.id, blockOrder: reopenBlock },
+          });
+        }
         const m = await tx.match.update({
           ...query,
           where: { id: match.id },
           data: {
-            homeLineupSubmittedAt: null,
-            homeLineupSubmittedById: null,
-            awayLineupSubmittedAt: null,
-            awayLineupSubmittedById: null,
             lineupEditRequestedAt: null,
             lineupEditRequestedById: null,
             lineupEditRequestedSide: null,
+            lineupEditRequestedBlockOrder: null,
           },
         });
         if (requester) {
@@ -853,7 +1022,7 @@ builder.mutationFields((t) => ({
             type: "MATCH_SCHEDULED",
             title: "Lineup edit approved",
             message:
-              "Both lineups re-opened — submit again when you're ready.",
+              "The block re-opened — submit your lineup again when you're ready.",
             recipients: [requester],
             entity: {
               type: "MATCH",
@@ -909,6 +1078,7 @@ builder.mutationFields((t) => ({
             lineupEditRequestedAt: null,
             lineupEditRequestedById: null,
             lineupEditRequestedSide: null,
+            lineupEditRequestedBlockOrder: null,
           },
         });
         if (requester) {

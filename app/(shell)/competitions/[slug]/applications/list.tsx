@@ -1,10 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { useMutation, useQuery } from "@apollo/client/react";
 import Link from "next/link";
+import { LogOut, MoreVertical, Pencil } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { CountryFlag } from "@/components/ui/country-flag";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -15,6 +24,8 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { ApplicationDetailDialog } from "@/components/competition/application-detail-dialog";
+import { ApplicationStatusChip } from "@/components/ui/status-chip";
+import type { ApplicationStatus } from "@/lib/generated/prisma/enums";
 import { LocalDateTime } from "@/components/ui/local-datetime";
 import {
   CompetitionApplicationsQuery,
@@ -23,7 +34,9 @@ import {
 import {
   InviteTeamsToCompetitionMutation,
   ReviewApplicationMutation,
+  WithdrawApplicationMutation,
 } from "@/lib/graphql/operations/competition-mutations.operations";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { BallMark } from "@/components/layout/sidebar-icons";
 import { InviteTeamsModal } from "./invite-teams-modal";
 
@@ -49,6 +62,7 @@ export function ApplicationsList({
   canManage?: boolean;
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const { data, refetch, loading: loadingApps } = useQuery(
     CompetitionApplicationsQuery,
     { variables: { slug } },
@@ -61,6 +75,9 @@ export function ApplicationsList({
   const [review, { loading }] = useMutation(ReviewApplicationMutation);
   const [reinvite, { loading: reinviting }] = useMutation(
     InviteTeamsToCompetitionMutation,
+  );
+  const [withdraw, { loading: withdrawing }] = useMutation(
+    WithdrawApplicationMutation,
   );
 
   const competition = data?.competition;
@@ -109,6 +126,82 @@ export function ApplicationsList({
     }
   }
 
+  // Organizer removes a confirmed team / cancels an invite, or an invited
+  // captain declines their own invitation — all withdrawApplication under the
+  // hood, differing only in the confirm copy + success toast.
+  const REMOVE_COPY = {
+    confirmed: {
+      title: (n: string) => `Remove ${n}?`,
+      description:
+        "The team is removed from the competition and its roster slots are freed. They can be invited or re-apply later.",
+      confirmLabel: "Remove team",
+      success: "Team removed",
+    },
+    invite: {
+      title: (n: string) => `Cancel invite to ${n}?`,
+      description: "The pending invitation is withdrawn.",
+      confirmLabel: "Cancel invite",
+      success: "Invitation cancelled",
+    },
+    decline: {
+      title: () => "Decline this invitation?",
+      description:
+        "Your team won't join this competition. The organizer can invite you again later.",
+      confirmLabel: "Decline invite",
+      success: "Invitation declined",
+    },
+    withdraw: {
+      title: (n: string) => `Withdraw ${n}?`,
+      description:
+        "Your team is removed from this competition and any locked roster slots are freed. You can re-apply later.",
+      confirmLabel: "Withdraw",
+      success: "Application withdrawn",
+    },
+  } as const;
+
+  async function removeEntry(
+    applicationId: string,
+    teamName: string,
+    kind: "confirmed" | "invite" | "decline" | "withdraw",
+  ) {
+    const c = REMOVE_COPY[kind];
+    const ok = await confirm({
+      title: c.title(teamName),
+      description: c.description,
+      confirmLabel: c.confirmLabel,
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await withdraw({ variables: { id: applicationId } });
+      toast.success(c.success);
+      await refetch();
+    } catch (e) {
+      toast.error(
+        "Couldn't complete that",
+        e instanceof Error ? e.message : "Try again.",
+      );
+    }
+  }
+
+  // Round-62 — the viewer's own outstanding invite (a captain whose team was
+  // invited). Drives the invite card shown on this tab.
+  const myInvite = viewer
+    ? invited.find((a) => a.team?.captain?.id === viewer.id) ?? null
+    : null;
+
+  // The viewer's own live application (a captain whose team applied / is
+  // confirmed). Drives the application card with withdraw + edit-roster.
+  const myApplication = viewer
+    ? applications.find(
+        (a) =>
+          a.team?.captain?.id === viewer.id &&
+          (a.status === "PENDING" ||
+            a.status === "WAITLISTED" ||
+            a.status === "APPROVED"),
+      ) ?? null
+    : null;
+
   // First load — avoid flashing the empty-state placeholder before the
   // applications query resolves (the list is client-rendered, so `data`
   // is undefined on the initial paint).
@@ -121,31 +214,66 @@ export function ApplicationsList({
     );
   }
 
-  // Round-60 — non-managers (public / other captains) only see who's
-  // confirmed; the review/invite tooling is organizer-only.
+  // Round-60/62 — non-managers (public / other captains) see who's confirmed,
+  // plus — if the viewer's own team was invited — an invite card at the top.
+  // The review/invite tooling stays organizer-only.
   if (!canManage) {
-    if (confirmed.length === 0) {
-      return (
-        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-card/40 px-6 py-16 text-center">
-          <BallMark className="size-14 text-primary drop-shadow-[0_0_16px_rgba(208,243,13,0.5)]" />
-          <div className="space-y-1">
-            <h2 className="text-lg font-semibold">No teams confirmed yet</h2>
-            <p className="text-sm text-muted-foreground">
-              Be the first — apply with your team.
-            </p>
-          </div>
-        </div>
-      );
-    }
     return (
       <div className="space-y-8">
-        <Section title="Confirmed Teams" count={confirmed.length} capacity={maxTeams}>
-          <AppTable
-            rows={confirmed}
-            lastColLabel="Roster"
-            renderLast={(app) => <RosterCell app={app} />}
+        {myInvite ? (
+          <InviteCard
+            app={myInvite}
+            slug={slug}
+            competitionName={competitionName}
+            onDecline={() =>
+              removeEntry(
+                myInvite.id,
+                myInvite.team?.name ?? "your team",
+                "decline",
+              )
+            }
+            declining={withdrawing}
           />
-        </Section>
+        ) : null}
+        {myApplication ? (
+          <ApplicationCard
+            app={myApplication}
+            competitionName={competitionName}
+            viewerId={viewer?.id ?? null}
+            viewerRole={viewer?.role ?? null}
+            onWithdraw={() =>
+              removeEntry(
+                myApplication.id,
+                myApplication.team?.name ?? "your team",
+                "withdraw",
+              )
+            }
+            withdrawing={withdrawing}
+          />
+        ) : null}
+        {confirmed.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-card/40 px-6 py-16 text-center">
+            <BallMark className="size-14 text-primary drop-shadow-[0_0_16px_rgba(208,243,13,0.5)]" />
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold">No teams confirmed yet</h2>
+              <p className="text-sm text-muted-foreground">
+                Be the first — apply with your team.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <Section
+            title="Confirmed Teams"
+            count={confirmed.length}
+            capacity={maxTeams}
+          >
+            <AppTable
+              rows={confirmed}
+              lastColLabel="Roster"
+              renderLast={(app) => <RosterCell app={app} />}
+            />
+          </Section>
+        )}
       </div>
     );
   }
@@ -190,14 +318,27 @@ export function ApplicationsList({
             renderLast={(app) => <RosterCell app={app} />}
             renderAction={(app) =>
               app.team ? (
-                <ApplicationDetailDialog
-                  applicationId={app.id}
-                  teamName={app.team.name}
-                  competitionName={competitionName}
-                  viewerId={viewer?.id ?? null}
-                  viewerRole={viewer?.role ?? null}
-                  triggerLabel="View"
-                />
+                <div className="flex items-center justify-end gap-2">
+                  <ApplicationDetailDialog
+                    applicationId={app.id}
+                    teamName={app.team.name}
+                    competitionName={competitionName}
+                    viewerId={viewer?.id ?? null}
+                    viewerRole={viewer?.role ?? null}
+                    triggerLabel="View"
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    loading={withdrawing}
+                    onClick={() =>
+                      removeEntry(app.id, app.team!.name, "confirmed")
+                    }
+                    data-testid={`remove-team-${app.id}`}
+                  >
+                    Remove
+                  </Button>
+                </div>
               ) : null
             }
           />
@@ -279,14 +420,25 @@ export function ApplicationsList({
             )}
             renderAction={(app) =>
               app.team ? (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  loading={reinviting}
-                  onClick={() => reinviteOne(app.team!.id)}
-                >
-                  Re-invite
-                </Button>
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={reinviting}
+                    onClick={() => reinviteOne(app.team!.id)}
+                  >
+                    Re-invite
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    loading={withdrawing}
+                    onClick={() => removeEntry(app.id, app.team!.name, "invite")}
+                    data-testid={`cancel-invite-${app.id}`}
+                  >
+                    Cancel
+                  </Button>
+                </div>
               ) : null
             }
           />
@@ -452,6 +604,191 @@ function AppTable({
         })}
       </TableBody>
     </Table>
+  );
+}
+
+// Round-62 — the invite card a captain sees on the Applications tab when
+// their team has an outstanding invitation. Shows the invited team and the
+// accept / decline actions. The team is fixed (the invite was sent to it),
+// so Accept lands on the apply form pre-locked to this team.
+function InviteCard({
+  app,
+  slug,
+  competitionName,
+  onDecline,
+  declining,
+}: {
+  app: AnyApp;
+  slug: string;
+  competitionName?: string;
+  onDecline: () => void;
+  declining: boolean;
+}) {
+  const team = app.team;
+  if (!team) return null;
+  return (
+    <section
+      className="rounded-2xl border border-primary/40 bg-primary/5 p-5"
+      data-testid="competition-invite-card"
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <Avatar
+            size="lg"
+            src={team.logoUrl ?? undefined}
+            fallback={team.name}
+            shape="team"
+          />
+          <div className="min-w-0">
+            <div className="text-xs font-semibold uppercase tracking-wider text-primary">
+              You&rsquo;re invited
+            </div>
+            <div className="truncate text-lg font-semibold">{team.name}</div>
+            <div className="text-sm text-muted-foreground">
+              {team.captain.name}
+              <CountryFlag
+                code={team.captain.nationality}
+                className="ml-1 leading-none"
+              />
+              {team.homeVenue ? (
+                <span> · {team.homeVenue.name}</span>
+              ) : null}
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {competitionName
+                ? `${competitionName} invited your team to join.`
+                : "Your team has been invited to join this competition."}
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="ghost"
+            loading={declining}
+            onClick={onDecline}
+            data-testid="invite-decline"
+          >
+            Decline
+          </Button>
+          <Link href={`/competitions/${slug}/apply?teamId=${team.id}`}>
+            <Button variant="primary" data-testid="invite-accept">
+              Accept invitation
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Round-62 — the application card a captain sees on the Applications tab once
+// their team has applied (PENDING/WAITLISTED) or been confirmed (APPROVED).
+// Mirrors the invite card; offers withdraw + edit-roster (the latter opens the
+// detail sheet, which edits in-place while PENDING/WAITLISTED and proposes a
+// change once APPROVED).
+function ApplicationCard({
+  app,
+  competitionName,
+  viewerId,
+  viewerRole,
+  onWithdraw,
+  withdrawing,
+}: {
+  app: AnyApp;
+  competitionName?: string;
+  viewerId: string | null;
+  viewerRole: string | null;
+  onWithdraw: () => void;
+  withdrawing: boolean;
+}) {
+  const team = app.team;
+  // Drives the detail sheet from the kebab item (controlled open).
+  const [detailOpen, setDetailOpen] = useState(false);
+  if (!team) return null;
+  const blurb =
+    app.status === "APPROVED"
+      ? "Your team is confirmed for this competition."
+      : app.status === "WAITLISTED"
+        ? "Your application is waitlisted — the organizer may still approve it."
+        : "Your application is in — waiting on the organizer's decision.";
+  const editLabel = app.status === "APPROVED" ? "Manage roster" : "Edit roster";
+  return (
+    <section
+      className="rounded-2xl border border-border bg-card p-5"
+      data-testid="competition-application-card"
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <Avatar
+            size="lg"
+            src={team.logoUrl ?? undefined}
+            fallback={team.name}
+            shape="team"
+          />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-lg font-semibold">
+                {team.name}
+              </span>
+              <ApplicationStatusChip status={app.status as ApplicationStatus} />
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {team.captain.name}
+              <CountryFlag
+                code={team.captain.nationality}
+                className="ml-1 leading-none"
+              />
+              {team.homeVenue ? <span> · {team.homeVenue.name}</span> : null}
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">{blurb}</p>
+          </div>
+        </div>
+        {/* Actions live under a kebab so Withdraw / Edit can't be clicked by
+            accident. The Edit item drives the detail sheet (controlled). */}
+        <div className="flex shrink-0 items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label="Application actions"
+              disabled={withdrawing}
+              data-testid="application-actions-menu"
+              className="inline-flex size-9 items-center justify-center rounded-md border border-border bg-secondary/40 hover:bg-secondary"
+            >
+              <MoreVertical className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem
+                // Defer opening the sheet until the menu has closed so its
+                // focus teardown doesn't immediately dismiss the sheet.
+                onClick={() => setTimeout(() => setDetailOpen(true), 0)}
+                data-testid="application-edit-roster"
+              >
+                <Pencil className="size-4" />
+                <span>{editLabel}</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="danger"
+                onClick={onWithdraw}
+                data-testid="application-withdraw"
+              >
+                <LogOut className="size-4" />
+                <span>Withdraw</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <ApplicationDetailDialog
+            applicationId={app.id}
+            teamName={team.name}
+            competitionName={competitionName}
+            viewerId={viewerId}
+            viewerRole={viewerRole}
+            triggerLabel={null}
+            open={detailOpen}
+            onOpenChange={setDetailOpen}
+          />
+        </div>
+      </div>
+    </section>
   );
 }
 

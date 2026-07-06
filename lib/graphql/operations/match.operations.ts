@@ -44,6 +44,7 @@ export const MatchDetailQuery = graphql(/* GraphQL */ `
         id
         frameNumber
         blockType
+        blockOrder
         homeWon
         isWalkover
         breakAndRun
@@ -52,11 +53,13 @@ export const MatchDetailQuery = graphql(/* GraphQL */ `
         homePlayerRef {
           id
           name
+          nationality
           avatarUrl
         }
         awayPlayerRef {
           id
           name
+          nationality
           avatarUrl
         }
       }
@@ -93,6 +96,20 @@ export const MatchDetailQuery = graphql(/* GraphQL */ `
       lineupEditRequestedAt
       lineupEditRequestedById
       lineupEditRequestedSide
+      lineupEditRequestedBlockOrder
+      currentActiveBlockOrder
+      blockStates {
+        blockOrder
+        blockType
+        homeSubmittedAt
+        homeSubmittedById
+        awaySubmittedAt
+        awaySubmittedById
+        published
+        fullyDecided
+        locked
+        isCurrentActive
+      }
     }
   }
 `);
@@ -101,20 +118,25 @@ export const SubmitLineupMutation = graphql(/* GraphQL */ `
   mutation SubmitLineup($input: SubmitLineupInput!) {
     submitLineup(input: $input) {
       id
-      homeLineupSubmittedAt
-      awayLineupSubmittedAt
-      bothLineupsSubmitted
+      currentActiveBlockOrder
+      blockStates {
+        blockOrder
+        published
+        fullyDecided
+        isCurrentActive
+      }
     }
   }
 `);
 
 export const RequestLineupEditMutation = graphql(/* GraphQL */ `
-  mutation RequestLineupEdit($matchId: ID!) {
-    requestLineupEdit(matchId: $matchId) {
+  mutation RequestLineupEdit($matchId: ID!, $blockOrder: Int!) {
+    requestLineupEdit(matchId: $matchId, blockOrder: $blockOrder) {
       id
       lineupEditRequestedAt
       lineupEditRequestedById
       lineupEditRequestedSide
+      lineupEditRequestedBlockOrder
     }
   }
 `);
@@ -139,20 +161,14 @@ export const RejectLineupEditMutation = graphql(/* GraphQL */ `
   }
 `);
 
-export const TeamRosterQuery = graphql(/* GraphQL */ `
-  query TeamRoster($id: ID!) {
-    teamById(id: $id) {
+export const CompetitionRosterQuery = graphql(/* GraphQL */ `
+  query CompetitionRoster($competitionId: ID!, $teamId: ID!) {
+    competitionRoster(competitionId: $competitionId, teamId: $teamId) {
       id
-      members {
-        id
-        user {
-          id
-          name
-          username
-          avatarUrl
-          nationality
-        }
-      }
+      name
+      username
+      avatarUrl
+      nationality
     }
   }
 `);

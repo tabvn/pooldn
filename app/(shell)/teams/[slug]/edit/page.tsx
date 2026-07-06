@@ -30,6 +30,13 @@ export default async function EditTeamPage({
         name: team.name,
         description: team.description,
         logoUrl: team.logoUrl,
+        homeVenue: team.homeVenue
+          ? {
+              id: team.homeVenue.id,
+              name: team.homeVenue.name,
+              city: { name: team.homeVenue.city.name },
+            }
+          : null,
       }}
     />
   );

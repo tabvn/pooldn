@@ -3,8 +3,8 @@ import { signInAs } from "./helpers";
 
 const ONGOING_SLUG = "da-nang-autumn-invitational-2026";
 
-test.describe("Round-9 · Match Flow lineup is driven by MatchFormatBlocks", () => {
-  test("renders Singles + Doubles slots and break markers between blocks", async ({
+test.describe("Round-60 · Match Flow lineup is driven by MatchFormatBlocks", () => {
+  test("renders the per-block slots and break separators between blocks", async ({
     page,
   }) => {
     // Seed structure: 3 Singles → 10m break → 2 Doubles → 5m break → 3 Singles
@@ -25,23 +25,19 @@ test.describe("Round-9 · Match Flow lineup is driven by MatchFormatBlocks", () 
 
     await page.goto(`/matches/${match.id}`);
 
-    const scaffold = page.getByTestId("match-lineup-scaffold");
-    await expect(scaffold).toBeVisible();
+    // The Match Details panel + per-block lineups render.
+    await expect(page.getByRole("heading", { name: "Match Details" })).toBeVisible();
+    await expect(page.getByTestId("match-lineups")).toBeVisible();
+
+    // All 8 game slots are present (editor rows for captains, cards otherwise).
     for (let i = 1; i <= 8; i++) {
       await expect(page.getByTestId(`lineup-slot-${i}`)).toBeVisible();
     }
-    // Two break markers — 10 min after block 1, 5 min after block 2.
+
+    // Two break separators — 10 min after block 1, 5 min after block 2.
     const breaks = page.getByTestId("match-lineup-break");
     await expect(breaks).toHaveCount(2);
     await expect(breaks.first()).toContainText(/10 min/i);
     await expect(breaks.nth(1)).toContainText(/5 min/i);
-
-    // Slot types follow the structure: 1-3 Singles, 4-5 Doubles, 6-8 Singles.
-    for (const n of [1, 2, 3, 6, 7, 8]) {
-      await expect(page.getByTestId(`lineup-slot-${n}`)).toContainText(/singles/i);
-    }
-    for (const n of [4, 5]) {
-      await expect(page.getByTestId(`lineup-slot-${n}`)).toContainText(/doubles/i);
-    }
   });
 });

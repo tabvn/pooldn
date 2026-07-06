@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { AppScrollMain, AppShell } from "@/components/layout/app-shell";
 import { Header } from "@/components/layout/header";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { SessionKeepalive } from "@/components/layout/session-keepalive";
 import {
   NotificationToaster,
   NotificationToasterContainer,
@@ -76,6 +77,7 @@ export default async function ShellLayout({
         <AppScrollMain>{children}</AppScrollMain>
       </div>
       <MobileNav />
+      <SessionKeepalive signedIn={!!data?.viewer} />
       <NotificationToaster enabled={!!data?.viewer} />
       <NotificationToasterContainer
         position="top-right"

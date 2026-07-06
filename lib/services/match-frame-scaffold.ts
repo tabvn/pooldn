@@ -27,7 +27,7 @@ export async function scaffoldMatchFramesFromStructure(
               id: true,
               blocks: {
                 orderBy: { order: "asc" },
-                select: { type: true, games: true },
+                select: { order: true, type: true, games: true },
               },
             },
           },
@@ -38,7 +38,11 @@ export async function scaffoldMatchFramesFromStructure(
   const blocks = match.matchday.competition.blocks;
   if (blocks.length === 0) return 0;
 
-  const expected: Array<{ frameNumber: number; blockType: "SINGLES" | "DOUBLES" | "SCOTCH_DOUBLES" }> = [];
+  const expected: Array<{
+    frameNumber: number;
+    blockType: "SINGLES" | "DOUBLES" | "SCOTCH_DOUBLES";
+    blockOrder: number;
+  }> = [];
   let n = 0;
   for (const b of blocks) {
     for (let i = 0; i < b.games; i++) {
@@ -46,6 +50,7 @@ export async function scaffoldMatchFramesFromStructure(
       expected.push({
         frameNumber: n,
         blockType: b.type as "SINGLES" | "DOUBLES" | "SCOTCH_DOUBLES",
+        blockOrder: b.order,
       });
     }
   }
@@ -83,9 +88,23 @@ export async function scaffoldMatchFramesFromStructure(
       matchId: match.id,
       frameNumber: e.frameNumber,
       blockType: e.blockType,
+      blockOrder: e.blockOrder,
     }));
   if (toCreate.length > 0) {
     await tx.matchFrame.createMany({ data: toCreate, skipDuplicates: true });
+  }
+
+  // Round-60 — backfill blockOrder on surviving frames (played frames, and
+  // any predating this column) so the per-block flow can group them. Only
+  // touches blockOrder; never mutates winners or player assignments.
+  for (const e of expected) {
+    const f = byNumber.get(e.frameNumber);
+    if (f && !toDelete.includes(f.id) && f.blockOrder !== e.blockOrder) {
+      await tx.matchFrame.update({
+        where: { matchId_frameNumber: { matchId: match.id, frameNumber: e.frameNumber } },
+        data: { blockOrder: e.blockOrder },
+      });
+    }
   }
   return expected.length;
 }

@@ -11,7 +11,7 @@ import { signInAs } from "./helpers";
  *      inviter's name + Accept/Decline.
  *   3. Invitee accepts → membership created.
  *   4. Captain receives a notification that the invitee joined.
- *   5. Pending-invitations list on /manage no longer contains the row.
+ *   5. Pending-invitations list on the Players tab no longer contains the row.
  *
  * Uses the GraphQL transport for the inviter side so we don't depend on the
  * captain wizard UI; the invitee uses the real /teams/<slug> page so we
@@ -107,8 +107,8 @@ test.describe("Team invitation full flow", () => {
         .first(),
     ).toBeVisible({ timeout: 10_000 });
 
-    // Pending invitations list on /manage no longer contains the accepted row.
-    await captain.goto(`/teams/${myTeam.slug}/manage`);
+    // Pending invitations list (Players tab) no longer contains the accepted row.
+    await captain.goto(`/teams/${myTeam.slug}/players`);
     await expect(
       captain.getByTestId(`pending-invite-${inviteJson.data.inviteToTeam.id}`),
     ).toHaveCount(0);

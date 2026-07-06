@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ImageUpload } from "@/components/ui/image-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PageTitle } from "@/components/layout/page-title";
+import { HomeVenueCard } from "@/components/team/home-venue-card";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
@@ -25,6 +25,7 @@ export function EditTeamForm({
     name: string;
     description: string | null;
     logoUrl: string | null;
+    homeVenue: { id: string; name: string; city: { name: string } } | null;
   };
 }) {
   const router = useRouter();
@@ -83,12 +84,7 @@ export function EditTeamForm({
   }
 
   return (
-    <div className="flex flex-col">
-      <PageTitle
-        title={`Edit ${initial.name}`}
-        eyebrow={<span>Team settings</span>}
-      />
-      <div className="p-8 max-w-2xl space-y-4">
+    <div className="max-w-2xl space-y-4">
         <Card>
           <CardHeader>
             <CardTitle>Logo</CardTitle>
@@ -161,7 +157,8 @@ export function EditTeamForm({
             </form>
           </CardContent>
         </Card>
-      </div>
+
+        <HomeVenueCard teamId={initial.id} currentVenue={initial.homeVenue} />
     </div>
   );
 }

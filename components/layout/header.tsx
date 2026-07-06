@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAppShell } from "./app-shell";
 import { CitySelector } from "./city-selector";
+import { BallMark } from "./sidebar-icons";
 import { NotificationBell } from "./notification-bell";
 import { ViewerMenu } from "./viewer-menu";
 
@@ -41,16 +42,14 @@ export function Header({
       )}
     >
       {/* Mobile logo + city — sidebar is hidden on small screens so the
-          header carries the brand mark. */}
+          header carries the brand mark. Uses the same BallMark as the desktop
+          sidebar so the two logos match. */}
       <Link
         href="/"
         className="flex shrink-0 items-center gap-2 md:hidden"
         aria-label="PoolDN home"
       >
-        <span className="relative inline-flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground font-black text-xs">
-          <span className="absolute inset-0 rounded-full ring-2 ring-primary/30" />
-          8
-        </span>
+        <BallMark className="size-7 shrink-0 text-primary" />
       </Link>
       <div className="shrink-0">
         <CitySelector city={city} />
@@ -66,8 +65,8 @@ export function Header({
             />
           </>
         ) : (
-          // Round-47 — Figma guest header: explicit Log In + Create Account
-          // CTAs, not just the small text link the ViewerMenu used to render.
+          // Round-47 — Figma guest header: explicit Log In + Join CTAs, not
+          // just the small text link the ViewerMenu used to render.
           <>
             <Link href="/sign-in">
               <Button size="sm" data-testid="header-login">
@@ -76,7 +75,7 @@ export function Header({
             </Link>
             <Link href="/sign-up">
               <Button size="sm" variant="outline" data-testid="header-signup">
-                Create Account
+                Join
               </Button>
             </Link>
           </>

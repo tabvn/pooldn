@@ -171,14 +171,6 @@ enum NotificationType {
   COMMUNITY_QUOTE
 }
 
-enum CommunityReactionType {
-  LIKE
-  FIRE
-  LAUGH
-  CLAP
-  TROPHY
-}
-
 enum NotificationEntityType {
   COMPETITION
   APPLICATION
@@ -186,12 +178,6 @@ enum NotificationEntityType {
   TEAM
   USER
   COMMUNITY_POST
-}
-
-enum FollowEntityType {
-  COMPETITION
-  TEAM
-  USER
 }
 
 enum GameBlockType {
@@ -251,8 +237,6 @@ model User {
   playerCompStats       PlayerCompStat[]
   notifications         Notification[]
   sessions              Session[]
-  posts                 CommunityPost[]
-  follows               Follow[]
   rosterEntries         CompetitionRoster[]
   scoreSubmissions      MatchScoreSubmission[] @relation("ScoreSubmittedBy")
   scoreReviews          MatchScoreSubmission[] @relation("ScoreReviewedBy")
@@ -264,15 +248,8 @@ model User {
   framesAsAwayPlayer      MatchFrame[]          @relation("FrameAwayPlayer")
   feedbackAuthored        Feedback[]            @relation("FeedbackAuthor")
   feedbackResolved        Feedback[]            @relation("FeedbackResolver")
-  communityReactions      CommunityReaction[]   @relation("CommunityReactor")
-  communityComments       CommunityComment[]    @relation("CommunityCommenter")
-  communityReports        CommunityReport[]     @relation("CommunityReporter")
-  communityReportReviews  CommunityReport[]     @relation("CommunityReportReviewer")
-  communityBlocks         CommunityBlock[]      @relation("CommunityBlocker")
-  communityBlockedBy      CommunityBlock[]      @relation("CommunityBlocked")
-  communityPostHides      CommunityPost[]       @relation("CommunityPostHider")
-  communityCommentHides   CommunityComment[]    @relation("CommunityCommentHider")
   matchesCompleted        Match[]               @relation("MatchCompletedBy")
+  blockLineupsSubmitted   MatchBlockLineup[]    @relation("BlockLineupSubmittedBy")
   notificationPreferences NotificationPreference[]
   digestRuns              DigestRun[]
   emailTokens             EmailToken[]
@@ -328,7 +305,6 @@ model City {
   users        User[]
   venues       Venue[]
   competitions Competition[]
-  posts        CommunityPost[]
   teams        Team[]          @relation("TeamCity")
 
   @@unique([countryId, name])
@@ -734,6 +710,9 @@ model Matchday {
   scheduledDate DateTime?
   startTime     String?
   endTime       String?
+  // Round-64 — organizer note when a matchday is moved (holiday, venue clash,
+  // …). Shown on the matchday card; set by shiftMatchdayOnward.
+  note          String?
   isGenerated   Boolean     @default(false)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -806,8 +785,13 @@ model Match {
   lineupEditRequestedById  String?
   lineupEditRequestedAt    DateTime?
   lineupEditRequestedSide  String?
+  // Round-60 — which block a pending lineup-edit request targets. Lineups are
+  // now submitted per block (MatchBlockLineup), so a re-open re-opens only one
+  // block. Reuses the lineupEditRequested* lifecycle above.
+  lineupEditRequestedBlockOrder Int?
 
   frames       MatchFrame[]
+  blockLineups MatchBlockLineup[]
   participants MatchParticipant[]
   scoreSubmissions MatchScoreSubmission[]
   rescheduleRequests MatchRescheduleRequest[]
@@ -829,6 +813,11 @@ model MatchFrame {
   // Frame TYPE comes from the competition's MatchFormatBlock at scaffold
   // time (Round-14). Nullable for legacy frames recorded before scaffolding.
   blockType     GameBlockType?
+  // Round-60 — stable reference back to the originating MatchFormatBlock.order,
+  // set at scaffold time. Lets the per-block lineup flow group frames by block
+  // without re-walking the competition structure. Nullable for legacy frames
+  // and INDIVIDUAL (1v1) competitions that have no blocks.
+  blockOrder    Int?
   homeWon       Boolean?
   // Round-20 — per-frame walkover (e.g. an absent doubles partner). The
   // present side is awarded the frame; the UI surfaces a "Walkover" chip.
@@ -849,7 +838,28 @@ model MatchFrame {
   updatedAt     DateTime       @updatedAt
 
   @@unique([matchId, frameNumber])
+  @@index([matchId, blockOrder])
   @@map("match_frames")
+}
+
+// Round-60 — per-block, per-side lineup submission. A team match's lineup is
+// now submitted one block at a time (pre-break Singles first, then Doubles,
+// etc). One row per (match, side, block); a block is "published" once BOTH
+// sides have a row, which unlocks winner entry for that block's frames.
+model MatchBlockLineup {
+  id            String   @id @default(cuid())
+  matchId       String
+  match         Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  side          String   // "HOME" | "AWAY" (mirrors lineupEditRequestedSide)
+  blockOrder    Int      // matches MatchFormatBlock.order
+  submittedById String
+  submittedBy   User     @relation("BlockLineupSubmittedBy", fields: [submittedById], references: [id])
+  submittedAt   DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([matchId, side, blockOrder])
+  @@index([matchId])
+  @@map("match_block_lineups")
 }
 
 model MatchParticipant {
@@ -988,149 +998,6 @@ model PlayerCompStat {
   @@index([isMvp])
   @@index([mvpScore])
   @@map("player_comp_stats")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Follow / favorite — users can subscribe to a Competition or Team
-// ─────────────────────────────────────────────────────────────────────────────
-
-model Follow {
-  id         String           @id @default(cuid())
-  userId     String
-  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  entityType FollowEntityType
-  entityId   String
-  createdAt  DateTime         @default(now())
-
-  @@unique([userId, entityType, entityId])
-  @@index([userId, entityType])
-  @@index([entityType, entityId])
-  @@map("follows")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Community
-// ─────────────────────────────────────────────────────────────────────────────
-
-enum CommunityReportStatus {
-  OPEN
-  RESOLVED
-  DISMISSED
-}
-
-enum CommunityReportTarget {
-  POST
-  COMMENT
-}
-
-model CommunityReport {
-  id          String                @id @default(cuid())
-  reporterId  String
-  reporter    User                  @relation("CommunityReporter", fields: [reporterId], references: [id], onDelete: Cascade)
-  targetType  CommunityReportTarget
-  targetId    String
-  reason      String
-  status      CommunityReportStatus @default(OPEN)
-  reviewedById String?
-  reviewedBy   User?                @relation("CommunityReportReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  reviewedAt   DateTime?
-  createdAt    DateTime              @default(now())
-
-  @@index([status, createdAt(sort: Desc)])
-  @@index([targetType, targetId])
-  @@map("community_reports")
-}
-
-model CommunityBlock {
-  id          String   @id @default(cuid())
-  blockerId   String
-  blocker     User     @relation("CommunityBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
-  blockedId   String
-  blocked     User     @relation("CommunityBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-
-  @@unique([blockerId, blockedId])
-  @@index([blockedId])
-  @@map("community_blocks")
-}
-
-model CommunityPost {
-  id        String   @id @default(cuid())
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  cityId    String?
-  city      City?    @relation(fields: [cityId], references: [id])
-  body      String
-  // Round-C — admin soft-hide. Hidden posts are invisible to non-admins and
-  // to the original author (they see a "hidden by moderator" placeholder).
-  isHidden       Boolean   @default(false)
-  hiddenReason   String?
-  hiddenById     String?
-  hiddenBy       User?     @relation("CommunityPostHider", fields: [hiddenById], references: [id], onDelete: SetNull)
-  hiddenAt       DateTime?
-  // Pinned posts (city-scoped if cityId set, otherwise global) bubble to the
-  // top of the feed regardless of recency.
-  pinnedAt    DateTime?
-  // Round-A2/A3 — denormalized so feed queries can filter by tag/mention
-  // without LIKE scans over the body.
-  tags      String[] @default([])
-  imageUrls String[] @default([])
-  // Round-A6 — quote-a-post. A new post can reference an existing one; the
-  // UI renders the quoted post inline as a mini-card. Setting onDelete to
-  // SetNull keeps the quoting post intact if the original is removed.
-  quotedPostId String?
-  quotedPost   CommunityPost?  @relation("CommunityQuote", fields: [quotedPostId], references: [id], onDelete: SetNull)
-  quotedBy     CommunityPost[] @relation("CommunityQuote")
-  createdAt DateTime @default(now())
-
-  reactions CommunityReaction[]
-  comments  CommunityComment[]
-
-  // Round-34 generated tsvector — see User.searchVector.
-  searchVector Unsupported("tsvector")?
-
-  @@index([cityId, createdAt(sort: Desc)])
-  @@index([createdAt(sort: Desc)])
-  @@index([tags])
-  @@map("community_posts")
-}
-
-model CommunityReaction {
-  id        String                @id @default(cuid())
-  postId    String
-  post      CommunityPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User                  @relation("CommunityReactor", fields: [userId], references: [id], onDelete: Cascade)
-  type      CommunityReactionType
-  createdAt DateTime              @default(now())
-
-  @@unique([postId, userId, type])
-  @@index([postId, type])
-  @@index([userId])
-  @@map("community_reactions")
-}
-
-model CommunityComment {
-  id        String        @id @default(cuid())
-  postId    String
-  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
-  authorId  String
-  author    User          @relation("CommunityCommenter", fields: [authorId], references: [id], onDelete: Cascade)
-  parentId  String?
-  parent    CommunityComment? @relation("CommentParent", fields: [parentId], references: [id], onDelete: Cascade)
-  replies   CommunityComment[] @relation("CommentParent")
-  body      String
-  editedAt  DateTime?
-  isHidden       Boolean   @default(false)
-  hiddenReason   String?
-  hiddenById     String?
-  hiddenBy       User?     @relation("CommunityCommentHider", fields: [hiddenById], references: [id], onDelete: SetNull)
-  hiddenAt       DateTime?
-  createdAt DateTime      @default(now())
-
-  @@index([postId, createdAt])
-  @@index([parentId])
-  @@map("community_comments")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

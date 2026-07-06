@@ -1,14 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { signInAs, type DemoRole } from "./helpers";
 
-type Affordance = {
-  page: string;
-  visit: string;
-  expectFinalURL?: string | RegExp;
-  expectVisible?: string;
-  expectHidden?: string;
-};
-
 const COMP_SLUG = "da-nang-international-pool-league-2026";
 const OPEN_COMP_SLUG = "spring-open-2027";
 
@@ -71,6 +63,42 @@ const matrix: Record<
     canVisitApplications: false,
     canVisitApply: true,
   },
+  // Round-69 demo captains — same gating as the other team captains.
+  long: {
+    name: "Long Duong",
+    canSeeCreateCTA: false,
+    canVisitNewCompetition: false,
+    canVisitApplications: false,
+    canVisitApply: true,
+  },
+  duc: {
+    name: "Duc Tran",
+    canSeeCreateCTA: false,
+    canVisitNewCompetition: false,
+    canVisitApplications: false,
+    canVisitApply: true,
+  },
+  kenji: {
+    name: "Kenji Sato",
+    canSeeCreateCTA: false,
+    canVisitNewCompetition: false,
+    canVisitApplications: false,
+    canVisitApply: true,
+  },
+  sofia: {
+    name: "Sofia Garcia",
+    canSeeCreateCTA: false,
+    canVisitNewCompetition: false,
+    canVisitApplications: false,
+    canVisitApply: true,
+  },
+  raj: {
+    name: "Raj Patel",
+    canSeeCreateCTA: false,
+    canVisitNewCompetition: false,
+    canVisitApplications: false,
+    canVisitApply: true,
+  },
   player1: {
     name: "Linh Tran",
     canSeeCreateCTA: false,
@@ -106,7 +134,9 @@ async function walkPublicPages(page: Page, displayName: string) {
   await expect(page.getByText(firstName).first()).toBeVisible();
 
   await page.goto("/teams");
-  await expect(page.getByRole("heading", { name: "Teams" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: /^Teams( in .+)?$/ }),
+  ).toBeVisible();
   await expect(page.getByText("Gen Filling Station")).toBeVisible();
 
   await page.goto("/venues");

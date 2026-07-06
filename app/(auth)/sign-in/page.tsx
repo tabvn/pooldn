@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation } from "@apollo/client/react";
+import { useApolloClient, useMutation } from "@apollo/client/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -79,6 +79,7 @@ function SignInForm() {
         facebook_failed: "Facebook sign-in failed. Please try again.",
       }[authError] ?? "Sign-in failed. Please try again.")
     : null;
+  const client = useApolloClient();
   const [login, { error, loading: loggingIn }] = useMutation(LoginMutation);
   const [lockOut, setLockOut] = useState<LockOut | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -105,6 +106,7 @@ function SignInForm() {
     try {
       const result = await login({ variables: { input: values } });
       if (result.data?.login) {
+        await client.clearStore();
         router.push(nextHref);
         router.refresh();
       }

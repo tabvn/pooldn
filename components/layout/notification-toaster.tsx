@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSubscription } from "@apollo/client/react";
 import { toast as sonner } from "sonner";

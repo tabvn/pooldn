@@ -7,6 +7,12 @@ export type DemoRole =
   | "thomas"
   | "gen"
   | "hai"
+  // Round-69 — extra demo captains (each captains a team).
+  | "long"
+  | "duc"
+  | "kenji"
+  | "sofia"
+  | "raj"
   | "player1"
   | "player2"
   | "viewer";

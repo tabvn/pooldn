@@ -20,6 +20,13 @@ import Redis from "ioredis";
 const PREFIX = process.env.RATE_LIMIT_PREFIX ?? "pooldn:rl:";
 const REDIS_URL = process.env.REDIS_URL ?? "";
 
+// Explicit opt-out for automated test environments. The e2e suite logs in
+// 100+ times from a single IP (localhost), which legitimately trips the
+// login/IP limits and turns every later sign-in into a 60s timeout. Set
+// RATE_LIMIT_DISABLED=1 ONLY for e2e (playwright webServer env) — production
+// never sets it, so real limits stay intact.
+const DISABLED = process.env.RATE_LIMIT_DISABLED === "1";
+
 let redis: Redis | null = null;
 function getRedis(): Redis | null {
   if (!REDIS_URL) return null;
@@ -158,6 +165,9 @@ export async function consume(
   rule: RateLimitRule,
   id: string,
 ): Promise<RateLimitResult> {
+  if (DISABLED) {
+    return { ok: true, remaining: rule.limit, resetAt: Date.now() + rule.windowMs };
+  }
   const key = `${rule.name}:${id}`;
   const r = getRedis();
   if (r) {

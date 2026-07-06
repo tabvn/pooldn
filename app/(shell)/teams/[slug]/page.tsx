@@ -3,15 +3,17 @@ import { notFound } from "next/navigation";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CompetitionStatusChip } from "@/components/ui/status-chip";
+import { MapPin } from "lucide-react";
 import { CountryFlag } from "@/components/ui/country-flag";
+import { LocalDateTime } from "@/components/ui/local-datetime";
 import { CaptainJoinRequestsPanel } from "@/components/team/captain-join-requests-panel";
 import { getClient } from "@/lib/apollo/client";
 import { TeamDetailQuery } from "@/lib/graphql/operations/team.operations";
 
 /**
- * Round-24 — Overview tab: a quick at-a-glance summary. Roster preview,
- * recent competitions, recent matches; deep dives live on dedicated tabs.
+ * Round-65 — Overview tab now also carries the About content (description,
+ * captain, history). The standalone About tab was merged in; the Players and
+ * Recent Competitions previews moved out (their dedicated tabs cover them).
  */
 export default async function TeamOverviewPage({
   params,
@@ -26,102 +28,124 @@ export default async function TeamOverviewPage({
   const team = data?.team;
   if (!team) notFound();
 
-  const roster = team.members.slice(0, 6);
-  const competitions = team.applications
-    .map((a) => a.competition)
-    .filter((c, i, arr) => arr.findIndex((x) => x.id === c.id) === i)
-    .slice(0, 4);
-
   return (
-    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+    <div className="space-y-6">
       <CaptainJoinRequestsPanel
         teamId={team.id}
         teamSlug={slug}
         captainId={team.captain.id}
       />
-      <Card data-testid="overview-players">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Players</CardTitle>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>About this team</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {team.description ? (
+              <p className="whitespace-pre-line">{team.description}</p>
+            ) : (
+              <p className="italic text-muted-foreground">No description yet.</p>
+            )}
+            <div className="text-xs text-muted-foreground">
+              {!team.isActive ? (
+                <Badge variant="neutral" size="sm">
+                  Inactive
+                </Badge>
+              ) : (
+                <Badge variant="success" size="sm">
+                  Active
+                </Badge>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Captain</CardTitle>
+          </CardHeader>
+          <CardContent>
             <Link
-              href={`/teams/${slug}/players`}
-              className="text-xs text-primary hover:underline"
-            >
-              See all →
-            </Link>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-1.5">
-          {roster.map((m) => (
-            <Link
-              key={m.id}
-              href={`/players/${m.user.username}`}
-              className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-secondary/40"
+              href={`/players/${team.captain.username}`}
+              className="flex items-center gap-3 hover:underline"
             >
               <Avatar
-                size="sm"
-                src={m.user.avatarUrl ?? undefined}
-                fallback={m.user.name}
+                size="lg"
+                src={team.captain.avatarUrl ?? undefined}
+                fallback={team.captain.name}
               />
-              <div className="min-w-0 flex-1">
+              <div>
                 <div className="text-sm font-semibold">
-                  {m.user.name}
+                  {team.captain.name}
                   <CountryFlag
-                    code={m.user.nationality}
+                    code={team.captain.nationality}
                     className="ml-1.5 leading-none"
                   />
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  @{m.user.username}
+                  @{team.captain.username}
                 </div>
               </div>
-              {m.user.id === team.captain.id ? (
-                <Badge variant="primary" size="sm">
-                  Captain
-                </Badge>
-              ) : null}
             </Link>
-          ))}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      <Card data-testid="overview-competitions">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Recent competitions</CardTitle>
-            <Link
-              href={`/teams/${slug}/competitions`}
-              className="text-xs text-primary hover:underline"
-            >
-              See all →
-            </Link>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-1.5">
-          {competitions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No competitions yet.</p>
-          ) : (
-            competitions.map((c) => (
+        <Card>
+          <CardHeader>
+            <CardTitle>Home Venue</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm">
+            {team.homeVenue ? (
               <Link
-                key={c.id}
-                href={`/competitions/${c.slug}`}
-                className="flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2 hover:border-primary/40"
+                href={`/venues/${team.homeVenue.slug}`}
+                className="flex items-center gap-3 hover:underline"
               >
-                <Avatar
-                  size="sm"
-                  src={c.bannerUrl ?? undefined}
-                  fallback={c.name}
-                  shape="competition"
-                />
-                <div className="min-w-0 flex-1 truncate text-sm font-semibold">
-                  {c.name}
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+                  <MapPin className="size-5" />
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate font-semibold">
+                    {team.homeVenue.name}
+                  </div>
+                  {team.homeVenue.city ? (
+                    <div className="text-xs text-muted-foreground">
+                      {team.homeVenue.city.name}
+                    </div>
+                  ) : null}
                 </div>
-                <CompetitionStatusChip status={c.status} />
               </Link>
-            ))
-          )}
-        </CardContent>
-      </Card>
+            ) : (
+              <p className="italic text-muted-foreground">No home venue set.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>History</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            {team.applications.length === 0 ? (
+              <p>No applications submitted yet.</p>
+            ) : (
+              <p>
+                First application:{" "}
+                <LocalDateTime
+                  value={
+                    [...team.applications].sort(
+                      (a, b) =>
+                        new Date(a.submittedAt).getTime() -
+                        new Date(b.submittedAt).getTime(),
+                    )[0]!.submittedAt
+                  }
+                  variant="date"
+                />
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

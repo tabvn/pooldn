@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { VenueActionsMenu } from "@/components/venue/venue-actions-menu";
 import { DetailHero } from "@/components/layout/detail-hero";
 import { getClient } from "@/lib/apollo/client";
 import { getViewer } from "@/lib/auth/server";
@@ -28,13 +28,7 @@ export default async function VenueDetailPage({
     <div className="flex flex-col">
       <DetailHero
         title={v.name}
-        actions={
-          canEdit ? (
-            <Link href={`/venues/${slug}/edit`}>
-              <Button variant="outline">Edit venue</Button>
-            </Link>
-          ) : null
-        }
+        actions={<VenueActionsMenu slug={slug} canEdit={canEdit} />}
         meta={
           <>
             <span className="inline-flex items-center rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
@@ -119,7 +113,7 @@ export default async function VenueDetailPage({
                 No teams call this venue home yet.
               </p>
             ) : (
-              <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <ul className="space-y-2">
                 {v.homeTeams.map((t) => (
                   <li key={t.id}>
                     <Link

@@ -23,6 +23,22 @@ function flagFor(label: string): string {
   return "🌐";
 }
 
+/**
+ * Renders a "City, Country" label but drops the ", Country" part on mobile
+ * (below md) to save header space — the flag already conveys the country.
+ */
+function LocationLabel({ label }: { label: string }) {
+  const idx = label.indexOf(", ");
+  const city = idx === -1 ? label : label.slice(0, idx);
+  const country = idx === -1 ? "" : label.slice(idx); // includes leading ", "
+  return (
+    <span className="inline-block max-w-[40vw] truncate align-middle sm:max-w-none">
+      {city}
+      {country ? <span className="hidden md:inline">{country}</span> : null}
+    </span>
+  );
+}
+
 function writeCookie(cityId: string) {
   if (typeof document === "undefined") return;
   const isSecure = window.location.protocol === "https:";
@@ -85,9 +101,7 @@ export function CitySelector({ city: initialLabel }: { city: string }) {
         <span className="text-base leading-none" aria-hidden>
           {flagFor(onlyLabel)}
         </span>
-        <span className="inline-block max-w-[40vw] truncate align-middle sm:max-w-none">
-          {onlyLabel}
-        </span>
+        <LocationLabel label={onlyLabel} />
       </div>
     );
   }
@@ -102,9 +116,7 @@ export function CitySelector({ city: initialLabel }: { city: string }) {
         <span className="text-base leading-none" aria-hidden>
           {flagFor(label)}
         </span>
-        <span className="inline-block max-w-[40vw] truncate align-middle sm:max-w-none">
-          {label}
-        </span>
+        <LocationLabel label={label} />
         <ChevronDown className="size-4 text-muted-foreground" />
       </PopoverPrimitive.Trigger>
       <PopoverPrimitive.Portal>

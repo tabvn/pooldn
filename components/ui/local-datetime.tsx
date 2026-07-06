@@ -16,7 +16,7 @@ export function LocalDateTime({
   prefix = "",
 }: {
   value: string | Date | null | undefined;
-  variant?: "datetime" | "date" | "time";
+  variant?: "datetime" | "date" | "time" | "weekday";
   prefix?: string;
 }) {
   const [text, setText] = useState<string>("");
@@ -36,6 +36,15 @@ export function LocalDateTime({
           month: "short",
           day: "numeric",
           year: "numeric",
+        }),
+      );
+    } else if (variant === "weekday") {
+      // Figma matchday header — "Tuesday, Jan 2".
+      setText(
+        d.toLocaleDateString(undefined, {
+          weekday: "long",
+          month: "short",
+          day: "numeric",
         }),
       );
     } else if (variant === "time") {

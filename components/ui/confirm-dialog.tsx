@@ -132,7 +132,7 @@ export function ConfirmDialogProvider({ children }: { children: React.ReactNode 
                 ) : null}
               </div>
             </div>
-            <div className="mt-5 flex items-center justify-end gap-2">
+            <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
               <Button
                 variant="ghost"
                 onClick={() => resolveWith(false)}
@@ -208,7 +208,7 @@ export function ConfirmDialogProvider({ children }: { children: React.ReactNode 
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm outline-none focus:border-primary"
               />
             </label>
-            <div className="mt-4 flex items-center justify-end gap-2">
+            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
               <Button
                 variant="ghost"
                 onClick={() => resolvePromptWith(null)}

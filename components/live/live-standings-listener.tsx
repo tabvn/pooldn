@@ -25,19 +25,3 @@ export function LiveStandingsListener({
   });
   return null;
 }
-
-/**
- * Same pattern for a single match — drop into a server-rendered scoreboard.
- */
-import { MatchUpdatedSubscription } from "@/lib/graphql/operations/subscriptions.operations";
-
-export function LiveMatchListener({ matchId }: { matchId: string }) {
-  const router = useRouter();
-  useSubscription(MatchUpdatedSubscription, {
-    variables: { id: matchId },
-    onData: () => {
-      router.refresh();
-    },
-  });
-  return null;
-}

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { FollowButton } from "@/components/follow-button";
 import { ApplyCta } from "@/components/competition/apply-cta";
 import { LifecycleActions } from "@/components/competition/lifecycle-actions";
 import { CompetitionHero } from "@/components/competition/competition-hero";
@@ -92,14 +91,6 @@ export default async function CompetitionLayout({
         competition={c}
         actions={
           <>
-            <FollowButton
-              entityType="COMPETITION"
-              entityId={c.id}
-              isFollowing={c.isFollowing}
-              followerCount={c.followerCount}
-              followersHref={`/competitions/${slug}/followers`}
-              signedIn={!!viewer}
-            />
             {canManage ? (
               <LifecycleActions
                 competitionId={c.id}

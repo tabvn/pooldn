@@ -117,10 +117,13 @@ builder.mutationFields((t) => ({
             type: i.type ?? "TEAMS",
             format: i.format ?? "ROUND_ROBIN",
             gameType: i.gameType ?? "EIGHT_BALL",
-            maxTeams: i.maxTeams ?? null,
+            // Sensible participant defaults so the create wizard's
+            // Participants tab is prefilled with real, persisted values (not
+            // just placeholders): max 24 teams, roster 3–8 players per team.
+            maxTeams: i.maxTeams ?? 24,
             minTeams: i.minTeams ?? 2,
-            maxPlayersPerTeam: i.maxPlayersPerTeam ?? null,
-            minPlayersPerTeam: i.minPlayersPerTeam ?? 1,
+            maxPlayersPerTeam: i.maxPlayersPerTeam ?? 8,
+            minPlayersPerTeam: i.minPlayersPerTeam ?? 3,
             raceToFrames: i.raceToFrames ?? 5,
             startDate: i.startDate ?? null,
             endDate: i.endDate ?? null,
@@ -135,7 +138,8 @@ builder.mutationFields((t) => ({
               : undefined,
             matchVenueMode: i.matchVenueMode ?? "TEAM_VENUES",
             centralVenueId: i.centralVenueId ? String(i.centralVenueId) : null,
-            gamesPerOpponent: i.gamesPerOpponent ?? 1,
+            // Default to Home & Away (2) so the Schedule tab is preselected.
+            gamesPerOpponent: i.gamesPerOpponent ?? 2,
             weekdaySchedule: Array.isArray(i.weekdaySchedule)
               ? i.weekdaySchedule.map((w) => ({
                   weekday: w.weekday,
@@ -371,14 +375,24 @@ builder.mutationFields((t) => ({
     type: "Competition",
     description: "APPLICATIONS_CLOSED|OPEN_FOR_APPLICATIONS → ONGOING.",
     args: { id: t.arg.id({ required: true }) },
-    resolve: (query, _root, args, ctx) =>
-      transition(
+    resolve: async (query, _root, args, ctx) => {
+      const id = String(args.id);
+      const result = await transition(
         ctx,
         query,
-        String(args.id),
+        id,
         ["APPLICATIONS_CLOSED", "OPEN_FOR_APPLICATIONS"],
         "ONGOING",
-      ),
+      );
+      // Seed the League Table with every confirmed team at 0 points so it's
+      // populated the moment the competition goes live (even before the
+      // calendar is generated / any match is played).
+      const { recomputeStandings } = await import(
+        "@/lib/services/standings.service"
+      );
+      await recomputeStandings(ctx.prisma as never, id);
+      return result;
+    },
   }),
 
   completeCompetition: t.prismaField({
@@ -451,14 +465,31 @@ builder.mutationFields((t) => ({
     type: "Competition",
     description: "Cancel from any non-final status.",
     args: { id: t.arg.id({ required: true }) },
-    resolve: (query, _root, args, ctx) =>
-      transition(
+    resolve: async (query, _root, args, ctx) => {
+      const id = String(args.id);
+      // transition() guards the status + permission and flips the comp to
+      // CANCELLED. It runs first so we never touch matches without the move
+      // being allowed.
+      const result = await transition(
         ctx,
         query,
-        String(args.id),
+        id,
         ["DRAFT", "OPEN_FOR_APPLICATIONS", "APPLICATIONS_CLOSED", "ONGOING"],
         "CANCELLED",
-      ),
+      );
+      // Cancel the competition's not-yet-played matches so they don't linger
+      // as SCHEDULED/IN_PROGRESS orphans (e.g. an "upcoming game" card on the
+      // dashboard, or a row on a team's Matches tab). Completed matches keep
+      // their result for history.
+      await ctx.prisma.match.updateMany({
+        where: {
+          matchday: { competitionId: id },
+          status: { in: ["SCHEDULED", "IN_PROGRESS"] },
+        },
+        data: { status: "CANCELLED" },
+      });
+      return result;
+    },
   }),
 
   reopenCancelledCompetition: t.prismaField({
@@ -881,8 +912,11 @@ builder.mutationFields((t) => ({
   generateMatchdays: t.prismaField({
     type: "Competition",
     description:
-      "Round-robin auto-pair every APPROVED team into matchdays. Idempotent: errors if matchdays already exist.",
-    args: { id: t.arg.id({ required: true }) },
+      "Round-robin auto-pair every APPROVED team into matchdays and start the competition. Idempotent: errors if matchdays already exist. Optional maxGamesPerVenuePerMatchday caps how many games a venue hosts per matchday (persisted); use 1 so two teams sharing a home venue never both host on the same matchday.",
+    args: {
+      id: t.arg.id({ required: true }),
+      maxGamesPerVenuePerMatchday: t.arg.int(),
+    },
     resolve: async (query, _root, args, ctx) => {
       requireUser(ctx.viewer);
       const competition = await ctx.prisma.competition.findUniqueOrThrow({
@@ -914,64 +948,16 @@ builder.mutationFields((t) => ({
           { extensions: { code: "BAD_USER_INPUT" } },
         );
       }
-      const { bergerPairings, assignVenuesWithCap } = await import(
-        "@/lib/services/scheduling.service"
+      // The organizer's chosen venue cap (from the preview step) wins; else
+      // fall back to whatever was configured on the competition. null =
+      // unlimited.
+      const cap =
+        args.maxGamesPerVenuePerMatchday ??
+        competition.maxGamesPerVenuePerMatchday ??
+        null;
+      const { computeSeasonSchedule, parseWeekdaySchedule } = await import(
+        "@/lib/services/season-schedule.service"
       );
-      // Round-48 (wizard) — Figma "Games per Opponent". 1 = single round
-      // robin (current default); 2 = home & away. We tile the Berger
-      // pairings N times and FLIP home/away on alternate cycles so each
-      // pair plays at both teams' venues.
-      const baseRounds = bergerPairings(teamIds);
-      const cycles = Math.max(
-        1,
-        Math.min(4, Number(competition.gamesPerOpponent ?? 1)),
-      );
-      const rounds: Array<Array<[string, string]>> = [];
-      for (let c = 0; c < cycles; c++) {
-        for (const round of baseRounds) {
-          rounds.push(
-            c % 2 === 0
-              ? round.map((m) => [m[0], m[1]] as [string, string])
-              : round.map((m) => [m[1], m[0]] as [string, string]),
-          );
-        }
-      }
-
-      // Round-47 — use the shared planner so the dates in the wizard's
-      // Season Preview step are exactly what we persist here.
-      // Round-48 (wizard) — pass weekdaySchedule + matchdayStartTime so the
-      // planner respects the Figma "Every Tuesday/Friday at 9pm" cadence.
-      const { planMatchdays } = await import(
-        "@/lib/services/match-schedule.service"
-      );
-      const weekdaySlots = Array.isArray(competition.weekdaySchedule)
-        ? (competition.weekdaySchedule as unknown[])
-            .filter(
-              (s): s is { weekday: number; time: string } =>
-                typeof s === "object" &&
-                s !== null &&
-                "weekday" in s &&
-                "time" in s &&
-                typeof (s as { weekday: unknown }).weekday === "number" &&
-                typeof (s as { time: unknown }).time === "string",
-            )
-            .map((s) => ({ weekday: s.weekday, time: s.time }))
-        : [];
-      const planned = planMatchdays({
-        startDate: competition.startDate,
-        endDate: competition.endDate,
-        matchdayCount: rounds.length,
-        weekdaySchedule: weekdaySlots,
-      });
-
-      // Round-47 — venue assignment + max-games-per-venue cap. Default
-      // to the home team's homeVenue; flip home/away when the cap would
-      // be exceeded so the match plays at the away team's venue.
-      // Round-48 (wizard) — Figma "Where Matches Are Played":
-      //   CENTRAL_VENUE → every match plays at competition.centralVenueId
-      //                   and venue-cap routing is bypassed (you're already
-      //                   at the one venue).
-      //   TEAM_VENUES   → existing behavior (home team's homeVenue with cap).
       const teams = await ctx.prisma.team.findMany({
         where: { id: { in: teamIds } },
         select: { id: true, homeVenueId: true },
@@ -983,37 +969,36 @@ builder.mutationFields((t) => ({
           useCentral ? competition.centralVenueId ?? null : t.homeVenueId ?? null,
         ]),
       );
-      const scheduled = useCentral
-        ? rounds.map((round) =>
-            round.map((m) => ({
-              home: m[0],
-              away: m[1],
-              venueId: competition.centralVenueId ?? null,
-            })),
-          )
-        : assignVenuesWithCap(
-            rounds,
-            homeVenueByTeam,
-            competition.maxGamesPerVenuePerMatchday ?? null,
-          );
+      // Identical computation to previewMatchdays — the previewed schedule is
+      // exactly what we persist here.
+      const schedule = computeSeasonSchedule({
+        teamIds,
+        gamesPerOpponent: competition.gamesPerOpponent ?? 1,
+        startDate: competition.startDate,
+        endDate: competition.endDate,
+        weekdaySchedule: parseWeekdaySchedule(competition.weekdaySchedule),
+        matchVenueMode: competition.matchVenueMode,
+        centralVenueId: competition.centralVenueId,
+        homeVenueByTeam,
+        cap,
+      });
 
       // One transaction: bulk-create matchdays + matches + notifications.
       return ctx.prisma.$transaction(async (tx) => {
-        for (let i = 0; i < rounds.length; i++) {
-          const round = scheduled[i]!;
-          const scheduledDate = new Date(planned[i]!.scheduledDate);
+        for (const day of schedule) {
+          const scheduledDate = new Date(day.scheduledDate);
           const md = await tx.matchday.create({
             data: {
               competitionId: competition.id,
-              number: i + 1,
-              label: `Matchday ${i + 1}`,
+              number: day.number,
+              label: day.label,
               scheduledDate,
               isGenerated: true,
             },
           });
-          if (round.length > 0) {
+          if (day.matches.length > 0) {
             await tx.match.createMany({
-              data: round.map((m) => ({
+              data: day.matches.map((m) => ({
                 matchdayId: md.id,
                 homeTeamId: m.home,
                 awayTeamId: m.away,
@@ -1037,7 +1022,7 @@ builder.mutationFields((t) => ({
         await new NotificationService(tx).create({
           type: "MATCH_SCHEDULED",
           title: `Schedule generated for ${competition.name}`,
-          message: `${rounds.length} matchday${rounds.length === 1 ? "" : "s"} created.`,
+          message: `${schedule.length} matchday${schedule.length === 1 ? "" : "s"} created.`,
           recipients,
           entity: {
             type: "COMPETITION",
@@ -1046,10 +1031,183 @@ builder.mutationFields((t) => ({
           },
           groupKey: `gen-md-${competition.id}`,
         });
-        return tx.competition.findUniqueOrThrow({
+        // Seed the League Table so every confirmed team shows at 0 points
+        // from kickoff — an empty table on a freshly-started competition
+        // reads like a bug. No completed matches yet → all zeros.
+        const { recomputeStandings } = await import(
+          "@/lib/services/standings.service"
+        );
+        await recomputeStandings(tx as never, competition.id);
+        // Generating the calendar starts the competition: a pre-start comp
+        // (OPEN_FOR_APPLICATIONS / APPLICATIONS_CLOSED) flips to ONGOING so it
+        // shows as Active once the schedule exists. Anything else keeps its
+        // status (generation can't run on COMPLETED — matchdays already exist).
+        const activate =
+          competition.status === "OPEN_FOR_APPLICATIONS" ||
+          competition.status === "APPLICATIONS_CLOSED";
+        return tx.competition.update({
           ...query,
           where: { id: competition.id },
+          data: {
+            status: activate ? "ONGOING" : competition.status,
+            maxGamesPerVenuePerMatchday: cap,
+          },
         });
+      });
+    },
+  }),
+
+  shiftMatchdayOnward: t.prismaField({
+    type: "Matchday",
+    description:
+      "Move a matchday to a new date and re-slot every LATER matchday onto the competition's configured weekday schedule (e.g. Tue/Thu) — opens a gap in the schedule for a holiday without breaking the weekday pattern. Records an optional note on the moved matchday and moves not-yet-played matches with it. Organizer/admin only.",
+    args: {
+      matchdayId: t.arg.id({ required: true }),
+      scheduledDate: t.arg({ type: "DateTime", required: true }),
+      note: t.arg.string(),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const matchday = await ctx.prisma.matchday.findUniqueOrThrow({
+        where: { id: String(args.matchdayId) },
+        include: { competition: true },
+      });
+      ensure(ctx.ability, "update", {
+        ...matchday.competition,
+        __caslSubjectType__: "Competition",
+      });
+      if (!matchday.scheduledDate) {
+        throw new GraphQLError("This matchday has no date to move.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const newDate = new Date(args.scheduledDate as unknown as string | Date);
+      if (newDate.getTime() === matchday.scheduledDate.getTime()) {
+        throw new GraphQLError("Pick a different date.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      // Keep chronological order: the moved matchday can't land on/before the
+      // previous matchday's date. Later matchdays re-slot forward from the new
+      // date, so their relative order is preserved automatically.
+      const prev = await ctx.prisma.matchday.findFirst({
+        where: {
+          competitionId: matchday.competitionId,
+          number: { lt: matchday.number },
+          scheduledDate: { not: null },
+        },
+        orderBy: { number: "desc" },
+        select: { scheduledDate: true },
+      });
+      if (
+        prev?.scheduledDate &&
+        newDate.getTime() <= prev.scheduledDate.getTime()
+      ) {
+        throw new GraphQLError(
+          "The new date must be after the previous matchday.",
+          { extensions: { code: "BAD_USER_INPUT" } },
+        );
+      }
+
+      // This matchday + everything after it re-slots forward from `newDate`.
+      const affected = await ctx.prisma.matchday.findMany({
+        where: {
+          competitionId: matchday.competitionId,
+          number: { gte: matchday.number },
+        },
+        orderBy: { number: "asc" },
+        select: { id: true, scheduledDate: true },
+      });
+
+      // Prefer the configured weekday schedule so moved matchdays stay on the
+      // league's weekdays (Tue/Thu → Tue/Thu). If the competition has no
+      // weekday schedule (fixed-date mode), fall back to a raw day-delta shift.
+      const { parseWeekdaySchedule } = await import(
+        "@/lib/services/season-schedule.service"
+      );
+      const { replanFromDate } = await import(
+        "@/lib/services/match-schedule.service"
+      );
+      const slots = parseWeekdaySchedule(matchday.competition.weekdaySchedule);
+      const replanned =
+        slots.length > 0
+          ? replanFromDate(newDate, slots, affected.length)
+          : null;
+      const delta = newDate.getTime() - matchday.scheduledDate.getTime();
+
+      await ctx.prisma.$transaction(async (tx) => {
+        for (let i = 0; i < affected.length; i++) {
+          const md = affected[i];
+          const shifted = replanned
+            ? new Date(replanned[i])
+            : md.scheduledDate
+              ? new Date(md.scheduledDate.getTime() + delta)
+              : null;
+          await tx.matchday.update({
+            where: { id: md.id },
+            data: {
+              ...(shifted ? { scheduledDate: shifted } : {}),
+              ...(md.id === matchday.id ? { note: args.note ?? null } : {}),
+            },
+          });
+          if (shifted) {
+            // Not-yet-played matches inherit the new date; completed /
+            // cancelled matches keep their historical timestamp.
+            await tx.match.updateMany({
+              where: {
+                matchdayId: md.id,
+                status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
+              },
+              data: { scheduledAt: shifted },
+            });
+          }
+        }
+      });
+
+      // Notify the organizer + every captain with a match in the shifted range.
+      const matches = await ctx.prisma.match.findMany({
+        where: { matchdayId: { in: affected.map((a) => a.id) } },
+        select: { homeTeamId: true, awayTeamId: true },
+      });
+      const teamIds = Array.from(
+        new Set(
+          matches
+            .flatMap((m) => [m.homeTeamId, m.awayTeamId])
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+      const caps = teamIds.length
+        ? await ctx.prisma.team.findMany({
+            where: { id: { in: teamIds } },
+            select: { captainId: true },
+          })
+        : [];
+      const recipients = Array.from(
+        new Set([
+          matchday.competition.organizerId,
+          ...caps.map((c) => c.captainId),
+        ]),
+      );
+      if (recipients.length > 0) {
+        await new NotificationService(ctx.prisma).create({
+          type: "MATCH_SCHEDULED",
+          title: `${matchday.competition.name} — Matchday ${matchday.number} moved`,
+          message:
+            args.note ??
+            `Matchday ${matchday.number} and later matchdays were rescheduled.`,
+          recipients,
+          entity: {
+            type: "COMPETITION",
+            id: matchday.competition.id,
+            slug: matchday.competition.slug,
+          },
+          groupKey: `shift-md-${matchday.id}-${newDate.getTime()}`,
+        });
+      }
+
+      return ctx.prisma.matchday.findUniqueOrThrow({
+        ...query,
+        where: { id: matchday.id },
       });
     },
   }),
@@ -1084,7 +1242,7 @@ builder.mutationFields((t) => ({
             await tx.competitionRoster.createMany({
               data: playerIds.map((userId) => ({
                 competitionId: app.competitionId,
-                teamId: app.teamId!!,
+                teamId: app.teamId!,
                 userId,
               })),
               skipDuplicates: false,
@@ -1854,38 +2012,88 @@ builder.mutationFields((t) => ({
   withdrawApplication: t.prismaField({
     type: "CompetitionApplication",
     description:
-      "Captain (or SUPER_ADMIN) withdraws a team's application before approval — frees up its roster slots.",
+      "Remove an entry from a competition. The team captain (or the solo " +
+      "applicant) withdraws their own; the competition organizer or " +
+      "SUPER_ADMIN can also remove a confirmed team or cancel an outstanding " +
+      "invitation. APPROVED rows free their locked roster slots.",
     args: { id: t.arg.id({ required: true }) },
     resolve: async (query, _root, args, ctx) => {
       requireUser(ctx.viewer);
       const app = await ctx.prisma.competitionApplication.findUniqueOrThrow({
         where: { id: String(args.id) },
-        include: { team: { select: { captainId: true } } },
+        include: {
+          team: {
+            select: {
+              captainId: true,
+              name: true,
+              members: { select: { userId: true } },
+            },
+          },
+          competition: {
+            select: { id: true, name: true, slug: true, organizerId: true },
+          },
+        },
       });
       const isCaptain = app.team?.captainId === ctx.viewer.id;
       // Solo (INDIVIDUAL) applications have no team — the applicant owns them
       // and must be able to withdraw their own.
       const isSoloOwner = app.applicantUserId === ctx.viewer.id;
       const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
-      if (!isCaptain && !isSoloOwner && !isAdmin) {
+      // Round-62 — organizers manage their roster: remove a confirmed team or
+      // cancel an invite they sent.
+      const isOrganizer = app.competition.organizerId === ctx.viewer.id;
+      if (!isCaptain && !isSoloOwner && !isAdmin && !isOrganizer) {
         throw new GraphQLError(
-          "Only the team captain, the applicant, or an admin may withdraw",
+          "Only the team captain, the applicant, the organizer, or an admin may remove this entry",
           { extensions: { code: "FORBIDDEN" } },
         );
       }
       if (app.status === "APPROVED" && app.teamId) {
-        // Once approved, the team roster is locked — withdrawal must also
-        // remove the CompetitionRoster rows so released players can re-apply
+        // Once approved, the team roster is locked — removal must also drop
+        // the CompetitionRoster rows so released players can re-apply
         // elsewhere. Solo apps have no teamId and no team roster to clear.
         await ctx.prisma.competitionRoster.deleteMany({
           where: { competitionId: app.competitionId, teamId: app.teamId },
         });
       }
-      return ctx.prisma.competitionApplication.update({
+      const updated = await ctx.prisma.competitionApplication.update({
         ...query,
         where: { id: app.id },
         data: { status: "CANCELLED", reviewedAt: new Date() },
       });
+      // When the organizer/admin removes someone else's confirmed/applied
+      // entry (not a self-withdrawal, and not a never-accepted invite), tell
+      // the team so they aren't silently dropped.
+      const selfAction = isCaptain || isSoloOwner;
+      if (!selfAction && app.status !== "INVITED") {
+        const recipients = app.team
+          ? Array.from(
+              new Set([
+                app.team.captainId,
+                ...app.team.members.map((m) => m.userId),
+              ]),
+            )
+          : app.applicantUserId
+            ? [app.applicantUserId]
+            : [];
+        if (recipients.length > 0) {
+          const subjectName =
+            app.team?.name ?? (await getApplicantName(ctx, app.applicantUserId));
+          await new NotificationService(ctx.prisma).create({
+            type: "APPLICATION_REJECTED",
+            title: `Removed: ${subjectName} from ${app.competition.name}`,
+            message: "The organizer removed your team from this competition.",
+            recipients,
+            entity: {
+              type: "COMPETITION",
+              id: app.competition.id,
+              slug: app.competition.slug,
+            },
+            groupKey: `app-removed-${app.id}`,
+          });
+        }
+      }
+      return updated;
     },
   }),
 }));

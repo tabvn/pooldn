@@ -94,7 +94,7 @@ test.describe("Sign Up", () => {
     await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Re-Enter Password")).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Create Account" }),
+      page.getByRole("button", { name: "Join", exact: true }),
     ).toBeVisible();
   });
 
@@ -105,13 +105,13 @@ test.describe("Sign Up", () => {
     await page.getByLabel("Email Address").fill("e2e-mismatch@pooldn.local");
     await page.getByLabel("Password", { exact: true }).fill("password123");
     await page.getByLabel("Re-Enter Password").fill("password456");
-    await page.getByRole("button", { name: "Create Account" }).click();
+    await page.getByRole("button", { name: "Join", exact: true }).click();
     await expect(page.getByText(/passwords do not match/i)).toBeVisible();
   });
 
   test("validates required fields", async ({ page }) => {
     await page.goto("/sign-up");
-    await page.getByRole("button", { name: "Create Account" }).click();
+    await page.getByRole("button", { name: "Join", exact: true }).click();
     // 3 required-field errors at minimum
     await expect(page.getByText("Required").first()).toBeVisible();
   });

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMutation } from "@apollo/client/react";
+import { useApolloClient, useMutation } from "@apollo/client/react";
 import {
   ChevronDown,
   LogOut,
@@ -38,6 +38,7 @@ export function ViewerMenu({
   viewerAvatarUrl: string | null;
 }) {
   const router = useRouter();
+  const client = useApolloClient();
   const [logout, { loading }] = useMutation(LogoutMutation);
 
   if (!viewerName || !viewerUsername) {
@@ -92,6 +93,9 @@ export function ViewerMenu({
           disabled={loading}
           onClick={async () => {
             await logout();
+            // Drop the previous user's normalized cache (viewer role, myTeams,
+            // etc.) so nothing leaks into the next session.
+            await client.clearStore();
             router.push("/sign-in");
             router.refresh();
           }}

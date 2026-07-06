@@ -1,12 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { TeamActionsMenu } from "@/components/team/team-actions-menu";
-import { FollowButton } from "@/components/follow-button";
 import { DetailHero } from "@/components/layout/detail-hero";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { TabNav } from "@/components/layout/tab-nav";
@@ -33,7 +30,6 @@ export default async function TeamLayout({
   if (!team) notFound();
   const isAdmin = viewer?.role === "SUPER_ADMIN";
   const isCaptain = viewer?.id === team.captain.id;
-  const canManage = isAdmin || isCaptain;
   const isMember = team.members.some((m) => m.user.id === viewer?.id);
   const canRequestToJoin = !!viewer && !isMember && !isCaptain;
 
@@ -42,7 +38,6 @@ export default async function TeamLayout({
     { href: `/teams/${slug}/players`, label: "Players" },
     { href: `/teams/${slug}/competitions`, label: "Competitions" },
     { href: `/teams/${slug}/matches`, label: "Matches" },
-    { href: `/teams/${slug}/about`, label: "About" },
   ];
 
   return (
@@ -59,14 +54,6 @@ export default async function TeamLayout({
         }
         actions={
           <>
-            <FollowButton
-              entityType="TEAM"
-              entityId={team.id}
-              isFollowing={team.isFollowing}
-              followerCount={team.followerCount}
-              followersHref={`/teams/${slug}/followers`}
-              signedIn={!!viewer}
-            />
             {canRequestToJoin ? (
               <JoinTeamButton teamId={team.id} teamName={team.name} />
             ) : null}

@@ -3,12 +3,15 @@ import { Button } from "@/components/ui/button";
 import { getClient } from "@/lib/apollo/client";
 import { VenuesListQuery } from "@/lib/graphql/operations/venue.operations";
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
-import { getHeaderCityId } from "@/lib/headers/city";
+import { getHeaderCityId, getHeaderCityName } from "@/lib/headers/city";
 import { VenuesBrowse } from "./browse";
 
 export default async function VenuesPage() {
   const client = getClient();
-  const cityId = await getHeaderCityId();
+  const [cityId, cityName] = await Promise.all([
+    getHeaderCityId(),
+    getHeaderCityName(),
+  ]);
   const [{ data }, viewerResult] = await Promise.all([
     client.query({
       query: VenuesListQuery,
@@ -25,7 +28,9 @@ export default async function VenuesPage() {
     <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-3xl font-semibold">Venues</h1>
+          <h1 className="text-3xl font-semibold">
+            {cityName ? `Venues in ${cityName}` : "Venues"}
+          </h1>
           <p className="text-sm text-muted-foreground">
             Places where matches happen.
           </p>

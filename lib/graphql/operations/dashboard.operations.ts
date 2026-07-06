@@ -38,7 +38,6 @@ export const DashboardQuery = graphql(/* GraphQL */ `
           name
           slug
           bannerUrl
-          raceToFrames
         }
       }
     }
@@ -72,7 +71,6 @@ export const DashboardQuery = graphql(/* GraphQL */ `
           name
           slug
           bannerUrl
-          raceToFrames
         }
       }
     }
@@ -96,47 +94,6 @@ export const DashboardQuery = graphql(/* GraphQL */ `
       city {
         id
         name
-      }
-    }
-    myFollows {
-      id
-      entityType
-      entityId
-      createdAt
-    }
-    myFollowedCompetitions {
-      id
-      slug
-      name
-      status
-      type
-      format
-      gameType
-      bannerUrl
-      startDate
-      endDate
-      prizePool
-      currency
-      minTeams
-      maxTeams
-      city {
-        id
-        name
-      }
-    }
-    myFollowedTeams {
-      id
-      slug
-      name
-      logoUrl
-      followerCount
-      members {
-        id
-      }
-      captain {
-        id
-        name
-        username
       }
     }
     active: competitions(filters: { status: ONGOING }) {

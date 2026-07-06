@@ -50,7 +50,7 @@ export function MyTeamsBand() {
           {teams.length} {teams.length === 1 ? "team" : "teams"}
         </span>
       </div>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3">
         {teams.map((t) => {
           const isCaptain = t.captain.id === viewerId;
           return (
@@ -85,7 +85,7 @@ export function MyTeamsBand() {
                   </div>
                 </div>
                 {isCaptain ? (
-                  <Link href={`/teams/${t.slug}/manage`}>
+                  <Link href={`/teams/${t.slug}/players`}>
                     <Button size="sm" variant="outline">
                       Manage
                     </Button>

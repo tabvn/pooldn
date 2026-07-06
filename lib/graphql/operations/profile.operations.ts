@@ -12,12 +12,6 @@ export const ProfileByUsernameQuery = graphql(/* GraphQL */ `
       nationality
       avatarUrl
       createdAt
-      isFollowing
-      followerCount
-      followingCount
-      followingUsersCount
-      followingTeamsCount
-      followingCompetitionsCount
       bannedAt
       banReason
       playerCompStats {

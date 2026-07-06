@@ -73,7 +73,6 @@ export async function runWeeklyDigest(
     // Filter by user's digest preference.
     const filtered: typeof notifications = [];
     for (const n of notifications) {
-      // eslint-disable-next-line no-await-in-loop
       const ok = await isChannelEnabled(
         prisma,
         u.id,

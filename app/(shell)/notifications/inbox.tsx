@@ -208,7 +208,8 @@ export function NotificationsInbox() {
     if (items.length > 1) {
       // Expand inline on first click; navigate on the head's own button only.
       const next = new Set(expanded);
-      next.has(groupKey) ? next.delete(groupKey) : next.add(groupKey);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
       setExpanded(next);
       return;
     }
@@ -423,16 +424,27 @@ export function NotificationsInbox() {
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
                         {!head.isRead ? (
-                          <button
-                            type="button"
+                          // Span (not <button>) so we don't nest a button inside
+                          // the row's own <button> — invalid DOM / hydration warning.
+                          <span
+                            role="button"
+                            tabIndex={0}
                             onClick={(e) => onMarkReadOnly(e, head)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                onMarkReadOnly(
+                                  e as unknown as React.MouseEvent,
+                                  head,
+                                );
+                              }
+                            }}
                             className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
                             aria-label="Mark as read"
                             data-testid={`mark-read-${head.id}`}
                             title="Mark as read"
                           >
                             <Check className="size-4" />
-                          </button>
+                          </span>
                         ) : null}
                         {items.length > 1 ? (
                           isExpanded ? (

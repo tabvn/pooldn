@@ -90,6 +90,26 @@ async function main() {
     },
   });
 
+  // Round-69 — extra demo venues so captains/organizers have a real pick list
+  // (home-venue selection, Home & Away comps, etc.). All in Da Nang.
+  const venueImageFor = (slug: string) =>
+    `https://api.dicebear.com/9.x/glass/svg?seed=${encodeURIComponent(slug)}`;
+  const extraVenueDefs = [
+    { slug: "q-club", name: "Q Club", address: "9 Nguyen Van Linh, Da Nang", tableCount: 12 },
+    { slug: "the-break-room", name: "The Break Room", address: "23 Le Duan, Da Nang", tableCount: 7 },
+    { slug: "cue-and-brew", name: "Cue & Brew", address: "5 Tran Hung Dao, Da Nang", tableCount: 8 },
+    { slug: "saigon-pool-hall", name: "Saigon Pool Hall", address: "100 Hung Vuong, Da Nang", tableCount: 14 },
+    { slug: "riverside-billiards", name: "Riverside Billiards", address: "3 Tran Phu, Da Nang", tableCount: 6 },
+  ];
+  const demoVenues: Record<string, { id: string }> = {};
+  for (const v of extraVenueDefs) {
+    demoVenues[v.slug] = await prisma.venue.upsert({
+      where: { slug: v.slug },
+      update: { imageUrl: venueImageFor(v.slug) },
+      create: { ...v, cityId: daNang.id, imageUrl: venueImageFor(v.slug) },
+    });
+  }
+
   // ── Users (covers every role) ───────────────────────────────────────────
   const pw = await hash("password123");
 
@@ -223,10 +243,15 @@ async function main() {
     name: string;
     captainId: string;
     cityId: string;
+    homeVenueId?: string;
   }) =>
     prisma.team.upsert({
       where: { slug: input.slug },
-      update: { logoUrl: teamLogoFor(input.slug), cityId: input.cityId },
+      update: {
+        logoUrl: teamLogoFor(input.slug),
+        cityId: input.cityId,
+        homeVenueId: input.homeVenueId ?? null,
+      },
       create: { ...input, logoUrl: teamLogoFor(input.slug) },
     });
 
@@ -235,18 +260,21 @@ async function main() {
     name: "Gen Filling Station",
     captainId: gen.id,
     cityId: daNang.id,
+    homeVenueId: fillingStation.id,
   });
   const tigers = await upsertTeam({
     slug: "da-nang-tigers",
     name: "Da Nang Tigers",
     captainId: thomas.id,
     cityId: daNang.id,
+    homeVenueId: poolParadise.id,
   });
   const haiCrew = await upsertTeam({
     slug: "hai-crew",
     name: "Hai's Crew",
     captainId: hai.id,
     cityId: daNang.id,
+    homeVenueId: sharkBar.id,
   });
   const sharks = await upsertTeam({
     slug: "pool-sharks",
@@ -275,6 +303,89 @@ async function main() {
       create: { teamId: team.id, userId: user.id },
     });
   }
+
+  // ── Round-69 — extra demo players, captains & teams for testing ──────────
+  // More player profiles (varied nationalities), 5 more captains (8 total) and
+  // a team for each, so we can exercise apply / lineups / standings with
+  // real-feeling rosters. All scoped to Da Nang so they show under the
+  // default city filter.
+  const addMember = (teamId: string, userId: string) =>
+    prisma.teamMember.upsert({
+      where: { teamId_userId: { teamId, userId } },
+      update: {},
+      create: { teamId, userId },
+    });
+
+  const extraPlayerDefs = [
+    { username: "player4", name: "Tien Pham", nationality: "VN" },
+    { username: "player5", name: "Khoa Nguyen", nationality: "VN" },
+    { username: "player6", name: "Yuki Tanaka", nationality: "JP" },
+    { username: "player7", name: "Min-jun Kim", nationality: "KR" },
+    { username: "player8", name: "Carlos Ruiz", nationality: "ES" },
+    { username: "player9", name: "Arjun Singh", nationality: "IN" },
+    { username: "player10", name: "Jake Miller", nationality: "US" },
+    { username: "player11", name: "Liam O'Brien", nationality: "AU" },
+    { username: "player12", name: "Maria Santos", nationality: "PH" },
+    { username: "player13", name: "Somchai Pakdee", nationality: "TH" },
+    { username: "player14", name: "Oliver Smith", nationality: "GB" },
+    { username: "player15", name: "Chloe Martin", nationality: "FR" },
+    { username: "player16", name: "Trang Vu", nationality: "VN" },
+    { username: "player17", name: "Nam Hoang", nationality: "VN" },
+  ];
+  const demoPlayers: { id: string }[] = [];
+  for (const p of extraPlayerDefs) {
+    demoPlayers.push(
+      await upsertUser({
+        username: p.username,
+        name: p.name,
+        email: `${p.username}@pooldn.local`,
+        role: "PLAYER",
+        cityId: daNang.id,
+        nationality: p.nationality,
+      }),
+    );
+  }
+
+  const extraCaptainDefs = [
+    { username: "long", name: "Long Duong", nationality: "VN", slug: "cue-masters", team: "Cue Masters", venue: "q-club" },
+    { username: "duc", name: "Duc Tran", nationality: "VN", slug: "break-point", team: "Break Point", venue: "the-break-room" },
+    { username: "kenji", name: "Kenji Sato", nationality: "JP", slug: "rising-sun-cues", team: "Rising Sun Cues", venue: "cue-and-brew" },
+    { username: "sofia", name: "Sofia Garcia", nationality: "ES", slug: "la-bola", team: "La Bola", venue: "saigon-pool-hall" },
+    { username: "raj", name: "Raj Patel", nationality: "IN", slug: "spin-doctors", team: "Spin Doctors", venue: "riverside-billiards" },
+  ];
+  const playerPool = [player1, player2, player3, ...demoPlayers];
+  for (let i = 0; i < extraCaptainDefs.length; i++) {
+    const c = extraCaptainDefs[i];
+    const captain = await upsertUser({
+      username: c.username,
+      name: c.name,
+      email: `${c.username}@pooldn.local`,
+      role: "TEAM_CAPTAIN",
+      cityId: daNang.id,
+      nationality: c.nationality,
+    });
+    const team = await upsertTeam({
+      slug: c.slug,
+      name: c.team,
+      captainId: captain.id,
+      cityId: daNang.id,
+      homeVenueId: demoVenues[c.venue]?.id,
+    });
+    await addMember(team.id, captain.id);
+    // 5 players per team in a rotating window so teams differ but overlap
+    // (a player can sit on several teams; the per-competition roster is the
+    // one that's unique).
+    for (let k = 0; k < 5; k++) {
+      const p = playerPool[(i * 3 + k) % playerPool.length]!;
+      await addMember(team.id, p.id);
+    }
+  }
+
+  // Beef up the original teams too so each can field a full singles+doubles
+  // lineup (needs ≥6 distinct players for 3+3 singles).
+  for (const p of demoPlayers.slice(0, 3)) await addMember(genTeam.id, p.id);
+  for (const p of demoPlayers.slice(3, 6)) await addMember(tigers.id, p.id);
+  for (const p of demoPlayers.slice(6, 9)) await addMember(haiCrew.id, p.id);
 
   // ── Competitions ────────────────────────────────────────────────────────
   const bannerFor = (slug: string) =>
@@ -366,7 +477,7 @@ async function main() {
 
   const open = await prisma.competition.upsert({
     where: { slug: "spring-open-2027" },
-    update: {},
+    update: { requiresHomeVenue: true },
     create: {
       slug: "spring-open-2027",
       name: "Spring Open",
@@ -377,6 +488,9 @@ async function main() {
       type: "TEAMS",
       format: "ROUND_ROBIN",
       gameType: "NINE_BALL",
+      // Each team needs a home venue → the apply form shows the venue picker,
+      // which auto-fills from the selected team's home venue.
+      requiresHomeVenue: true,
       maxTeams: 8,
       minTeams: 4,
       raceToFrames: 5,
@@ -1339,39 +1453,6 @@ async function main() {
         note: "Disputed — we sank the 8-ball legally.",
       },
       update: { status: "CONFLICT" },
-    });
-  }
-
-  // Round-31 — community posts so the feed isn't empty.
-  const da = allPlayers.slice(0, 4);
-  if (da.length >= 2) {
-    // Round-47 — every seeded community post is scoped to Da Nang so the
-    // default header city filter (Da Nang) has content out of the box.
-    await prisma.communityPost.createMany({
-      data: [
-        {
-          authorId: da[0]!.id,
-          cityId: daNang.id,
-          body: "Anyone up for a #ladder this weekend? 🎱",
-          tags: ["ladder"],
-        },
-        {
-          authorId: da[1]!.id,
-          cityId: daNang.id,
-          body: "Big shoutout to @" + da[0]!.username + " for the clutch win.",
-        },
-        {
-          authorId: da[0]!.id,
-          cityId: daNang.id,
-          body: "League standings looking spicy. Final stretch incoming.",
-        },
-      ],
-      skipDuplicates: true,
-    });
-    // Backfill any older seeded posts that pre-date the cityId column.
-    await prisma.communityPost.updateMany({
-      where: { cityId: null },
-      data: { cityId: daNang.id },
     });
   }
 

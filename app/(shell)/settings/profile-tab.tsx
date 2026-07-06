@@ -147,7 +147,7 @@ export function ProfileTab() {
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>Country</Label>
+                <Label>Country Origin</Label>
                 <Controller
                   control={control}
                   name="nationality"

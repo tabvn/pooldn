@@ -9,7 +9,6 @@ import {
   Pencil,
   ShieldCheck,
   Trash2,
-  Users as UsersIcon,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -125,15 +124,6 @@ export function TeamActionsMenu({
         <MoreVertical className="size-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent>
-        <DropdownMenuItem
-          render={(props) => (
-            <Link href={`/teams/${teamSlug}/manage`} {...props} />
-          )}
-          data-testid="team-actions-manage"
-        >
-          <UsersIcon className="size-4" />
-          <span>Manage roster</span>
-        </DropdownMenuItem>
         <DropdownMenuItem
           render={(props) => (
             <Link href={`/teams/${teamSlug}/edit`} {...props} />

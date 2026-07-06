@@ -1,24 +1,14 @@
-import { notFound, redirect } from "next/navigation";
-import { requireViewer } from "@/lib/auth/server";
-import { getClient } from "@/lib/apollo/client";
-import { TeamDetailQuery } from "@/lib/graphql/operations/team.operations";
-import { ManageRoster } from "./roster";
+import { redirect } from "next/navigation";
 
-export default async function ManageTeamPage({
+/**
+ * Round-66 — Manage Players was merged into the Players tab. Redirect any
+ * lingering /teams/[slug]/manage links there.
+ */
+export default async function ManageRedirect({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const viewer = await requireViewer({ next: `/teams/${slug}/manage` });
-  const { data } = await getClient().query({
-    query: TeamDetailQuery,
-    variables: { slug },
-  });
-  const team = data?.team;
-  if (!team) notFound();
-  if (viewer.role !== "SUPER_ADMIN" && team.captain.id !== viewer.id) {
-    redirect(`/teams/${slug}`);
-  }
-  return <ManageRoster slug={slug} />;
+  redirect(`/teams/${slug}/players`);
 }

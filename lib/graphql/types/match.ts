@@ -19,11 +19,128 @@ const RescheduleRequestStatusEnum = builder.enumType(RescheduleRequestStatus, {
   name: "RescheduleRequestStatus",
 });
 
+// Round-60 — derived per-block lineup state for the match-flow UI.
+type BlockStateShape = {
+  blockOrder: number;
+  blockType: string;
+  homeSubmittedAt: Date | null;
+  homeSubmittedById: string | null;
+  awaySubmittedAt: Date | null;
+  awaySubmittedById: string | null;
+  published: boolean;
+  fullyDecided: boolean;
+  locked: boolean;
+  isCurrentActive: boolean;
+};
+
+type PrismaLike = import("@/lib/generated/prisma/client").PrismaClient;
+
+/**
+ * Computes the per-block lineup state for a team match: which side submitted
+ * each block, whether it's published (both sides in) and fully decided, and
+ * which block is currently active (lowest not-yet-decided). Back-compat: a
+ * match with the legacy whole-match lineup timestamps but no per-block rows
+ * is treated as "all blocks published".
+ */
+async function computeBlockStates(
+  prisma: PrismaLike,
+  matchId: string,
+): Promise<BlockStateShape[]> {
+  const m = await prisma.match.findUnique({
+    where: { id: matchId },
+    select: {
+      status: true,
+      homeLineupSubmittedAt: true,
+      awayLineupSubmittedAt: true,
+      matchday: {
+        select: {
+          competition: {
+            select: {
+              blocks: {
+                orderBy: { order: "asc" },
+                select: { order: true, type: true },
+              },
+            },
+          },
+        },
+      },
+      frames: { select: { blockOrder: true, homeWon: true } },
+      blockLineups: {
+        select: {
+          side: true,
+          blockOrder: true,
+          submittedAt: true,
+          submittedById: true,
+        },
+      },
+    },
+  });
+  if (!m) return [];
+  const blocks = m.matchday.competition.blocks;
+  // Back-compat: a finished match (legacy seed data may have frames without
+  // blockOrder and no per-block rows) is treated as fully published/decided;
+  // likewise a match carrying only the old whole-match lineup timestamps.
+  const isCompleted = m.status === "COMPLETED";
+  const legacyFallback =
+    m.blockLineups.length === 0 &&
+    !!m.homeLineupSubmittedAt &&
+    !!m.awayLineupSubmittedAt;
+
+  const decidedByOrder = new Map<number, boolean>();
+  for (const b of blocks) {
+    const fs = m.frames.filter((f) => f.blockOrder === b.order);
+    decidedByOrder.set(b.order, fs.length > 0 && fs.every((f) => f.homeWon !== null));
+  }
+  const currentActive = isCompleted
+    ? null
+    : blocks.find((b) => !decidedByOrder.get(b.order))?.order ?? null;
+
+  return blocks.map((b) => {
+    const home = m.blockLineups.find(
+      (r) => r.blockOrder === b.order && r.side === "HOME",
+    );
+    const away = m.blockLineups.find(
+      (r) => r.blockOrder === b.order && r.side === "AWAY",
+    );
+    const published = isCompleted || legacyFallback || (!!home && !!away);
+    return {
+      blockOrder: b.order,
+      blockType: b.type as string,
+      homeSubmittedAt: home?.submittedAt ?? (legacyFallback ? m.homeLineupSubmittedAt : null),
+      homeSubmittedById: home?.submittedById ?? null,
+      awaySubmittedAt: away?.submittedAt ?? (legacyFallback ? m.awayLineupSubmittedAt : null),
+      awaySubmittedById: away?.submittedById ?? null,
+      published,
+      fullyDecided: isCompleted || (decidedByOrder.get(b.order) ?? false),
+      locked: published,
+      isCurrentActive: b.order === currentActive,
+    };
+  });
+}
+
+const MatchBlockState = builder
+  .objectRef<BlockStateShape>("MatchBlockState")
+  .implement({
+    fields: (t) => ({
+      blockOrder: t.exposeInt("blockOrder"),
+      blockType: t.exposeString("blockType"),
+      homeSubmittedAt: t.expose("homeSubmittedAt", { type: "DateTime", nullable: true }),
+      homeSubmittedById: t.exposeID("homeSubmittedById", { nullable: true }),
+      awaySubmittedAt: t.expose("awaySubmittedAt", { type: "DateTime", nullable: true }),
+      awaySubmittedById: t.exposeID("awaySubmittedById", { nullable: true }),
+      published: t.exposeBoolean("published"),
+      fullyDecided: t.exposeBoolean("fullyDecided"),
+      locked: t.exposeBoolean("locked"),
+      isCurrentActive: t.exposeBoolean("isCurrentActive"),
+    }),
+  });
+
 builder.prismaObject("Matchday", {
   fields: (t) => ({
     id: t.exposeID("id"),
     number: t.exposeInt("number"),
     label: t.exposeString("label", { nullable: true }),
+    note: t.exposeString("note", { nullable: true }),
     scheduledDate: t.expose("scheduledDate", {
       type: "DateTime",
       nullable: true,
@@ -82,6 +199,22 @@ builder.prismaObject("Match", {
     lineupEditRequestedSide: t.exposeString("lineupEditRequestedSide", {
       nullable: true,
     }),
+    // Round-60 — per-block lineup flow.
+    lineupEditRequestedBlockOrder: t.exposeInt("lineupEditRequestedBlockOrder", {
+      nullable: true,
+    }),
+    blockLineups: t.relation("blockLineups"),
+    currentActiveBlockOrder: t.int({
+      nullable: true,
+      resolve: async (m, _a, ctx) => {
+        const states = await computeBlockStates(ctx.prisma, m.id);
+        return states.find((s) => s.isCurrentActive)?.blockOrder ?? null;
+      },
+    }),
+    blockStates: t.field({
+      type: [MatchBlockState],
+      resolve: (m, _a, ctx) => computeBlockStates(ctx.prisma, m.id),
+    }),
     // Round-20 — no-show bookkeeping.
     winType: t.expose("winType", { type: MatchWinTypeEnum }),
     forfeitTeamId: t.exposeID("forfeitTeamId", { nullable: true }),
@@ -100,6 +233,7 @@ builder.prismaObject("MatchFrame", {
       type: GameBlockTypeEnum,
       nullable: true,
     }),
+    blockOrder: t.exposeInt("blockOrder", { nullable: true }),
     homeWon: t.exposeBoolean("homeWon", { nullable: true }),
     isWalkover: t.exposeBoolean("isWalkover"),
     breakAndRun: t.exposeBoolean("breakAndRun"),
@@ -107,6 +241,16 @@ builder.prismaObject("MatchFrame", {
     awayPlayer: t.exposeString("awayPlayer", { nullable: true }),
     homePlayerRef: t.relation("homePlayerRef", { nullable: true }),
     awayPlayerRef: t.relation("awayPlayerRef", { nullable: true }),
+  }),
+});
+
+builder.prismaObject("MatchBlockLineup", {
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    side: t.exposeString("side"),
+    blockOrder: t.exposeInt("blockOrder"),
+    submittedBy: t.relation("submittedBy"),
+    submittedAt: t.expose("submittedAt", { type: "DateTime" }),
   }),
 });
 
@@ -172,6 +316,8 @@ export const LineupSlotInput = builder.inputType("LineupSlotInput", {
 export const SubmitLineupInput = builder.inputType("SubmitLineupInput", {
   fields: (t) => ({
     matchId: t.id({ required: true }),
+    // Round-60 — the block (MatchFormatBlock.order) this lineup is for.
+    blockOrder: t.int({ required: true }),
     slots: t.field({ type: [LineupSlotInput], required: true }),
   }),
 });

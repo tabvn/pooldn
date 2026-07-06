@@ -1,9 +1,9 @@
-import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MatchStatusChip } from "@/components/ui/status-chip";
-import { LocalDateTime } from "@/components/ui/local-datetime";
 import { GenerateMatchdaysButton } from "@/components/competition/generate-matchdays-button";
 import { SeasonCalendarCta } from "@/components/competition/season-calendar-cta";
+import {
+  MatchdayList,
+  type MatchdayView,
+} from "@/components/competition/matchday-list";
 import { PoolhubIcon } from "@/components/layout/sidebar-icons";
 import { getClient } from "@/lib/apollo/client";
 import {
@@ -93,62 +93,79 @@ export default async function MatchdaysPage({
     );
   }
 
-  return (
-    <div className="space-y-6">
-      {c.matchdays.map((md) => (
-        <Card key={md.id}>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>
-                Matchday {md.number}
-                {md.label ? ` — ${md.label}` : ""}
-              </CardTitle>
-              <span className="text-xs text-muted-foreground">
-                {md.scheduledDate ? (
-                  <LocalDateTime value={md.scheduledDate} variant="date" />
-                ) : (
-                  "TBD"
-                )}
-              </span>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {md.matches.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No matches yet.</p>
-            ) : (
-              md.matches.map((m) => (
-                <Link
-                  key={m.id}
-                  href={`/matches/${m.id}`}
-                  className="flex items-center justify-between rounded-md border border-border bg-background px-4 py-3 hover:border-primary/50 transition-colors"
-                >
-                  <div className="flex flex-1 items-center gap-3">
-                    <span className="font-semibold">
-                      {m.homeTeam?.name ?? "TBD"}
-                    </span>
-                    <span className="text-muted-foreground">vs</span>
-                    <span className="font-semibold">
-                      {m.awayTeam?.name ?? "TBD"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {m.homeScore != null && m.awayScore != null ? (
-                      <span className="font-mono text-base font-bold">
-                        {m.homeScore} – {m.awayScore}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">
-                        {m.venue?.name ?? "Venue TBD"}
-                      </span>
-                    )}
-                    <MatchStatusChip status={m.status} />
-                  </div>
-                </Link>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
+  // Derive each matchday's lifecycle state for the Figma header tones /
+  // badges. A match is "resolved" once it's COMPLETED/CANCELLED or a bye
+  // (one side missing). A matchday is Past when every match is resolved;
+  // the earliest unresolved matchday is the Current one; the rest are
+  // Scheduled. A COMPLETED competition has no Current marker.
+  const ordered = [...c.matchdays].sort((a, b) => a.number - b.number);
+  const resolved = (m: (typeof ordered)[number]["matches"][number]) =>
+    m.status === "COMPLETED" ||
+    m.status === "CANCELLED" ||
+    !m.homeTeam ||
+    !m.awayTeam;
+  const firstUnresolvedIdx =
+    header.status === "COMPLETED"
+      ? -1
+      : ordered.findIndex((md) => !md.matches.every(resolved));
+
+  // Every team that appears anywhere in the schedule — a round robin plays
+  // them all, so this is the full field. A team missing from a given
+  // matchday's matches is on a bye that day.
+  const allTeamsBySlug = new Map<
+    string,
+    { name: string; slug: string; logoUrl: string | null }
+  >();
+  for (const md of ordered) {
+    for (const m of md.matches) {
+      for (const t of [m.homeTeam, m.awayTeam]) {
+        if (t) {
+          allTeamsBySlug.set(t.slug, {
+            name: t.name,
+            slug: t.slug,
+            logoUrl: t.logoUrl ?? null,
+          });
+        }
+      }
+    }
+  }
+
+  const matchdays: MatchdayView[] = ordered.map((md, idx) => {
+    const playing = new Set<string>();
+    for (const m of md.matches) {
+      if (m.homeTeam) playing.add(m.homeTeam.slug);
+      if (m.awayTeam) playing.add(m.awayTeam.slug);
+    }
+    const byes = [...allTeamsBySlug.values()].filter(
+      (t) => !playing.has(t.slug),
+    );
+    return {
+      id: md.id,
+      number: md.number,
+      label: md.label ?? null,
+      note: md.note ?? null,
+      scheduledDate: md.scheduledDate ?? null,
+      state: (idx === firstUnresolvedIdx
+        ? "current"
+        : firstUnresolvedIdx === -1 || idx < firstUnresolvedIdx
+          ? "past"
+          : "scheduled") as MatchdayView["state"],
+      byes,
+      matches: md.matches.map((m) => ({
+      id: m.id,
+      status: m.status,
+      homeScore: m.homeScore ?? null,
+      awayScore: m.awayScore ?? null,
+      home: m.homeTeam
+        ? { name: m.homeTeam.name, slug: m.homeTeam.slug, logoUrl: m.homeTeam.logoUrl }
+        : null,
+      away: m.awayTeam
+        ? { name: m.awayTeam.name, slug: m.awayTeam.slug, logoUrl: m.awayTeam.logoUrl }
+        : null,
+      venueName: m.venue?.name ?? null,
+      })),
+    };
+  });
+
+  return <MatchdayList matchdays={matchdays} canManage={canManage} />;
 }

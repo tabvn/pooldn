@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMutation } from "@apollo/client/react";
+import { useApolloClient, useMutation } from "@apollo/client/react";
 import { LoginMutation } from "@/lib/graphql/operations/auth.operations";
 
 const DEMO_ACCOUNTS = [
@@ -11,6 +11,11 @@ const DEMO_ACCOUNTS = [
   { role: "TEAM_CAPTAIN", username: "thomas", name: "Thomas Bryan" },
   { role: "TEAM_CAPTAIN", username: "gen", name: "Gen Hoang" },
   { role: "TEAM_CAPTAIN", username: "hai", name: "Hai Le" },
+  { role: "TEAM_CAPTAIN", username: "long", name: "Long Duong" },
+  { role: "TEAM_CAPTAIN", username: "duc", name: "Duc Tran" },
+  { role: "TEAM_CAPTAIN", username: "kenji", name: "Kenji Sato" },
+  { role: "TEAM_CAPTAIN", username: "sofia", name: "Sofia Garcia" },
+  { role: "TEAM_CAPTAIN", username: "raj", name: "Raj Patel" },
   { role: "PLAYER", username: "player1", name: "Linh Tran" },
   { role: "PLAYER", username: "player2", name: "An Pham" },
   { role: "VIEWER", username: "viewer", name: "Viewer Demo" },
@@ -28,6 +33,7 @@ const roleColor: Record<string, string> = {
 
 export function DemoAccounts() {
   const router = useRouter();
+  const client = useApolloClient();
   const searchParams = useSearchParams();
   const nextHref = searchParams.get("next") ?? "/";
   const [login, { loading }] = useMutation(LoginMutation);
@@ -37,6 +43,8 @@ export function DemoAccounts() {
       variables: { input: { usernameOrEmail: username, password: DEMO_PASSWORD } },
     });
     if (result.data?.login) {
+      // Clear any prior session's cache before loading the new identity.
+      await client.clearStore();
       router.push(nextHref);
       router.refresh();
     }
@@ -53,7 +61,7 @@ export function DemoAccounts() {
       <p className="text-xs text-white/50">
         One-click login for each role (dev fixtures).
       </p>
-      <ul className="grid grid-cols-1 gap-1.5">
+      <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
         {DEMO_ACCOUNTS.map((a) => (
           <li key={a.username}>
             <button

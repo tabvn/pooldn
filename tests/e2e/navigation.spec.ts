@@ -12,7 +12,9 @@ test.describe("Shell navigation", () => {
 
     await page.getByRole("link", { name: "Teams" }).click();
     await expect(page).toHaveURL("/teams");
-    await expect(page.getByRole("heading", { name: "Teams" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /^Teams( in .+)?$/ }),
+    ).toBeVisible();
 
     await page.getByRole("link", { name: "Venues" }).click();
     await expect(page).toHaveURL("/venues");

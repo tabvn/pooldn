@@ -26,7 +26,6 @@ import {
   Info,
   Plus,
   Trophy,
-  Users,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -66,6 +65,7 @@ type CompetitionInitial = {
   format: string;
   gameType: string;
   type: string;
+  description: string | null;
   startDate: string | null;
   prizePool: string | null;
   currency: string | null;
@@ -88,9 +88,10 @@ type CompetitionInitial = {
   }>;
 };
 
-type TabKey = "participants" | "schedule" | "structure" | "review";
+type TabKey = "details" | "participants" | "schedule" | "structure" | "review";
 
 const TABS: { key: TabKey; label: string }[] = [
+  { key: "details", label: "Details" },
   { key: "participants", label: "Participants" },
   { key: "schedule", label: "Schedule" },
   { key: "structure", label: "Structure" },
@@ -118,24 +119,22 @@ const HOURS_OPTIONS = (() => {
   return out;
 })();
 
-const GAME_LABEL: Record<string, string> = {
-  EIGHT_BALL: "8-ball",
-  NINE_BALL: "9-ball",
-  TEN_BALL: "10-ball",
-  STRAIGHT_POOL: "Straight pool",
-};
-
-const FORMAT_LABEL: Record<string, string> = {
-  ROUND_ROBIN: "Round Robin / League",
-  SINGLE_ELIMINATION: "Single Elimination",
-  DOUBLE_ELIMINATION: "Double Elimination",
-  SWISS: "Swiss",
-};
-
-export function TabEditor({ initial }: { initial: CompetitionInitial }) {
+export function TabEditor({
+  initial,
+  initialTab,
+}: {
+  initial: CompetitionInitial;
+  /** Which tab to open on. Defaults to "details"; the create flow passes
+   *  "participants" so newly-created comps continue setup there. */
+  initialTab?: string;
+}) {
   const router = useRouter();
   const toast = useToast();
-  const [tab, setTab] = useState<TabKey>("participants");
+  const [tab, setTab] = useState<TabKey>(
+    TABS.some((t) => t.key === initialTab)
+      ? (initialTab as TabKey)
+      : "details",
+  );
 
   // Local working copy — each tab mutates its slice; on Save we POST and
   // refresh server state. Keeps each tab independent and avoids the
@@ -166,6 +165,14 @@ export function TabEditor({ initial }: { initial: CompetitionInitial }) {
         variables: {
           id: data.id,
           input: {
+            name: patch.name,
+            description:
+              patch.description === undefined ? undefined : patch.description,
+            startDate:
+              patch.startDate === undefined ? undefined : patch.startDate,
+            prizePool:
+              patch.prizePool === undefined ? undefined : patch.prizePool,
+            currency: patch.currency,
             applicationMode: patch.applicationMode,
             maxTeams: patch.maxTeams,
             minPlayersPerTeam: patch.minPlayersPerTeam,
@@ -218,49 +225,6 @@ export function TabEditor({ initial }: { initial: CompetitionInitial }) {
 
   return (
     <div className="min-h-full">
-      {/* Title block — lime-tinted hero */}
-      <header className="bg-primary/10 px-6 py-10 md:px-10">
-        <div className="mx-auto max-w-5xl">
-          <h1 className="text-2xl font-semibold text-primary md:text-3xl">
-            {data.name}
-          </h1>
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <Badge color="pink">DRAFT</Badge>
-            {data.type === "TEAMS" ? <Badge color="lime">Teams</Badge> : null}
-            <span className="text-sm">
-              {FORMAT_LABEL[data.format] ?? data.format}
-            </span>
-            <span>·</span>
-            <span className="text-sm">
-              {GAME_LABEL[data.gameType] ?? data.gameType}
-            </span>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-            {data.startDate ? (
-              <span className="inline-flex items-center gap-1.5 text-primary">
-                <Calendar className="size-4" />
-                Starts{" "}
-                {new Date(data.startDate).toLocaleDateString(undefined, {
-                  month: "long",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </span>
-            ) : null}
-            {data.prizePool ? (
-              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                <Trophy className="size-4" />
-                {data.prizePool} {data.currency ?? ""}
-              </span>
-            ) : null}
-            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <Users className="size-4" />
-              0
-            </span>
-          </div>
-        </div>
-      </header>
-
       {/* Editor card */}
       <div className="mx-auto max-w-3xl px-4 py-8 md:px-6">
         <div className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -298,6 +262,26 @@ export function TabEditor({ initial }: { initial: CompetitionInitial }) {
 
           {/* Tab content */}
           <div className="space-y-4 p-6">
+            {tab === "details" ? (
+              <DetailsTab
+                data={data}
+                onChange={set}
+                onSave={() =>
+                  save(
+                    {
+                      name: data.name,
+                      description: data.description,
+                      startDate: data.startDate,
+                      prizePool: data.prizePool,
+                      currency: data.currency,
+                    },
+                    "Details saved",
+                    "participants",
+                  )
+                }
+                saving={saving}
+              />
+            ) : null}
             {tab === "participants" ? (
               <ParticipantsTab
                 data={data}
@@ -371,6 +355,119 @@ export function TabEditor({ initial }: { initial: CompetitionInitial }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Details tab — name, description, start date, prize
+// ─────────────────────────────────────────────────────────────────────────
+
+function DetailsTab({
+  data,
+  onChange,
+  onSave,
+  saving,
+}: {
+  data: CompetitionInitial;
+  onChange: <K extends keyof CompetitionInitial>(
+    k: K,
+    v: CompetitionInitial[K],
+  ) => void;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  // startDate is stored as a full ISO DateTime; the date input only handles
+  // the calendar day, so slice on read and re-stamp midnight on write.
+  const startDay = data.startDate ? data.startDate.slice(0, 10) : "";
+  const nameInvalid = data.name.trim().length === 0;
+
+  return (
+    <div className="space-y-5">
+      <Field label="Competition Name">
+        <input
+          type="text"
+          value={data.name}
+          onChange={(e) => onChange("name", e.target.value)}
+          className="block w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+          data-testid="details-name"
+        />
+        {nameInvalid ? (
+          <p
+            className="mt-2 text-xs font-medium text-destructive"
+            role="alert"
+            data-testid="details-name-error"
+          >
+            Name can&apos;t be empty.
+          </p>
+        ) : null}
+      </Field>
+
+      <Field label="Description">
+        <textarea
+          value={data.description ?? ""}
+          onChange={(e) =>
+            onChange("description", e.target.value ? e.target.value : null)
+          }
+          rows={4}
+          placeholder="Tell teams what this competition is about…"
+          className="block w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+          data-testid="details-description"
+        />
+      </Field>
+
+      <Field label="Start Date">
+        <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3">
+          <Calendar className="size-4 text-muted-foreground" />
+          <input
+            type="date"
+            value={startDay}
+            onChange={(e) =>
+              onChange(
+                "startDate",
+                e.target.value
+                  ? new Date(`${e.target.value}T00:00:00`).toISOString()
+                  : null,
+              )
+            }
+            className="block w-full bg-transparent py-2 text-sm outline-none"
+            data-testid="details-start-date"
+          />
+        </div>
+      </Field>
+
+      <Field label="Prize Pool">
+        <div className="flex items-stretch gap-2">
+          <div className="flex flex-1 items-center gap-2 rounded-md border border-border bg-background px-3">
+            <Trophy className="size-4 text-muted-foreground" />
+            <input
+              type="text"
+              inputMode="numeric"
+              value={data.prizePool ?? ""}
+              onChange={(e) =>
+                onChange("prizePool", e.target.value ? e.target.value : null)
+              }
+              placeholder="e.g. 10,000,000"
+              className="block w-full bg-transparent py-2 text-sm outline-none"
+              data-testid="details-prize"
+            />
+          </div>
+          <select
+            value={data.currency ?? "VND"}
+            onChange={(e) => onChange("currency", e.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            data-testid="details-currency"
+          >
+            <option value="VND">VND</option>
+            <option value="USD">USD</option>
+            <option value="EUR">EUR</option>
+          </select>
+        </div>
+      </Field>
+
+      <SaveButton loading={saving} disabled={nameInvalid} onClick={onSave}>
+        Save and Continue
+      </SaveButton>
     </div>
   );
 }
@@ -1084,6 +1181,29 @@ function ReviewTab({
   return (
     <div className="space-y-4">
       <ReviewRow
+        label="Details"
+        onEdit={() => onEdit("details")}
+        rows={[
+          ["Name", data.name || "—"],
+          [
+            "Start date",
+            data.startDate
+              ? new Date(data.startDate).toLocaleDateString(undefined, {
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : "—",
+          ],
+          [
+            "Prize pool",
+            data.prizePool
+              ? `${data.prizePool} ${data.currency ?? ""}`.trim()
+              : "—",
+          ],
+        ]}
+      />
+      <ReviewRow
         label="Participants"
         onEdit={() => onEdit("participants")}
         rows={[
@@ -1347,23 +1467,3 @@ function ReviewRow({
   );
 }
 
-function Badge({
-  color,
-  children,
-}: {
-  color: "pink" | "lime";
-  children: React.ReactNode;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-        color === "pink"
-          ? "bg-pink-600 text-white"
-          : "bg-primary text-primary-foreground",
-      )}
-    >
-      {children}
-    </span>
-  );
-}

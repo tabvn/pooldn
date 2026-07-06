@@ -53,7 +53,6 @@ const VALID_KINDS: ReadonlySet<UploadKind> = new Set([
   "team-logo",
   "competition-banner",
   "venue-image",
-  "community-image",
   "score-board",
   "team-logo-draft",
 ]);
@@ -99,12 +98,6 @@ async function authorize(
         where: { id: ownerId },
       });
       return !!c && c.organizerId === viewer.id;
-    }
-    case "community-image": {
-      // The image lives loose under the viewer's folder; the URL is later
-      // attached to a CommunityPost via createCommunityPost. We only verify
-      // the viewer is uploading under their own folder.
-      return viewer.id === ownerId;
     }
     case "score-board": {
       // Score-board photos are scoped to a captain — owner-id is the

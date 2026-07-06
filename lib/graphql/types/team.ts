@@ -10,7 +10,15 @@ builder.prismaObject("Team", {
     captain: t.relation("captain"),
     city: t.relation("city", { nullable: true }),
     homeVenue: t.relation("homeVenue", { nullable: true }),
-    members: t.relation("members"),
+    // Active roster only — members who left (leaveTeam soft-deletes with
+    // isActive=false) must drop off the roster, the member count, and the
+    // "am I a member?" check that gates the Leave button.
+    members: t.relation("members", {
+      query: () => ({
+        where: { isActive: true },
+        orderBy: { joinedAt: "asc" },
+      }),
+    }),
     isActive: t.exposeBoolean("isActive"),
     bannedAt: t.expose("bannedAt", { type: "DateTime", nullable: true }),
     banReason: t.exposeString("banReason", { nullable: true }),
