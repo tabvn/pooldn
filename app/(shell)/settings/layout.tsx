@@ -22,7 +22,7 @@ export default async function SettingsLayout({
         }
         description="Profile, account, and security."
       />
-      <div className="mx-auto w-full max-w-5xl px-6 pt-6 md:px-10">
+      <div className="mx-auto w-full max-w-5xl px-4 pt-4 md:px-10 md:pt-6">
         <TabNav
           items={[
             { href: "/settings", label: "Profile" },
@@ -32,7 +32,7 @@ export default async function SettingsLayout({
           fullWidth
         />
       </div>
-      <div className="mx-auto w-full max-w-5xl px-6 py-6 md:px-10">
+      <div className="mx-auto w-full max-w-5xl px-4 py-4 md:px-10 md:py-6">
         {children}
       </div>
     </div>

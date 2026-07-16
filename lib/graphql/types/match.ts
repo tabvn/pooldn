@@ -273,7 +273,12 @@ export const RecordFrameInput = builder.inputType("RecordFrameInput", {
     // Round-47 — Break & Run flag for the winning side. Captains tick
     // this when the winner cleared the rack on their break without the
     // opponent taking a shot. Feeds the Figma MVP formula.
+    //
+    // Round-63 — B&R is now *sticky*: a normal frame write can only ADD a
+    // B&R (existing || incoming), never silently clear one the other captain
+    // set. Deliberately removing a B&R requires clearBreakAndRun: true.
     breakAndRun: t.boolean(),
+    clearBreakAndRun: t.boolean(),
   }),
 });
 

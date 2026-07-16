@@ -296,7 +296,7 @@ export function NotificationsInbox() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-semibold">Notifications</h1>
+            <h1 className="text-2xl font-semibold md:text-3xl">Notifications</h1>
             {unreadCount > 0 ? (
               <Badge variant="primary" size="sm">
                 {unreadCount} unread

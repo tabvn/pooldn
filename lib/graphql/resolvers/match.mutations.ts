@@ -111,7 +111,7 @@ builder.mutationFields((t) => ({
             frameNumber: args.input.frameNumber,
           },
         },
-        select: { blockOrder: true },
+        select: { blockOrder: true, breakAndRun: true },
       });
       if (targetFrame?.blockOrder != null) {
         const published = await blockIsPublished(
@@ -125,6 +125,17 @@ builder.mutationFields((t) => ({
           });
         }
       }
+      // Round-63 — sticky B&R. A break-and-run is an objective event, so once
+      // either captain marks a frame B&R a subsequent frame write can't
+      // silently clear it — we OR the incoming flag with what's stored. This
+      // closes the desync where captain B re-recording a frame (with the box
+      // unticked) wiped the B&R captain A had set, since the aggregate score
+      // is identical and submitMatchScore auto-approves it. Explicitly
+      // removing a B&R goes through clearBreakAndRun (a deliberate action).
+      const incomingBr = args.input.breakAndRun ?? false;
+      const mergedBr = args.input.clearBreakAndRun
+        ? false
+        : (targetFrame?.breakAndRun ?? false) || incomingBr;
       const frame = await ctx.prisma.matchFrame.upsert({
         ...query,
         where: {
@@ -137,7 +148,7 @@ builder.mutationFields((t) => ({
           homeWon: args.input.homeWon,
           homePlayer: args.input.homePlayer ?? null,
           awayPlayer: args.input.awayPlayer ?? null,
-          breakAndRun: args.input.breakAndRun ?? false,
+          breakAndRun: mergedBr,
         },
         create: {
           matchId: match.id,
@@ -145,7 +156,7 @@ builder.mutationFields((t) => ({
           homeWon: args.input.homeWon,
           homePlayer: args.input.homePlayer ?? null,
           awayPlayer: args.input.awayPlayer ?? null,
-          breakAndRun: args.input.breakAndRun ?? false,
+          breakAndRun: args.input.clearBreakAndRun ? false : incomingBr,
         },
       });
       // Round-60 — first recorded frame flips the match to IN_PROGRESS so the

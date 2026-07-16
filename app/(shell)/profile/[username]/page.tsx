@@ -80,7 +80,7 @@ export default async function ProfilePage({
           </>
         }
       />
-      <div className="mx-auto w-full max-w-5xl space-y-8 px-6 py-6 md:px-10">
+      <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-4 md:space-y-8 md:px-10 md:py-6">
         {/* About card — full width. The hero above carries the avatar, name,
             @username, meta and actions, so this card is just the bio (+ the
             viewer's own email + join date). */}

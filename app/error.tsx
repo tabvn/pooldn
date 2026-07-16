@@ -21,7 +21,7 @@ export default function GlobalError({
       <div className="mb-6 inline-flex size-12 items-center justify-center rounded-full bg-destructive/15 text-destructive font-black">
         !
       </div>
-      <h1 className="text-3xl font-bold">Something cracked</h1>
+      <h1 className="text-2xl font-bold md:text-3xl">Something cracked</h1>
       <p className="mt-2 max-w-md text-sm text-muted-foreground">
         We hit an unexpected error. Try again, or head back to the dashboard.
         {error.digest ? (

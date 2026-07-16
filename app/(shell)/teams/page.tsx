@@ -29,7 +29,7 @@ export default async function TeamsPage() {
     <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-3xl font-semibold">
+          <h1 className="text-2xl font-semibold md:text-3xl">
             {cityName ? `Teams in ${cityName}` : "Teams"}
           </h1>
           <p className="text-sm text-muted-foreground">

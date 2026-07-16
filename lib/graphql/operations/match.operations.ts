@@ -292,6 +292,7 @@ export const RecordFrameMutation = graphql(/* GraphQL */ `
       homeWon
       homePlayer
       awayPlayer
+      breakAndRun
     }
   }
 `);

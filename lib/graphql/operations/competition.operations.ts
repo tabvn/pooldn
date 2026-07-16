@@ -210,6 +210,7 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
         pointsAgainst
         pointDiff
         points
+        form
         team {
           id
           name

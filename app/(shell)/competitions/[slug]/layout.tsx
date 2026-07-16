@@ -120,14 +120,14 @@ export default async function CompetitionLayout({
           </>
         }
       />
-      <div className="mx-auto w-full max-w-5xl px-6 pt-6 md:px-10">
+      <div className="mx-auto w-full max-w-5xl px-4 pt-4 md:px-10 md:pt-6">
         <TabNav items={tabs} fullWidth />
       </div>
       {/* Round-60 — the "pre-start setup / edit in wizard" banner was
           removed from the published detail screen at the user's request.
           DRAFT comps still own the full editor; organizers manage a
           published comp through the lifecycle actions in the hero. */}
-      <div className="mx-auto w-full max-w-5xl px-6 py-6 md:px-10">
+      <div className="mx-auto w-full max-w-5xl px-4 py-4 md:px-10 md:py-6">
         {children}
       </div>
     </div>

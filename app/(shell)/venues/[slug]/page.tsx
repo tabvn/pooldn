@@ -41,7 +41,7 @@ export default async function VenueDetailPage({
           </>
         }
       />
-      <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-4 px-6 py-6 md:grid-cols-2 md:px-10">
+      <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-4 px-4 py-4 md:grid-cols-2 md:px-10 md:py-6">
         {v.imageUrl ? (
           <Card className="md:col-span-2 overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}

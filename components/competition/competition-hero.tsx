@@ -85,10 +85,10 @@ export function CompetitionHero({
     <header className="bg-primary/10">
       {/* Padding lives INSIDE the max-w-5xl wrapper so the hero content
           aligns to the same grid as the tabs + content below (also
-          max-w-5xl px-6 md:px-10). The lime band still bleeds full-width. */}
-      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-start justify-between gap-4 px-6 py-8 md:px-10 md:py-10">
+          max-w-5xl px-4 md:px-10). The lime band still bleeds full-width. */}
+      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-start justify-between gap-4 px-4 py-5 md:px-10 md:py-10">
         <div className="min-w-0 space-y-3">
-          <h1 className="text-2xl font-semibold text-primary md:text-3xl">
+          <h1 className="text-xl font-semibold text-primary md:text-3xl">
             {c.name}
           </h1>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">

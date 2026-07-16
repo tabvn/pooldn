@@ -24,7 +24,10 @@ export function CardHeader({
   return (
     <div
       data-slot="card-header"
-      className={cn("flex flex-col gap-1 p-5 border-b border-border", className)}
+      className={cn(
+        "flex flex-col gap-1 p-4 border-b border-border md:p-5",
+        className,
+      )}
       {...props}
     />
   );
@@ -63,7 +66,7 @@ export function CardContent({
   return (
     <div
       data-slot="card-content"
-      className={cn("p-5", className)}
+      className={cn("p-4 md:p-5", className)}
       {...props}
     />
   );
@@ -77,7 +80,7 @@ export function CardFooter({
     <div
       data-slot="card-footer"
       className={cn(
-        "flex items-center justify-end gap-3 p-5 border-t border-border",
+        "flex items-center justify-end gap-3 p-4 border-t border-border md:p-5",
         className,
       )}
       {...props}

@@ -171,7 +171,7 @@ export function MatchFlow({ id }: { id: string }) {
         }
       />
 
-      <div className="mx-auto w-full max-w-3xl space-y-6 px-6 py-6 md:px-10">
+      <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 md:space-y-6 md:px-10 md:py-6">
         {/* Figma "Match Details" panel: compact scoreboard + per-block lineups. */}
         <div className="overflow-hidden rounded-xl border border-border bg-card">
           <div className="border-b border-border px-6 py-4">

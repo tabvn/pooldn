@@ -249,6 +249,12 @@ export function MatchLineups({
 
   async function onConfirmWinner(frame: Frame, winner: "home" | "away", br: boolean) {
     try {
+      // Round-63 — B&R is sticky server-side (it only ever ORs on). Turning a
+      // frame that already had B&R *off* is the one deliberate case that must
+      // clear it, so flag that intent explicitly. A blind write (br=false on a
+      // frame that never showed B&R to this captain) leaves any existing flag
+      // intact.
+      const clearBreakAndRun = frame.breakAndRun === true && br === false;
       await recordFrame({
         variables: {
           input: {
@@ -258,6 +264,7 @@ export function MatchLineups({
             homePlayer: frame.homePlayer ?? null,
             awayPlayer: frame.awayPlayer ?? null,
             breakAndRun: br,
+            clearBreakAndRun,
           },
         },
       });

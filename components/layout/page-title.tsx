@@ -21,7 +21,7 @@ export function PageTitle({
   return (
     <section
       className={cn(
-        "relative flex flex-col gap-3 border-b border-border px-4 md:px-8 py-6 md:py-8 overflow-hidden",
+        "relative flex flex-col gap-3 border-b border-border px-4 md:px-8 py-4 md:py-8 overflow-hidden",
         // No-banner: deep teal → card → soft lime accent. Matches the
         // CompetitionCard fallback so the card → detail transition reads
         // continuous.
@@ -84,7 +84,7 @@ export function PageTitle({
             // without flattening the rest of the cover. Inline-block keeps
             // the panel hugging the text width on big titles.
             <div className="inline-block max-w-2xl rounded-xl bg-black/35 px-4 py-3 backdrop-blur-md ring-1 ring-white/10">
-              <h1 className="text-3xl font-semibold text-primary drop-shadow">
+              <h1 className="text-2xl font-semibold text-primary drop-shadow md:text-3xl">
                 {title}
               </h1>
               {description ? (
@@ -95,7 +95,7 @@ export function PageTitle({
             </div>
           ) : (
             <>
-              <h1 className="text-3xl font-semibold text-primary">{title}</h1>
+              <h1 className="text-2xl font-semibold text-primary md:text-3xl">{title}</h1>
               {description ? (
                 <div className="text-sm text-muted-foreground max-w-2xl">
                   {description}

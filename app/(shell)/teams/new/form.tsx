@@ -105,7 +105,7 @@ export function NewTeamForm({
   return (
     <div className="flex flex-col">
       {/* Lime-tinted page title band (Figma PageTitle). */}
-      <div className="bg-primary/10 px-6 py-10 md:px-10">
+      <div className="bg-primary/10 px-4 py-6 md:px-10 md:py-10">
         <div className="mx-auto w-full max-w-5xl">
           <h1 className="text-[28px] font-semibold leading-[34px] text-primary">
             Create Team
@@ -113,7 +113,7 @@ export function NewTeamForm({
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-5xl px-6 pt-10 md:px-10">
+      <div className="mx-auto w-full max-w-5xl px-4 pt-6 md:px-10 md:pt-10">
         <div className="rounded-[10px] border border-border bg-card p-5">
           <form onSubmit={submit} className="mx-auto w-full max-w-[480px] space-y-4">
             <Field label="Team Name" error={errors.name?.message}>

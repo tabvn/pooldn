@@ -24,7 +24,44 @@ type StandingRow = {
   pointsFor: number;
   pointDiff: number;
   points: number;
+  form: string[];
 };
+
+/**
+ * Recent-form dots — five tiny balls under the team name. The `form` array
+ * holds up to 5 results (oldest → newest); we pad the FRONT with empty slots
+ * so the newest game is always the rightmost dot. Green = won, yellow =
+ * drawn, red = lost; an empty (unfilled) dot means the team hasn't played
+ * that many games yet.
+ */
+function FormDots({ form }: { form: string[] }) {
+  const recent = form.slice(-5);
+  const slots = [
+    ...Array<string | null>(Math.max(0, 5 - recent.length)).fill(null),
+    ...recent,
+  ];
+  const color = (r: string | null) =>
+    r === "W"
+      ? "bg-green-500"
+      : r === "D"
+        ? "bg-yellow-500"
+        : r === "L"
+          ? "bg-red-500"
+          : "border border-white/25 bg-transparent";
+  const label = (r: string | null) =>
+    r === "W" ? "Won" : r === "D" ? "Drawn" : r === "L" ? "Lost" : "No game";
+  return (
+    <div className="mt-1 flex items-center gap-1" aria-label="Recent form">
+      {slots.map((r, i) => (
+        <span
+          key={i}
+          title={label(r)}
+          className={`size-1.5 rounded-full ${color(r)}`}
+        />
+      ))}
+    </div>
+  );
+}
 
 /**
  * Round-62 — Figma "League Standings" table (node 493:13630). The #/Team
@@ -54,12 +91,15 @@ function StandingsTable({
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-border">
-            {/* Frozen #/Team group. The # column is exactly w-12 (48px) with
-                box-border, so Team's left-12 offset lines up precisely. */}
-            <th className="sticky left-0 z-20 w-12 bg-card px-3 py-2 text-right font-semibold text-white/90">
+            {/* Frozen #/Team group. The # column is exactly w-10 (40px) with
+                box-border, so Team's left-10 offset lines up precisely. The
+                inner padding between them is trimmed (# gets pr-1, Team gets
+                pl-2) so the position number sits snug against the team name
+                instead of leaving a wide gap on narrow (mobile) rows. */}
+            <th className="sticky left-0 z-20 w-10 bg-card pl-3 pr-1 py-2 text-right font-semibold text-white/90">
               #
             </th>
-            <th className="sticky left-12 z-20 min-w-[160px] bg-card px-3 py-2 text-left font-semibold text-white/90 shadow-[8px_0_8px_-6px_rgba(0,0,0,0.3)]">
+            <th className="sticky left-10 z-20 min-w-[160px] bg-card pl-2 pr-3 py-2 text-left font-semibold text-white/90 shadow-[8px_0_8px_-6px_rgba(0,0,0,0.3)]">
               Team
             </th>
             <th className={statHead}>P</th>
@@ -116,13 +156,13 @@ function StandingsTable({
               <tr key={s.id} className={`border-b border-border ${rowBg}`}>
                 <td
                   style={stickyStyle}
-                  className={`sticky left-0 z-10 w-12 px-3 py-2 text-right font-semibold tabular-nums ${accent}`}
+                  className={`sticky left-0 z-10 w-10 pl-3 pr-1 py-2 text-right font-semibold tabular-nums ${accent}`}
                 >
                   {pos}
                 </td>
                 <td
                   style={stickyStyle}
-                  className={`sticky left-12 z-10 min-w-[160px] px-3 py-2 shadow-[8px_0_8px_-6px_rgba(0,0,0,0.3)]`}
+                  className={`sticky left-10 z-10 min-w-[160px] pl-2 pr-3 py-2 shadow-[8px_0_8px_-6px_rgba(0,0,0,0.3)]`}
                 >
                   <Link
                     href={`/teams/${s.team.slug}`}
@@ -137,6 +177,11 @@ function StandingsTable({
                     />
                     {s.team.name}
                   </Link>
+                  {/* Recent-form dots sit under the name, aligned with it
+                      past the avatar (size-6 + gap-3 = 36px). */}
+                  <div className="pl-9">
+                    <FormDots form={s.form} />
+                  </div>
                 </td>
                 <td className={stat}>{s.played}</td>
                 <td className={stat}>{s.won}</td>

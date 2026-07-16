@@ -2,7 +2,7 @@ export function WelcomeHeading({ subtitle }: { subtitle: string }) {
   return (
     <div className="flex flex-col items-center gap-3 mb-6">
       <PoolBallLogo />
-      <h1 className="text-3xl font-bold text-white">Welcome to PoolDN</h1>
+      <h1 className="text-2xl font-bold md:text-3xl text-white">Welcome to PoolDN</h1>
       <p className="text-sm text-mist-400">{subtitle}</p>
     </div>
   );

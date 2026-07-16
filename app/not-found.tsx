@@ -6,7 +6,7 @@ export default function NotFound() {
       <div className="mb-6 inline-flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground font-black">
         8
       </div>
-      <h1 className="text-3xl font-bold">We racked up the wrong page</h1>
+      <h1 className="text-2xl font-bold md:text-3xl">We racked up the wrong page</h1>
       <p className="mt-2 max-w-md text-sm text-muted-foreground">
         The link you followed doesn't exist anymore — try the dashboard or
         browse competitions.

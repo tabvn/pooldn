@@ -100,18 +100,18 @@ export default async function TeamLayout({
           </>
         }
       />
-      <div className="mx-auto w-full max-w-5xl px-6 pt-6 md:px-10">
+      <div className="mx-auto w-full max-w-5xl px-4 pt-4 md:px-10 md:pt-6">
         <TabNav items={tabs} fullWidth />
       </div>
       {team.myInvitation ? (
-        <div className="mx-auto w-full max-w-5xl px-6 pt-4 md:px-10">
+        <div className="mx-auto w-full max-w-5xl px-4 pt-4 md:px-10">
           <InviteBanner
             invitation={team.myInvitation}
             team={{ name: team.name, logoUrl: team.logoUrl ?? null }}
           />
         </div>
       ) : null}
-      <div className="mx-auto w-full max-w-5xl px-6 py-6 md:px-10">
+      <div className="mx-auto w-full max-w-5xl px-4 py-4 md:px-10 md:py-6">
         {children}
       </div>
     </div>

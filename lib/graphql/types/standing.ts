@@ -15,6 +15,45 @@ builder.prismaObject("Standing", {
     pointDiff: t.exposeInt("pointDiff"),
     points: t.exposeInt("points"),
     updatedAt: t.expose("updatedAt", { type: "DateTime" }),
+    /**
+     * Recent form — the team's last up-to-5 completed match results in this
+     * competition, oldest → newest (so the newest sits on the right). Each
+     * entry is "W" | "D" | "L". Fewer than 5 entries means the team hasn't
+     * played 5 games yet; the UI pads the remaining slots with empty dots.
+     */
+    form: t.stringList({
+      resolve: async (s, _args, ctx) => {
+        const matches = await ctx.prisma.match.findMany({
+          where: {
+            status: "COMPLETED",
+            matchday: { competitionId: s.competitionId },
+            OR: [{ homeTeamId: s.teamId }, { awayTeamId: s.teamId }],
+            homeScore: { not: null },
+            awayScore: { not: null },
+          },
+          orderBy: [
+            { completedAt: "desc" },
+            { scheduledAt: "desc" },
+            { updatedAt: "desc" },
+          ],
+          take: 5,
+          select: {
+            homeTeamId: true,
+            homeScore: true,
+            awayScore: true,
+          },
+        });
+        // findMany returns newest-first; reverse to chronological order.
+        return matches.reverse().map((m) => {
+          const isHome = m.homeTeamId === s.teamId;
+          const own = isHome ? m.homeScore! : m.awayScore!;
+          const opp = isHome ? m.awayScore! : m.homeScore!;
+          if (own > opp) return "W";
+          if (own < opp) return "L";
+          return "D";
+        });
+      },
+    }),
   }),
 });
 
