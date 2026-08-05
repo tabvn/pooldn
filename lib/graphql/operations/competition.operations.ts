@@ -218,6 +218,27 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
           logoUrl
         }
       }
+      bracketMatches {
+        id
+        bracketRound
+        bracketPosition
+        status
+        homeScore
+        awayScore
+        winType
+        homeTeam {
+          id
+          name
+          slug
+          logoUrl
+        }
+        awayTeam {
+          id
+          name
+          slug
+          logoUrl
+        }
+      }
       playerStats {
         id
         isMvp
@@ -234,6 +255,38 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
           username
           nationality
           avatarUrl
+        }
+      }
+    }
+  }
+`);
+
+export const CompetitionBracketQuery = graphql(/* GraphQL */ `
+  query CompetitionBracket($slug: String!) {
+    competition(slug: $slug) {
+      id
+      name
+      format
+      status
+      bracketMatches {
+        id
+        bracketRound
+        bracketPosition
+        status
+        homeScore
+        awayScore
+        winType
+        homeTeam {
+          id
+          name
+          slug
+          logoUrl
+        }
+        awayTeam {
+          id
+          name
+          slug
+          logoUrl
         }
       }
     }

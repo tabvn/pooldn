@@ -812,6 +812,19 @@ model Match {
   staffEnteredLineup Boolean   @default(false)
   staffEnteredResult Boolean   @default(false)
 
+  // Round-67 — single-elimination bracket linkage. bracketRound is 1 for the
+  // first round and increases toward the final; bracketPosition is the 0-based
+  // slot within that round. When the match completes its winner advances into
+  // nextMatch's home/away slot (nextMatchSlot). A null nextMatchId marks the
+  // final. Byes are round-1 matches with a null opponent, auto-completed at
+  // generation.
+  bracketRound    Int?
+  bracketPosition Int?
+  nextMatchId     String?
+  nextMatch       Match?   @relation("BracketNext", fields: [nextMatchId], references: [id], onDelete: SetNull)
+  feederMatches   Match[]  @relation("BracketNext")
+  nextMatchSlot   String?
+
   frames       MatchFrame[]
   blockLineups MatchBlockLineup[]
   participants MatchParticipant[]
@@ -824,6 +837,7 @@ model Match {
   @@index([awayTeamId])
   @@index([status])
   @@index([scheduledAt])
+  @@index([nextMatchId])
   @@map("matches")
 }
 

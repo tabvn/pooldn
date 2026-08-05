@@ -35,9 +35,13 @@ import {
 export function SeasonCalendarCta({
   competitionId,
   status,
+  format,
+  approvedTeamCount,
 }: {
   competitionId: string;
   status: CompetitionStatus;
+  format?: string | null;
+  approvedTeamCount?: number;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -48,14 +52,26 @@ export function SeasonCalendarCta({
       ? null
       : Math.max(1, Math.floor(Number(capInput) || 1));
 
+  // Round-67 — a knockout has no round-robin schedule to preview; the first
+  // round is a random draw decided at generation time.
+  const isBracket = format === "SINGLE_ELIMINATION";
+  const teams = approvedTeamCount ?? 0;
+  const bracketSize = teams >= 2 ? 1 << Math.ceil(Math.log2(teams)) : 0;
+  const bracketRounds = bracketSize > 0 ? Math.log2(bracketSize) : 0;
+  const bracketByes = bracketSize > 0 ? bracketSize - teams : 0;
+
   const appsOpen = status === "OPEN_FOR_APPLICATIONS";
-  const triggerLabel = appsOpen
-    ? "Close Applications and Generate Calendar"
-    : "Generate Calendar";
+  const triggerLabel = isBracket
+    ? appsOpen
+      ? "Close Applications and Generate Bracket"
+      : "Generate Bracket"
+    : appsOpen
+      ? "Close Applications and Generate Calendar"
+      : "Generate Calendar";
 
   const preview = useQuery(PreviewMatchdaysQuery, {
     variables: { id: competitionId, maxGamesPerVenuePerMatchday: cap },
-    skip: !open,
+    skip: !open || isBracket,
     fetchPolicy: "cache-and-network",
   });
   const [closeApps, closeState] = useMutation(CloseApplicationsMutation);
@@ -96,15 +112,62 @@ export function SeasonCalendarCta({
       <SheetContent side="right" testId="season-calendar-preview">
         <SheetHeader onClose={() => setOpen(false)}>
           <SheetTitle className="text-base font-semibold">
-            Preview season calendar
+            {isBracket ? "Generate knockout bracket" : "Preview season calendar"}
           </SheetTitle>
           <SheetDescription className="mt-1 text-sm text-muted-foreground">
-            Review the matchdays before confirming. Confirm closes applications
-            (pending invites/applications are excluded) and starts the
-            competition.
+            {isBracket
+              ? "Confirm closes applications (pending invites/applications are excluded) and draws the bracket."
+              : "Review the matchdays before confirming. Confirm closes applications (pending invites/applications are excluded) and starts the competition."}
           </SheetDescription>
         </SheetHeader>
 
+        {isBracket ? (
+          <SheetBody className="space-y-4">
+            <div className="rounded-lg border border-border bg-background p-4 text-sm">
+              {teams < 2 ? (
+                <p className="text-muted-foreground">
+                  Need at least 2 confirmed teams to draw a bracket.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="font-semibold">
+                    {teams} confirmed team{teams === 1 ? "" : "s"} →{" "}
+                    {bracketRounds} round{bracketRounds === 1 ? "" : "s"}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Teams are drawn into the bracket at random when you
+                    generate.
+                    {bracketByes > 0
+                      ? ` ${bracketByes} top-slot bye${bracketByes === 1 ? "" : "s"} (bracket padded to ${bracketSize}).`
+                      : ""}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Each round is one matchday; losers are eliminated and
+                    winners advance automatically.
+                  </p>
+                </div>
+              )}
+            </div>
+            <SheetFooter>
+              <Button
+                variant="ghost"
+                onClick={() => setOpen(false)}
+                data-testid="season-preview-cancel"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={onConfirm}
+                loading={finalizing}
+                disabled={teams < 2}
+                data-testid="season-preview-confirm"
+              >
+                {appsOpen ? "Close applications & draw bracket" : "Draw bracket"}
+              </Button>
+            </SheetFooter>
+          </SheetBody>
+        ) : (
+        <>
         <SheetBody className="space-y-5">
           {/* Max games per venue */}
           <div className="space-y-1.5">
@@ -231,6 +294,8 @@ export function SeasonCalendarCta({
             {appsOpen ? "Close applications & finalize" : "Finalize calendar"}
           </Button>
         </SheetFooter>
+        </>
+        )}
       </SheetContent>
     </Sheet>
   );

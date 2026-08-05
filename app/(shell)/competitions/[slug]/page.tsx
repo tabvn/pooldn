@@ -9,6 +9,7 @@ import {
 } from "@/lib/graphql/operations/competition.operations";
 import { LiveStandingsListener } from "@/components/live/live-standings-listener";
 import { InviteBanner } from "@/components/competition/invite-banner";
+import { BracketTree } from "@/components/competition/bracket-tree";
 
 const STANDINGS_LEGEND =
   "P: Played • W: Won • D: Drawn • L: Lost • PF: Points For • PA: Points Against • PD: Point Difference • Pts: Points";
@@ -243,7 +244,25 @@ export default async function CompetitionOverviewPage({
   }
 
   const isCompleted = c.status === "COMPLETED";
+  const isBracket = c.format === "SINGLE_ELIMINATION";
+  // Round-67 — a knockout's champion is the final match's winner (there's no
+  // points table). Fall back to the standings leader for round-robin.
+  const bracketWinnerTeam = (() => {
+    if (!isBracket || !c.bracketMatches?.length) return null;
+    const maxR = Math.max(
+      ...c.bracketMatches.map((m) => m.bracketRound ?? 1),
+    );
+    const fin = c.bracketMatches.find((m) => (m.bracketRound ?? 1) === maxR);
+    if (!fin || fin.status !== "COMPLETED") return null;
+    const hs = fin.homeScore;
+    const as = fin.awayScore;
+    if (fin.awayTeam == null) return fin.homeTeam;
+    if (hs != null && as != null)
+      return hs > as ? fin.homeTeam : as > hs ? fin.awayTeam : null;
+    return null;
+  })();
   const winner = isCompleted ? c.standings[0] : null;
+  const winnerTeam = isBracket ? bracketWinnerTeam : winner?.team ?? null;
   const mvp = isCompleted ? c.playerStats.find((p) => p.isMvp) : null;
 
   return (
@@ -284,17 +303,17 @@ export default async function CompetitionOverviewPage({
           >
             <div className="flex min-w-0 flex-col items-center gap-3">
               <Link
-                href={winner ? `/teams/${winner.team.slug}` : "#"}
+                href={winnerTeam ? `/teams/${winnerTeam.slug}` : "#"}
                 className="flex flex-col items-center gap-2 hover:opacity-90"
               >
                 <Avatar
                   size="xl"
-                  src={winner?.team.logoUrl ?? undefined}
-                  fallback={winner?.team.name ?? "—"}
+                  src={winnerTeam?.logoUrl ?? undefined}
+                  fallback={winnerTeam?.name ?? "—"}
                   shape="team"
                 />
                 <div className="text-center text-xl font-semibold text-white/90 hover:underline">
-                  {winner?.team.name ?? "TBD"}
+                  {winnerTeam?.name ?? "TBD"}
                 </div>
               </Link>
               <span className="text-base font-semibold text-primary">
@@ -325,23 +344,42 @@ export default async function CompetitionOverviewPage({
             </div>
           </div>
 
-          {/* League Standings header (node 493:13627) */}
+          {/* Header (node 493:13627) — Bracket for knockouts, Standings else */}
           <div className="flex items-center justify-between border-b border-border p-6">
             <span className="text-base font-semibold text-white/50">
-              League Standings
+              {isBracket ? "Bracket" : "League Standings"}
             </span>
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Final
             </span>
           </div>
 
-          <StandingsTable standings={c.standings} isCompleted />
-
-          {/* Legend footer (node 493:13721) */}
-          <div className="bg-white/5 p-4 text-sm text-white/70">
-            {STANDINGS_LEGEND}
-          </div>
+          {isBracket ? (
+            <BracketTree matches={c.bracketMatches} />
+          ) : (
+            <>
+              <StandingsTable standings={c.standings} isCompleted />
+              {/* Legend footer (node 493:13721) */}
+              <div className="bg-white/5 p-4 text-sm text-white/70">
+                {STANDINGS_LEGEND}
+              </div>
+            </>
+          )}
         </div>
+      ) : isBracket ? (
+        <section className="space-y-3">
+          <h2 className="text-xl font-semibold">Bracket</h2>
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
+            {c.bracketMatches.length > 0 ? (
+              <BracketTree matches={c.bracketMatches} />
+            ) : (
+              <p className="p-6 text-sm text-muted-foreground">
+                The knockout bracket appears here once the organizer generates
+                the draw from the confirmed teams.
+              </p>
+            )}
+          </div>
+        </section>
       ) : (
         <section className="space-y-3">
           <h2 className="text-xl font-semibold">League Standings</h2>

@@ -190,6 +190,10 @@ builder.prismaObject("Match", {
     homeScore: t.exposeInt("homeScore", { nullable: true }),
     awayScore: t.exposeInt("awayScore", { nullable: true }),
     notes: t.exposeString("notes", { nullable: true }),
+    // Round-67 — single-elimination bracket position.
+    bracketRound: t.exposeInt("bracketRound", { nullable: true }),
+    bracketPosition: t.exposeInt("bracketPosition", { nullable: true }),
+    nextMatchId: t.exposeID("nextMatchId", { nullable: true }),
     frames: t.relation("frames", {
       query: () => ({ orderBy: { frameNumber: "asc" } }),
     }),

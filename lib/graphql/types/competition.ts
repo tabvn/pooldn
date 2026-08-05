@@ -223,6 +223,20 @@ builder.prismaObject("Competition", {
       query: () => ({ orderBy: [{ position: "asc" }, { points: "desc" }] }),
     }),
     playerStats: t.relation("playerStats"),
+    // Round-67 — single-elimination bracket, ordered by round then slot so the
+    // client can lay out the tree column-by-column.
+    bracketMatches: t.prismaField({
+      type: ["Match"],
+      resolve: (query, c, _args, ctx) =>
+        ctx.prisma.match.findMany({
+          ...query,
+          where: {
+            matchday: { competitionId: c.id },
+            bracketRound: { not: null },
+          },
+          orderBy: [{ bracketRound: "asc" }, { bracketPosition: "asc" }],
+        }),
+    }),
     // Round-50 — locked roster rows. Every approved-team player ends up here
     // (auto-accept of an invite, or organizer approval of a manual apply).
     // The Players tab reads this so newly-rostered players show before any

@@ -71,8 +71,11 @@ const TOURNAMENT_OPTIONS: TournamentOption[] = [
   {
     value: "SINGLE_ELIMINATION",
     label: "Single Elimination (Knockout)",
-    soon: true,
-    bullets: ["Lose once = out", "Fast bracket, ideal for quick tournaments"],
+    bullets: [
+      "Lose once = out",
+      "Random draw into a knockout bracket",
+      "Fast bracket, ideal for quick tournaments",
+    ],
   },
   {
     value: "DOUBLE_ELIMINATION",

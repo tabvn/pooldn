@@ -1002,6 +1002,121 @@ builder.mutationFields((t) => ({
           { extensions: { code: "BAD_USER_INPUT" } },
         );
       }
+
+      // Round-67 — single-elimination generates a knockout bracket (one
+      // matchday per round) instead of a round-robin season.
+      if (competition.format === "SINGLE_ELIMINATION") {
+        const { buildBracket, nextSlot, roundName } = await import(
+          "@/lib/services/bracket.service"
+        );
+        const { planMatchdays } = await import(
+          "@/lib/services/match-schedule.service"
+        );
+        const plan = buildBracket(teamIds);
+        const days = planMatchdays({
+          startDate: competition.startDate,
+          endDate: competition.endDate,
+          matchdayCount: plan.totalRounds,
+        });
+        const centralVenueId =
+          competition.matchVenueMode === "CENTRAL_VENUE"
+            ? competition.centralVenueId
+            : null;
+        return ctx.prisma.$transaction(async (tx) => {
+          // Matchday per round.
+          const mdByRound = new Map<number, string>();
+          for (let r = 1; r <= plan.totalRounds; r++) {
+            const day = days[r - 1];
+            const md = await tx.matchday.create({
+              data: {
+                competitionId: competition.id,
+                number: r,
+                label: roundName(r, plan.totalRounds),
+                scheduledDate: day ? new Date(day.scheduledDate) : null,
+                isGenerated: true,
+              },
+            });
+            mdByRound.set(r, md.id);
+          }
+          // Create every match; capture ids keyed by round:position.
+          const idByRP = new Map<string, string>();
+          for (const bm of plan.matches) {
+            const day = days[bm.round - 1];
+            const created = await tx.match.create({
+              data: {
+                matchdayId: mdByRound.get(bm.round)!,
+                homeTeamId: bm.home,
+                awayTeamId: bm.away,
+                venueId: centralVenueId,
+                scheduledAt: day ? new Date(day.scheduledDate) : null,
+                status: "SCHEDULED",
+                bracketRound: bm.round,
+                bracketPosition: bm.position,
+              },
+            });
+            idByRP.set(`${bm.round}:${bm.position}`, created.id);
+          }
+          // Link winners → next match slot.
+          for (const bm of plan.matches) {
+            if (bm.round >= plan.totalRounds) continue;
+            const nextId = idByRP.get(
+              `${bm.round + 1}:${Math.floor(bm.position / 2)}`,
+            )!;
+            await tx.match.update({
+              where: { id: idByRP.get(`${bm.round}:${bm.position}`)! },
+              data: { nextMatchId: nextId, nextMatchSlot: nextSlot(bm.position) },
+            });
+          }
+          // Auto-advance byes: the lone team moves straight into round 2.
+          for (const bm of plan.matches) {
+            if (!bm.isBye) continue;
+            await tx.match.update({
+              where: { id: idByRP.get(`${bm.round}:${bm.position}`)! },
+              data: { status: "COMPLETED", completedAt: new Date() },
+            });
+            const nextId = idByRP.get(
+              `${bm.round + 1}:${Math.floor(bm.position / 2)}`,
+            )!;
+            await tx.match.update({
+              where: { id: nextId },
+              data:
+                nextSlot(bm.position) === "HOME"
+                  ? { homeTeamId: bm.home }
+                  : { awayTeamId: bm.home },
+            });
+          }
+          const captainRows = await tx.team.findMany({
+            where: { id: { in: teamIds } },
+            select: { captainId: true },
+          });
+          await new NotificationService(tx).create({
+            type: "MATCH_SCHEDULED",
+            title: `Bracket generated for ${competition.name}`,
+            message: `${plan.totalRounds} round${plan.totalRounds === 1 ? "" : "s"} — ${teamIds.length} teams.`,
+            recipients: Array.from(
+              new Set([
+                competition.organizerId,
+                ...captainRows.map((c) => c.captainId),
+              ]),
+            ),
+            entity: {
+              type: "COMPETITION",
+              id: competition.id,
+              slug: competition.slug,
+            },
+            groupKey: `gen-md-${competition.id}`,
+          });
+          const activate =
+            competition.status === "OPEN_FOR_APPLICATIONS" ||
+            competition.status === "APPLICATIONS_CLOSED";
+          return tx.competition.update({
+            ...query,
+            where: { id: competition.id },
+            data: { status: activate ? "ONGOING" : competition.status },
+          });
+        });
+      }
+
       // The organizer's chosen venue cap (from the preview step) wins; else
       // fall back to whatever was configured on the competition. null =
       // unlimited.

@@ -76,6 +76,8 @@ export default async function MatchdaysPage({
             <SeasonCalendarCta
               competitionId={header.id}
               status={header.status}
+              format={header.format}
+              approvedTeamCount={header.approvedTeamCount}
             />
           ) : null}
         </div>

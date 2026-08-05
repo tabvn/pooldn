@@ -5,6 +5,7 @@ import {
   recomputeMvp,
   recomputeStandings,
 } from "@/lib/services/standings.service";
+import { advanceBracketWinner } from "@/lib/services/bracket.service";
 import { NotificationService } from "@/lib/services/notification.service";
 import {
   publishCompetitionStandingsUpdate,
@@ -204,6 +205,7 @@ builder.mutationFields((t) => ({
           });
           await recomputeStandings(tx as never, competitionId);
           await recomputeMvp(tx as never, competitionId);
+          await advanceBracketWinner(tx, match.id);
           await new NotificationService(tx).create({
             type: "MATCH_RESULT_RECORDED",
             title: `Match completed: ${match.homeTeam?.name ?? "Home"} ${args.input.homeScore} – ${args.input.awayScore} ${match.awayTeam?.name ?? "Away"}`,
@@ -324,6 +326,7 @@ builder.mutationFields((t) => ({
         );
         await recomputeStandings(tx as never, competitionId);
         await recomputeMvp(tx as never, competitionId);
+        await advanceBracketWinner(tx, match.id);
         await new NotificationService(tx).create({
           type: "MATCH_RESULT_RECORDED",
           title: `Resolved: ${match.homeTeam?.name ?? "Home"} ${args.input.homeScore} – ${args.input.awayScore} ${match.awayTeam?.name ?? "Away"}`,
