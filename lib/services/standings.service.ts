@@ -24,6 +24,50 @@ export async function recomputeMvp(
   // player(s) on each side; rows without a userId reference can't move
   // PlayerCompStat — they only affect the team's frames-won count, not
   // the per-player MVP score.
+  // Round-65 — the MVP formula is now organizer-configurable (the "calculator").
+  const cfg = await prisma.competition.findUniqueOrThrow({
+    where: { id: competitionId },
+    select: {
+      mvpPtAppearance: true,
+      mvpPtSinglesWon: true,
+      mvpPtDoublesWon: true,
+      mvpPtBreakRun: true,
+      mvpMinAppearancePct: true,
+    },
+  });
+
+  // Round-65 — matchday-based appearance. teamMatchdays[team] = the distinct
+  // matchdays the team actually played (completed matches); a player's
+  // Appearance % is how many of THEIR team's matchdays they showed up for.
+  const completedMatches = await prisma.match.findMany({
+    where: {
+      status: "COMPLETED",
+      matchday: { competitionId },
+    },
+    select: { matchdayId: true, homeTeamId: true, awayTeamId: true },
+  });
+  const teamMatchdays = new Map<string, Set<string>>();
+  const addTeamMd = (teamId: string | null, mdId: string) => {
+    if (!teamId) return;
+    let set = teamMatchdays.get(teamId);
+    if (!set) teamMatchdays.set(teamId, (set = new Set()));
+    set.add(mdId);
+  };
+  for (const m of completedMatches) {
+    addTeamMd(m.homeTeamId, m.matchdayId);
+    addTeamMd(m.awayTeamId, m.matchdayId);
+  }
+
+  // The player's team is their competition roster team — the authoritative
+  // source. Appearance % is measured against THAT team's matchdays (not
+  // whichever side a frame happened to list them on), so it can never exceed
+  // 100% even if legacy data placed a player in another team's match.
+  const rosterRows = await prisma.competitionRoster.findMany({
+    where: { competitionId },
+    select: { userId: true, teamId: true },
+  });
+  const rosterTeam = new Map(rosterRows.map((r) => [r.userId, r.teamId]));
+
   const frames = await prisma.matchFrame.findMany({
     where: {
       match: {
@@ -39,11 +83,16 @@ export async function recomputeMvp(
       breakAndRun: true,
       homePlayerId: true,
       awayPlayerId: true,
+      match: {
+        select: { matchdayId: true, homeTeamId: true, awayTeamId: true },
+      },
     },
   });
 
   type Agg = {
     matches: Set<string>;
+    matchdays: Set<string>;
+    teamId: string | null;
     framesPlayed: number;
     framesWon: number;
     singlesPlayed: number;
@@ -58,6 +107,8 @@ export async function recomputeMvp(
     if (!a) {
       a = {
         matches: new Set<string>(),
+        matchdays: new Set<string>(),
+        teamId: null,
         framesPlayed: 0,
         framesWon: 0,
         singlesPlayed: 0,
@@ -77,6 +128,8 @@ export async function recomputeMvp(
     if (f.homePlayerId) {
       const a = get(f.homePlayerId);
       a.matches.add(f.matchId);
+      a.matchdays.add(f.match.matchdayId);
+      a.teamId = f.match.homeTeamId ?? a.teamId;
       a.framesPlayed += 1;
       if (isSingles) a.singlesPlayed += 1;
       if (isDoubles) a.doublesPlayed += 1;
@@ -90,6 +143,8 @@ export async function recomputeMvp(
     if (f.awayPlayerId) {
       const a = get(f.awayPlayerId);
       a.matches.add(f.matchId);
+      a.matchdays.add(f.match.matchdayId);
+      a.teamId = f.match.awayTeamId ?? a.teamId;
       a.framesPlayed += 1;
       if (isSingles) a.singlesPlayed += 1;
       if (isDoubles) a.doublesPlayed += 1;
@@ -108,13 +163,22 @@ export async function recomputeMvp(
   const writes: Promise<unknown>[] = [];
   for (const [userId, agg] of byUser) {
     const matchesPlayed = agg.matches.size;
-    // Figma MVP formula (node 299:9872 footnote):
-    //   #Appearances*1 + SinglesWon*3 + DoublesWon*2 + B&R*1
+    // Denominator = the player's roster team's played matchdays (fall back to
+    // the team the frames listed them on if they aren't on a roster). The
+    // numerator only counts matchdays that belong to that team's schedule, so
+    // Appearance # ≤ team matchdays and Appearance % ≤ 100%.
+    const teamId = rosterTeam.get(userId) ?? agg.teamId;
+    const teamMds = teamId ? teamMatchdays.get(teamId) : undefined;
+    const teamMd = teamMds?.size ?? agg.matchdays.size;
+    const appearanceMatchdays = teamMds
+      ? [...agg.matchdays].filter((md) => teamMds.has(md)).length
+      : agg.matchdays.size;
+    // Round-65 — configurable MVP formula. Appearances are matchday-based.
     const mvpScore =
-      matchesPlayed +
-      agg.singlesWon * 3 +
-      agg.doublesWon * 2 +
-      agg.brWon * 1;
+      appearanceMatchdays * cfg.mvpPtAppearance +
+      agg.singlesWon * cfg.mvpPtSinglesWon +
+      agg.doublesWon * cfg.mvpPtDoublesWon +
+      agg.brWon * cfg.mvpPtBreakRun;
     // framesWon counts every frame the player won, regardless of block type
     // (frames may carry no SINGLES/DOUBLES type, so deriving it from
     // singlesWon+doublesWon would undercount the Total column). framesPlayed
@@ -122,6 +186,8 @@ export async function recomputeMvp(
     // stored framesPlayed column, so omitting it left every row at 0.
     const row = {
       matchesPlayed,
+      appearanceMatchdays,
+      teamMatchdays: teamMd,
       framesPlayed: agg.framesPlayed,
       framesWon: agg.framesWon,
       singlesPlayed: agg.singlesPlayed,
@@ -142,6 +208,7 @@ export async function recomputeMvp(
   await Promise.all(writes);
 
   // Pick MVP: highest mvpScore, tiebreak by framesWon then fewer framesPlayed.
+  // Round-65 — a player must clear the appearance-% threshold to be eligible.
   const stats = await prisma.playerCompStat.findMany({
     where: { competitionId },
     select: {
@@ -149,9 +216,18 @@ export async function recomputeMvp(
       framesWon: true,
       framesPlayed: true,
       mvpScore: true,
+      appearanceMatchdays: true,
+      teamMatchdays: true,
     },
   });
-  const eligible = stats.filter((s) => s.framesPlayed > 0);
+  const eligible = stats.filter((s) => {
+    if (s.framesPlayed <= 0) return false;
+    const pct =
+      s.teamMatchdays > 0
+        ? (s.appearanceMatchdays / s.teamMatchdays) * 100
+        : 0;
+    return pct >= cfg.mvpMinAppearancePct;
+  });
   let mvpId: string | null = null;
   if (eligible.length > 0) {
     const sorted = [...eligible].sort((a, b) => {

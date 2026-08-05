@@ -206,6 +206,16 @@ export function MatchFlow({ id }: { id: string }) {
           ) : null}
 
           <div className="space-y-4 px-6 py-6">
+            {/* Round-64 — flag when an organizer/admin entered lineups or
+                results on behalf of the teams. */}
+            {match.staffEnteredLineup || match.staffEnteredResult ? (
+              <StaffInputAlert
+                enteredLineup={match.staffEnteredLineup}
+                enteredResult={match.staffEnteredResult}
+                by={match.staffInputBy ?? null}
+                at={match.staffInputAt ?? null}
+              />
+            ) : null}
             <MatchLineups
               match={match as unknown as MatchLineupsData}
               viewerId={viewerId ?? null}
@@ -323,6 +333,59 @@ function ScoreBox({
   return (
     <div className={`flex size-8 items-center justify-center rounded text-base font-semibold tabular-nums ${cls}`}>
       {value}
+    </div>
+  );
+}
+
+/**
+ * Round-64 — "entered by organizer" note. Shown whenever a competition
+ * organizer or admin filled in lineups and/or frame results on behalf of the
+ * teams, so players know the record wasn't self-reported by the captains.
+ */
+function StaffInputAlert({
+  enteredLineup,
+  enteredResult,
+  by,
+  at,
+}: {
+  enteredLineup: boolean;
+  enteredResult: boolean;
+  by: { name: string; username: string; avatarUrl?: string | null } | null;
+  at: string | null;
+}) {
+  const what =
+    enteredLineup && enteredResult
+      ? "Lineups and results"
+      : enteredLineup
+        ? "Lineups"
+        : "Results";
+  const when = at ? new Date(at).toLocaleString() : null;
+  return (
+    <div
+      className="flex items-start gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-200"
+      data-testid="staff-input-alert"
+    >
+      <Badge variant="warning" size="sm">
+        Organizer
+      </Badge>
+      <p className="min-w-0 flex-1 leading-snug">
+        {what} for this match{" "}
+        {by ? (
+          <>
+            were entered by{" "}
+            <Link
+              href={`/players/${by.username}`}
+              className="font-semibold hover:underline"
+            >
+              {by.name}
+            </Link>{" "}
+            (organizer)
+          </>
+        ) : (
+          "were entered by an organizer"
+        )}
+        {when ? ` on ${when}` : ""}.
+      </p>
     </div>
   );
 }

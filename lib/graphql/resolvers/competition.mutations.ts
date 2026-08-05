@@ -95,6 +95,17 @@ const UpdateCompetitionInput = builder.inputType("UpdateCompetitionInput", {
   }),
 });
 
+// Round-65 — MVP rating "calculator" config.
+const UpdateMvpConfigInput = builder.inputType("UpdateMvpConfigInput", {
+  fields: (t) => ({
+    ptAppearance: t.int({ required: true }),
+    ptSinglesWon: t.int({ required: true }),
+    ptDoublesWon: t.int({ required: true }),
+    ptBreakRun: t.int({ required: true }),
+    minAppearancePct: t.int({ required: true }),
+  }),
+});
+
 builder.mutationFields((t) => ({
   createCompetition: t.prismaField({
     type: "Competition",
@@ -410,6 +421,49 @@ builder.mutationFields((t) => ({
       const { recomputeMvp } = await import("@/lib/services/standings.service");
       await recomputeMvp(ctx.prisma, String(args.id));
       return result;
+    },
+  }),
+
+  // Round-65 — organizer sets the MVP rating formula (point weights + the
+  // minimum appearance % to be ranked), then the rating recomputes.
+  updateMvpConfig: t.prismaField({
+    type: "Competition",
+    description:
+      "Set the MVP rating formula (point weights + min appearance %) and recompute the rating.",
+    args: {
+      id: t.arg.id({ required: true }),
+      input: t.arg({ type: UpdateMvpConfigInput, required: true }),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const id = String(args.id);
+      const c = await ctx.prisma.competition.findUniqueOrThrow({
+        where: { id },
+      });
+      ensure(ctx.ability, "update", {
+        ...c,
+        __caslSubjectType__: "Competition",
+      });
+      const i = args.input;
+      const nonNeg = (n: number) => Math.max(0, Math.round(n));
+      await ctx.prisma.competition.update({
+        where: { id },
+        data: {
+          mvpPtAppearance: nonNeg(i.ptAppearance),
+          mvpPtSinglesWon: nonNeg(i.ptSinglesWon),
+          mvpPtDoublesWon: nonNeg(i.ptDoublesWon),
+          mvpPtBreakRun: nonNeg(i.ptBreakRun),
+          mvpMinAppearancePct: Math.max(0, Math.min(100, Math.round(i.minAppearancePct))),
+        },
+      });
+      const { recomputeMvp } = await import(
+        "@/lib/services/standings.service"
+      );
+      await recomputeMvp(ctx.prisma, id);
+      return ctx.prisma.competition.findUniqueOrThrow({
+        ...query,
+        where: { id },
+      });
     },
   }),
 

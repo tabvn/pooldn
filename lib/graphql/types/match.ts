@@ -25,8 +25,10 @@ type BlockStateShape = {
   blockType: string;
   homeSubmittedAt: Date | null;
   homeSubmittedById: string | null;
+  homeProofImageUrls: string[];
   awaySubmittedAt: Date | null;
   awaySubmittedById: string | null;
+  awayProofImageUrls: string[];
   published: boolean;
   fullyDecided: boolean;
   locked: boolean;
@@ -71,6 +73,7 @@ async function computeBlockStates(
           blockOrder: true,
           submittedAt: true,
           submittedById: true,
+          proofImageUrls: true,
         },
       },
     },
@@ -108,8 +111,10 @@ async function computeBlockStates(
       blockType: b.type as string,
       homeSubmittedAt: home?.submittedAt ?? (legacyFallback ? m.homeLineupSubmittedAt : null),
       homeSubmittedById: home?.submittedById ?? null,
+      homeProofImageUrls: home?.proofImageUrls ?? [],
       awaySubmittedAt: away?.submittedAt ?? (legacyFallback ? m.awayLineupSubmittedAt : null),
       awaySubmittedById: away?.submittedById ?? null,
+      awayProofImageUrls: away?.proofImageUrls ?? [],
       published,
       fullyDecided: isCompleted || (decidedByOrder.get(b.order) ?? false),
       locked: published,
@@ -126,8 +131,10 @@ const MatchBlockState = builder
       blockType: t.exposeString("blockType"),
       homeSubmittedAt: t.expose("homeSubmittedAt", { type: "DateTime", nullable: true }),
       homeSubmittedById: t.exposeID("homeSubmittedById", { nullable: true }),
+      homeProofImageUrls: t.exposeStringList("homeProofImageUrls"),
       awaySubmittedAt: t.expose("awaySubmittedAt", { type: "DateTime", nullable: true }),
       awaySubmittedById: t.exposeID("awaySubmittedById", { nullable: true }),
+      awayProofImageUrls: t.exposeStringList("awayProofImageUrls"),
       published: t.exposeBoolean("published"),
       fullyDecided: t.exposeBoolean("fullyDecided"),
       locked: t.exposeBoolean("locked"),
@@ -170,6 +177,16 @@ builder.prismaObject("Match", {
       type: MatchCompletionModeEnum,
       nullable: true,
     }),
+    // Round-64 — "entered by organizer" audit. Populated when a competition
+    // organizer / SUPER_ADMIN entered lineups or frame results on behalf of
+    // the teams (rather than a captain self-serving).
+    staffInputBy: t.relation("staffInputBy", { nullable: true }),
+    staffInputAt: t.expose("staffInputAt", {
+      type: "DateTime",
+      nullable: true,
+    }),
+    staffEnteredLineup: t.exposeBoolean("staffEnteredLineup"),
+    staffEnteredResult: t.exposeBoolean("staffEnteredResult"),
     homeScore: t.exposeInt("homeScore", { nullable: true }),
     awayScore: t.exposeInt("awayScore", { nullable: true }),
     notes: t.exposeString("notes", { nullable: true }),
@@ -324,5 +341,12 @@ export const SubmitLineupInput = builder.inputType("SubmitLineupInput", {
     // Round-60 — the block (MatchFormatBlock.order) this lineup is for.
     blockOrder: t.int({ required: true }),
     slots: t.field({ type: [LineupSlotInput], required: true }),
+    // Round-64 — which team this lineup is for ("HOME" | "AWAY"). Captains
+    // omit it (their side is derived from their captaincy); an organizer /
+    // admin entering a lineup on behalf of a team MUST pass it, since they
+    // have no side of their own.
+    side: t.string(),
+    // Round-66 — optional proof photo(s) for this lineup submission.
+    proofImageUrls: t.stringList(),
   }),
 });

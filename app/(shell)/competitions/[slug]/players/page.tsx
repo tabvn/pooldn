@@ -4,7 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { cn } from "@/lib/utils";
 import { getClient } from "@/lib/apollo/client";
-import { CompetitionPlayersQuery } from "@/lib/graphql/operations/competition.operations";
+import {
+  CompetitionPlayersQuery,
+  ViewerQuery,
+} from "@/lib/graphql/operations/competition.operations";
+import {
+  MvpCalculator,
+  type MvpPreviewPlayer,
+} from "@/components/competition/mvp-calculator";
 
 type Roster = NonNullable<
   Awaited<ReturnType<typeof loadPlayers>>
@@ -21,14 +28,29 @@ async function loadPlayers(slug: string) {
 const pct = (won: number, played: number) =>
   played > 0 ? `${Math.round((won / played) * 100)}%` : "—";
 
+// Round-65 — Appearance % is matchday-based: matchdays the player showed up ÷
+// matchdays their team played.
+const appearancePct = (s: Roster["stat"]) => {
+  const md = s?.teamMatchdays ?? 0;
+  return md > 0 ? ((s?.appearanceMatchdays ?? 0) / md) * 100 : 0;
+};
+
 export default async function PlayersPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const c = await loadPlayers(slug);
+  const [c, viewerResult] = await Promise.all([
+    loadPlayers(slug),
+    getClient().query({ query: ViewerQuery, errorPolicy: "ignore" }),
+  ]);
   if (!c) return null;
+  const viewer = viewerResult.data?.viewer ?? null;
+  const canEditRating =
+    !!viewer &&
+    (viewer.role === "SUPER_ADMIN" || c.organizer?.id === viewer.id);
+  const minPct = c.mvpMinAppearancePct ?? 0;
 
   // Rank by MVP score (Figma "Player MVP Rating"): score desc, then frames
   // won, then fewer frames played (more efficient), then name for stability.
@@ -45,13 +67,27 @@ export default async function PlayersPage({
     return a.user.name.localeCompare(b.user.name);
   });
 
-  // Only players who actually appeared get a numeric rank; the rest sort to
-  // the bottom with a "—" rank.
-  let nextRank = 0;
-  const ranked = rows.map((r) => {
-    const played = (r.stat?.framesPlayed ?? 0) > 0;
-    return { r, rank: played ? (nextRank += 1) : null };
-  });
+  // Round-65 — a player is RANKED only if they played and clear the appearance
+  // threshold. Everyone else still shows (stats intact) but sorts below the
+  // ranked players with a "—" rank.
+  const isEligible = (r: Roster) =>
+    (r.stat?.framesPlayed ?? 0) > 0 && appearancePct(r.stat) >= minPct;
+  const eligibleRows = rows.filter(isEligible);
+  const ineligibleRows = rows.filter((r) => !isEligible(r));
+  const ranked = [
+    ...eligibleRows.map((r, i) => ({ r, rank: i + 1 as number | null })),
+    ...ineligibleRows.map((r) => ({ r, rank: null as number | null })),
+  ];
+
+  const previewPlayers: MvpPreviewPlayer[] = c.rosters.map((r) => ({
+    name: r.user.name,
+    appearanceMatchdays: r.stat?.appearanceMatchdays ?? 0,
+    teamMatchdays: r.stat?.teamMatchdays ?? 0,
+    framesPlayed: r.stat?.framesPlayed ?? 0,
+    singlesWon: r.stat?.singlesWon ?? 0,
+    doublesWon: r.stat?.doublesWon ?? 0,
+    brWon: r.stat?.brWon ?? 0,
+  }));
 
   if (rows.length === 0) {
     return (
@@ -64,8 +100,21 @@ export default async function PlayersPage({
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="border-b border-border px-4 py-3">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
         <h2 className="text-sm font-semibold">Player MVP Rating</h2>
+        {canEditRating ? (
+          <MvpCalculator
+            competitionId={c.id}
+            initial={{
+              ptAppearance: c.mvpPtAppearance,
+              ptSinglesWon: c.mvpPtSinglesWon,
+              ptDoublesWon: c.mvpPtDoublesWon,
+              ptBreakRun: c.mvpPtBreakRun,
+              minAppearancePct: c.mvpMinAppearancePct,
+            }}
+            players={previewPlayers}
+          />
+        ) : null}
       </div>
 
       <div className="overflow-x-auto">
@@ -115,12 +164,7 @@ export default async function PlayersPage({
           </thead>
           <tbody>
             {ranked.map(({ r, rank }) => (
-              <PlayerRow
-                key={r.id}
-                r={r}
-                rank={rank}
-                matchdayCount={c.matchdayCount}
-              />
+              <PlayerRow key={r.id} r={r} rank={rank} />
             ))}
           </tbody>
         </table>
@@ -128,12 +172,17 @@ export default async function PlayersPage({
 
       <div className="space-y-1 border-t border-border px-4 py-3 text-[11px] leading-4 text-muted-foreground">
         <p>
-          # = Appearances (matchdays) · % = Appearance percentage · PL: Played ·
-          W: Won · L: Lost · W%: Win percentage · B&amp;R: Break &amp; Run
+          # = Appearances (matchdays) · % = Appearance percentage (matchdays
+          shown up ÷ team matchdays) · PL: Played · W: Won · L: Lost · W%: Win
+          percentage · B&amp;R: Break &amp; Run
         </p>
         <p>
-          MVP Score = Appearances × 1 + Singles Won × 3 + Doubles Won × 2 +
-          B&amp;R × 1
+          MVP Score = Appearances × {c.mvpPtAppearance} + Singles Won ×{" "}
+          {c.mvpPtSinglesWon} + Doubles Won × {c.mvpPtDoublesWon} + B&amp;R ×{" "}
+          {c.mvpPtBreakRun}
+          {minPct > 0
+            ? ` · Ranked players need ≥ ${minPct}% appearance`
+            : ""}
         </p>
       </div>
     </div>
@@ -154,15 +203,15 @@ const ACCENT: Record<number, string> = {
 function PlayerRow({
   r,
   rank,
-  matchdayCount,
 }: {
   r: Roster;
   rank: number | null;
-  matchdayCount: number;
 }) {
   const s = r.stat;
-  const ap = s?.matchesPlayed ?? 0;
-  const apPct = matchdayCount > 0 ? `${Math.round((ap / matchdayCount) * 100)}%` : "—";
+  // Round-65 — appearances are matchday-based; % is vs the team's matchdays.
+  const ap = s?.appearanceMatchdays ?? 0;
+  const teamMd = s?.teamMatchdays ?? 0;
+  const apPct = teamMd > 0 ? `${Math.round((ap / teamMd) * 100)}%` : "—";
   const sPL = s?.singlesPlayed ?? 0;
   const sW = s?.singlesWon ?? 0;
   const dPL = s?.doublesPlayed ?? 0;

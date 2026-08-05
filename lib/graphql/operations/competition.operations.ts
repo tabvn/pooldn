@@ -282,7 +282,15 @@ export const CompetitionPlayersQuery = graphql(/* GraphQL */ `
   query CompetitionPlayers($slug: String!) {
     competition(slug: $slug) {
       id
-      matchdayCount
+      name
+      organizer {
+        id
+      }
+      mvpPtAppearance
+      mvpPtSinglesWon
+      mvpPtDoublesWon
+      mvpPtBreakRun
+      mvpMinAppearancePct
       rosters {
         id
         user {
@@ -301,6 +309,8 @@ export const CompetitionPlayersQuery = graphql(/* GraphQL */ `
         stat {
           id
           matchesPlayed
+          appearanceMatchdays
+          teamMatchdays
           framesWon
           framesPlayed
           singlesPlayed
@@ -312,6 +322,19 @@ export const CompetitionPlayersQuery = graphql(/* GraphQL */ `
           isMvp
         }
       }
+    }
+  }
+`);
+
+export const UpdateMvpConfigMutation = graphql(/* GraphQL */ `
+  mutation UpdateMvpConfig($id: ID!, $input: UpdateMvpConfigInput!) {
+    updateMvpConfig(id: $id, input: $input) {
+      id
+      mvpPtAppearance
+      mvpPtSinglesWon
+      mvpPtDoublesWon
+      mvpPtBreakRun
+      mvpMinAppearancePct
     }
   }
 `);

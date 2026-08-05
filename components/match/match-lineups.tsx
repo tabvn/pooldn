@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { ImageThumbnails } from "@/components/ui/image-lightbox";
 import {
   ApproveLineupEditMutation,
   RecordFrameMutation,
@@ -45,6 +46,8 @@ type BlockState = {
   blockType: string;
   homeSubmittedAt?: string | null;
   awaySubmittedAt?: string | null;
+  homeProofImageUrls?: string[];
+  awayProofImageUrls?: string[];
   published: boolean;
   fullyDecided: boolean;
   isCurrentActive: boolean;
@@ -64,6 +67,7 @@ export type MatchLineupsData = {
     competition: {
       id: string;
       breakAndRunRule: boolean;
+      organizer?: { id: string } | null;
       blocks: Array<{
         id: string;
         order: number;
@@ -123,15 +127,30 @@ export function MatchLineups({
   const toast = useToast();
   const completed = match.status === "COMPLETED";
 
-  const side: "home" | "away" | null =
+  const captainSide: "home" | "away" | null =
     viewerId && match.homeTeam?.captain?.id === viewerId
       ? "home"
       : viewerId && match.awayTeam?.captain?.id === viewerId
         ? "away"
         : null;
-  const isCaptain = side !== null;
-  const isAdmin = viewerRole === "SUPER_ADMIN" || viewerRole === "ORGANIZER";
-  const canPickWinner = (isCaptain || isAdmin) && !completed;
+  const isCaptain = captainSide !== null;
+  // Round-64 — "staff" = this competition's organizer or a SUPER_ADMIN. They
+  // can enter lineups/results on behalf of the teams. (A global ORGANIZER role
+  // only grants powers on competitions they actually own — mirror the server,
+  // which authorizes off competition.organizerId, so we don't render controls
+  // the server would reject.)
+  const isThisOrganizer =
+    !!viewerId && match.matchday.competition.organizer?.id === viewerId;
+  const isStaff = viewerRole === "SUPER_ADMIN" || isThisOrganizer;
+  // Which team a non-captain staff member is currently entering a lineup for.
+  const [staffSide, setStaffSide] = useState<"home" | "away" | null>(null);
+  // Effective side: a captain's own side, else the side staff picked.
+  const side: "home" | "away" | null =
+    captainSide ?? (isStaff ? staffSide : null);
+  // Can the viewer edit/submit a lineup right now (captain, or staff with a
+  // side selected)?
+  const canManageLineup = isCaptain || (isStaff && side !== null);
+  const canPickWinner = (isCaptain || isStaff) && !completed;
 
   const ourTeamId =
     side === "home" ? match.homeTeam?.id : side === "away" ? match.awayTeam?.id : undefined;
@@ -159,6 +178,8 @@ export function MatchLineups({
   const [editingBlock, setEditingBlock] = useState<number | null>(null);
   // picks[frameNumber] = { primary, partner? }
   const [picks, setPicks] = useState<Record<number, { primary?: string; partner?: string }>>({});
+  // Round-66 — proof photo(s) for the lineup being entered (staff flow).
+  const [proofUrls, setProofUrls] = useState<string[]>([]);
   // Winner modal target frame.
   const [winnerFrame, setWinnerFrame] = useState<Frame | null>(null);
 
@@ -210,16 +231,24 @@ export function MatchLineups({
   const firstOrder = blocks[0]?.order;
 
   // ---- helpers ----------------------------------------------------------
-  function seedPicks(frames: Frame[]) {
+  // Seed the editor from a side's existing lineup (fully replacing prior
+  // picks, so a side switch doesn't bleed the other team's selections).
+  function seedPicks(frames: Frame[], forSide: "home" | "away" | null = side) {
     const next: Record<number, { primary?: string; partner?: string }> = {};
     for (const f of frames) {
-      const ref = side === "home" ? f.homePlayerRef : f.awayPlayerRef;
+      const ref = forSide === "home" ? f.homePlayerRef : f.awayPlayerRef;
       if (ref) next[f.frameNumber] = { primary: ref.id };
     }
-    setPicks((p) => ({ ...p, ...next }));
+    setPicks(next);
   }
 
   async function onSubmitBlock(blockOrder: number, frames: Frame[]) {
+    // Staff must have a team selected (the editor gate already guarantees this;
+    // this is a defensive backstop so a null side never posts as "AWAY").
+    if (!isCaptain && !side) {
+      toast.error("Pick a team first", "Choose which team's lineup to enter.");
+      return;
+    }
     const slots: Array<{ frameNumber: number; playerId: string; partnerPlayerId?: string }> = [];
     for (const f of frames) {
       const pick = picks[f.frameNumber];
@@ -238,8 +267,25 @@ export function MatchLineups({
       });
     }
     try {
-      await submitLineup({ variables: { input: { matchId: match.id, blockOrder, slots } } });
+      await submitLineup({
+        variables: {
+          input: {
+            matchId: match.id,
+            blockOrder,
+            slots,
+            // Captains omit side (server derives it); staff acting on behalf
+            // of a team must say which one.
+            ...(isCaptain
+              ? {}
+              : {
+                  side: side === "home" ? "HOME" : "AWAY",
+                  proofImageUrls: proofUrls,
+                }),
+          },
+        },
+      });
       setEditingBlock(null);
+      setProofUrls([]);
       toast.success("Lineup submitted");
       await onChanged();
     } catch (e) {
@@ -340,9 +386,11 @@ export function MatchLineups({
         <h3 className="text-base font-semibold text-white/90">Match Lineups</h3>
         {!completed ? (
           <p className="text-xs text-muted-foreground">
-            {isCaptain
-              ? "Submit your lineup for each block; pick winners once both captains submit."
-              : "Lineups are hidden until both team captains submit."}
+            {isStaff && !isCaptain
+              ? "As organizer you can enter each team's lineup and results below."
+              : isCaptain
+                ? "Submit your lineup for each block; pick winners once both captains submit."
+                : "Lineups are hidden until both team captains submit."}
           </p>
         ) : null}
       </div>
@@ -359,9 +407,25 @@ export function MatchLineups({
         // Future block not yet reachable.
         const future = !isCurrent && !published && !fullyDecided;
 
+        // Round-66 — staff may re-open a block to fix a lineup error at any
+        // point before it's fully decided (the server allows staff to override
+        // an already-locked block). `staffEditingThis` = they've opened it.
+        const staffCanEdit =
+          isStaff && !isCaptain && !completed && !fullyDecided;
+        const staffEditingThis = staffCanEdit && editingBlock === block.order;
+
+        // Round-64 — staff pick which team they're entering THIS block's lineup
+        // for, shown in-context right above the editor. Shows on the block
+        // awaiting lineups, or on any block a staff member re-opened to edit —
+        // so it's never a detached toggle floating up top once games start.
+        const showStaffSelector =
+          (isStaff && !isCaptain && !completed && isCurrent && !published) ||
+          staffEditingThis;
+
         const editing =
-          isCaptain && isCurrent && !published && (!mySubmitted || editingBlock === block.order);
-        const waiting = isCaptain && isCurrent && !published && mySubmitted && editingBlock !== block.order;
+          (canManageLineup && isCurrent && !published && (!mySubmitted || editingBlock === block.order)) ||
+          (staffEditingThis && side !== null);
+        const waiting = canManageLineup && isCurrent && !published && mySubmitted && editingBlock !== block.order;
 
         const editReqForThis =
           match.lineupEditRequestedAt != null &&
@@ -379,6 +443,49 @@ export function MatchLineups({
               </p>
             ) : null}
 
+            {/* Round-64 — in-context team picker for staff, sitting right on
+                top of the lineup editor it drives. */}
+            {showStaffSelector ? (
+              <div className="mb-2 flex flex-wrap items-center justify-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2">
+                <span className="text-xs text-muted-foreground">
+                  Enter lineup as:
+                </span>
+                {(["home", "away"] as const).map((s) => {
+                  const name =
+                    s === "home" ? match.homeTeam?.name : match.awayTeam?.name;
+                  const active = staffSide === s;
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => {
+                        setStaffSide(s);
+                        // Seed the editor from this side's current lineup +
+                        // proof so staff edit from the existing state (fixing
+                        // errors) rather than a blank form; frame numbers are
+                        // shared across teams, so this also replaces any picks
+                        // bled in from the other side.
+                        seedPicks(frames, s);
+                        setProofUrls(
+                          s === "home"
+                            ? bs?.homeProofImageUrls ?? []
+                            : bs?.awayProofImageUrls ?? [],
+                        );
+                      }}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                        active
+                          ? "border-primary bg-primary/15 text-primary"
+                          : "border-border text-white/80 hover:border-primary/50"
+                      }`}
+                      data-testid={`staff-side-${s}`}
+                    >
+                      {name ?? (s === "home" ? "Home" : "Away")}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+
             {/* First-block starter banner (Figma screen 1). */}
             {editing && firstOrder != null && block.order === firstOrder ? (
               <div className="mb-2 rounded-lg border border-[#00598a] bg-[#052f4a] px-3 py-2 text-center text-sm text-[#dff2fe]">
@@ -388,11 +495,16 @@ export function MatchLineups({
               </div>
             ) : null}
 
+            {showStaffSelector && !staffSide ? (
+              <p className="py-3 text-center text-xs text-muted-foreground">
+                Pick a team above to enter its lineup.
+              </p>
+            ) : (
             <div className={`space-y-2 ${future ? "opacity-50" : ""}`}>
               {frames.map((f) => {
                 // Captain editing the current block (or its disabled preview
                 // for a not-yet-reachable future block).
-                if (editing || (future && isCaptain)) {
+                if (editing || (future && canManageLineup)) {
                   return (
                     <LineupEditorRow
                       key={f.id}
@@ -425,13 +537,37 @@ export function MatchLineups({
                 );
               })}
             </div>
+            )}
 
             {/* Per-block controls */}
             <div className="flex flex-col items-center gap-1 py-2">
               {editing ? (
-                <Button variant="primary" loading={submitting} onClick={() => onSubmitBlock(block.order, frames)}>
-                  Submit Lineup
-                </Button>
+                <div className="flex w-full flex-col items-center gap-2">
+                  {/* Round-66 — proof photo(s) for the lineup (staff flow). */}
+                  {isStaff && !isCaptain && viewerId ? (
+                    <LineupProofUploader
+                      viewerId={viewerId}
+                      urls={proofUrls}
+                      onChange={setProofUrls}
+                    />
+                  ) : null}
+                  <div className="flex items-center gap-2">
+                    {staffEditingThis ? (
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setEditingBlock(null);
+                          setProofUrls([]);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    ) : null}
+                    <Button variant="primary" loading={submitting} onClick={() => onSubmitBlock(block.order, frames)}>
+                      Submit Lineup
+                    </Button>
+                  </div>
+                </div>
               ) : null}
 
               {waiting ? (
@@ -448,14 +584,37 @@ export function MatchLineups({
                 </>
               ) : null}
 
-              {published && !fullyDecided && isCaptain ? (
+              {published && !fullyDecided && (isCaptain || isStaff) && !staffEditingThis ? (
                 <div className="flex flex-col items-center gap-1">
                   {!completed ? (
                     <p className="text-center text-sm font-semibold text-[#00bba7]">
                       Lineup published. Click a game card to select winners.
                     </p>
                   ) : null}
-                  {iCanRespond ? (
+                  {/* Round-66 — staff can re-open a published lineup to fix an
+                      error (server allows the override). */}
+                  {staffCanEdit ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setEditingBlock(block.order);
+                        if (staffSide) {
+                          seedPicks(frames, staffSide);
+                          setProofUrls(
+                            staffSide === "home"
+                              ? bs?.homeProofImageUrls ?? []
+                              : bs?.awayProofImageUrls ?? [],
+                          );
+                        }
+                      }}
+                      data-testid={`staff-edit-lineup-${block.order}`}
+                    >
+                      Edit lineup
+                    </Button>
+                  ) : null}
+                  {/* Edit-request flow is captain-to-captain; staff don't use it. */}
+                  {isCaptain && iCanRespond ? (
                     <div className="flex flex-col items-center gap-1">
                       <p className="text-sm font-semibold text-[#00bba7]">Opponent Requested Edit</p>
                       <p className="text-xs text-muted-foreground">
@@ -470,11 +629,11 @@ export function MatchLineups({
                         </Button>
                       </div>
                     </div>
-                  ) : iRequested ? (
+                  ) : isCaptain && iRequested ? (
                     <p className="text-xs text-muted-foreground">
                       Edit request sent — waiting for the opponent to approve.
                     </p>
-                  ) : !completed ? (
+                  ) : isCaptain && !completed ? (
                     <Button variant="outline" onClick={() => onRequestEdit(block.order)}>
                       Request Edit
                     </Button>
@@ -482,6 +641,33 @@ export function MatchLineups({
                 </div>
               ) : null}
             </div>
+
+            {/* Round-66 — proof photos attached to this block's lineups. */}
+            {(bs?.homeProofImageUrls?.length ?? 0) > 0 ||
+            (bs?.awayProofImageUrls?.length ?? 0) > 0 ? (
+              <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 pb-2">
+                {(
+                  [
+                    ["home", match.homeTeam?.name, bs?.homeProofImageUrls],
+                    ["away", match.awayTeam?.name, bs?.awayProofImageUrls],
+                  ] as const
+                ).map(([key, name, urls]) =>
+                  urls && urls.length > 0 ? (
+                    <div key={key} className="flex flex-col items-center gap-1">
+                      <span className="text-[11px] text-muted-foreground">
+                        {name ?? key} lineup proof
+                      </span>
+                      <ImageThumbnails
+                        images={urls}
+                        alt="Lineup proof"
+                        className="flex flex-wrap justify-center gap-1.5"
+                        testIdPrefix={`lineup-proof-${block.order}-${key}`}
+                      />
+                    </div>
+                  ) : null,
+                )}
+              </div>
+            ) : null}
 
             {block.breakAfterMin && block.breakAfterMin > 0 && bi < blocks.length - 1 ? (
               <div
@@ -706,6 +892,105 @@ function WaitingSide() {
   return (
     <div className="flex flex-1 items-center justify-center px-3 py-3 text-sm text-muted-foreground">
       Waiting for opponent
+    </div>
+  );
+}
+
+/**
+ * Round-66 — compact proof-photo uploader for a lineup submission (staff
+ * flow). Drops files to /api/upload (kind=score-board, scoped to the uploader)
+ * and accumulates the returned URLs; submit passes them as proofImageUrls.
+ * Up to 3 photos.
+ */
+function LineupProofUploader({
+  viewerId,
+  urls,
+  onChange,
+}: {
+  viewerId: string;
+  urls: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const toast = useToast();
+  const [uploading, setUploading] = useState(false);
+  const MAX = 3;
+
+  async function upload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const room = MAX - urls.length;
+    if (room <= 0) {
+      toast.error(`At most ${MAX} photos`);
+      return;
+    }
+    setUploading(true);
+    try {
+      const next = [...urls];
+      for (const f of Array.from(files).slice(0, room)) {
+        const fd = new FormData();
+        fd.set("kind", "score-board");
+        fd.set("ownerId", viewerId);
+        fd.set("file", f);
+        const res = await fetch("/api/upload", { method: "POST", body: fd });
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}));
+          throw new Error(json.error ?? "Upload failed");
+        }
+        const json = (await res.json()) as { url: string };
+        next.push(json.url);
+      }
+      onChange(next);
+    } catch (e) {
+      toast.error("Upload failed", e instanceof Error ? e.message : "Try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="w-full max-w-sm rounded-md border border-dashed border-border bg-background/40 p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] text-muted-foreground">
+          Proof photo (optional)
+        </span>
+        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs hover:border-primary/40">
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/jpg,image/webp"
+            capture="environment"
+            multiple
+            className="hidden"
+            disabled={uploading || urls.length >= MAX}
+            onChange={(e) => {
+              void upload(e.target.files);
+              e.currentTarget.value = "";
+            }}
+            data-testid="lineup-proof-input"
+          />
+          {uploading ? "Uploading…" : `Add (${urls.length}/${MAX})`}
+        </label>
+      </div>
+      {urls.length > 0 ? (
+        <div className="mt-2 grid grid-cols-3 gap-1.5">
+          {urls.map((u, i) => (
+            <div
+              key={u}
+              className="relative aspect-square overflow-hidden rounded border border-border"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={u} alt="" className="size-full object-cover" />
+              <button
+                type="button"
+                onClick={() => onChange(urls.filter((_, idx) => idx !== i))}
+                className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-white hover:bg-black/80"
+                aria-label="Remove photo"
+                data-testid={`lineup-proof-remove-${i}`}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

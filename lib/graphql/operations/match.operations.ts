@@ -16,6 +16,15 @@ export const MatchDetailQuery = graphql(/* GraphQL */ `
         username
         avatarUrl
       }
+      staffInputBy {
+        id
+        name
+        username
+        avatarUrl
+      }
+      staffInputAt
+      staffEnteredLineup
+      staffEnteredResult
       homeTeam {
         id
         name
@@ -103,8 +112,10 @@ export const MatchDetailQuery = graphql(/* GraphQL */ `
         blockType
         homeSubmittedAt
         homeSubmittedById
+        homeProofImageUrls
         awaySubmittedAt
         awaySubmittedById
+        awayProofImageUrls
         published
         fullyDecided
         locked

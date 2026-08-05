@@ -249,6 +249,7 @@ model User {
   feedbackAuthored        Feedback[]            @relation("FeedbackAuthor")
   feedbackResolved        Feedback[]            @relation("FeedbackResolver")
   matchesCompleted        Match[]               @relation("MatchCompletedBy")
+  matchesStaffInput       Match[]               @relation("MatchStaffInput")
   blockLineupsSubmitted   MatchBlockLineup[]    @relation("BlockLineupSubmittedBy")
   notificationPreferences NotificationPreference[]
   digestRuns              DigestRun[]
@@ -493,6 +494,16 @@ model Competition {
   pointsWin           Int               @default(3)
   pointsDraw          Int               @default(1)
   pointsLoss          Int               @default(0)
+  // Round-65 — configurable MVP rating formula (the organizer's "calculator").
+  //   mvpScore = appearances*ptAppearance + singlesWon*ptSinglesWon
+  //            + doublesWon*ptDoublesWon + brWon*ptBreakRun
+  // A player must appear in at least mvpMinAppearancePct of their team's
+  // played matchdays to be RANKED (their stats still show in the table).
+  mvpPtAppearance     Int               @default(1)
+  mvpPtSinglesWon     Int               @default(3)
+  mvpPtDoublesWon     Int               @default(2)
+  mvpPtBreakRun       Int               @default(1)
+  mvpMinAppearancePct Int               @default(0)
   isPublic            Boolean           @default(true)
   rulesUrl            String?
   // Rules
@@ -790,6 +801,17 @@ model Match {
   // block. Reuses the lineupEditRequested* lifecycle above.
   lineupEditRequestedBlockOrder Int?
 
+  // Round-64 — staff (competition organizer / SUPER_ADMIN) entered lineups or
+  // frame results on behalf of the teams. Drives the "entered by organizer"
+  // note on the match screen. staffInputBy/At capture the most recent staff
+  // actor + when; the two booleans record WHAT they touched so the note can
+  // say "lineups", "results", or both.
+  staffInputById     String?
+  staffInputBy       User?     @relation("MatchStaffInput", fields: [staffInputById], references: [id], onDelete: SetNull)
+  staffInputAt       DateTime?
+  staffEnteredLineup Boolean   @default(false)
+  staffEnteredResult Boolean   @default(false)
+
   frames       MatchFrame[]
   blockLineups MatchBlockLineup[]
   participants MatchParticipant[]
@@ -856,6 +878,9 @@ model MatchBlockLineup {
   submittedBy   User     @relation("BlockLineupSubmittedBy", fields: [submittedById], references: [id])
   submittedAt   DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  // Round-66 — optional proof photo(s) of the lineup (e.g. a scoresheet), most
+  // useful when an organizer enters a lineup on behalf of a team.
+  proofImageUrls String[] @default([])
 
   @@unique([matchId, side, blockOrder])
   @@index([matchId])
@@ -990,6 +1015,11 @@ model PlayerCompStat {
   doublesPlayed Int         @default(0)
   doublesWon    Int         @default(0)
   brWon         Int         @default(0)
+  // Round-65 — matchday-based appearance, used for the rating threshold + the
+  // Appearance % column. appearanceMatchdays = distinct matchdays the player
+  // appeared in; teamMatchdays = distinct matchdays their team played.
+  appearanceMatchdays Int   @default(0)
+  teamMatchdays       Int   @default(0)
   mvpScore      Int         @default(0)
   isMvp         Boolean     @default(false)
 

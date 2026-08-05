@@ -71,6 +71,12 @@ builder.prismaObject("Competition", {
     pointsWin: t.exposeInt("pointsWin"),
     pointsDraw: t.exposeInt("pointsDraw"),
     pointsLoss: t.exposeInt("pointsLoss"),
+    // Round-65 — organizer-configurable MVP rating formula (the "calculator").
+    mvpPtAppearance: t.exposeInt("mvpPtAppearance"),
+    mvpPtSinglesWon: t.exposeInt("mvpPtSinglesWon"),
+    mvpPtDoublesWon: t.exposeInt("mvpPtDoublesWon"),
+    mvpPtBreakRun: t.exposeInt("mvpPtBreakRun"),
+    mvpMinAppearancePct: t.exposeInt("mvpMinAppearancePct"),
     isPublic: t.exposeBoolean("isPublic"),
     breakAndRunRule: t.exposeBoolean("breakAndRunRule"),
     requiresHomeVenue: t.exposeBoolean("requiresHomeVenue"),

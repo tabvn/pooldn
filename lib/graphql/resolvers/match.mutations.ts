@@ -101,6 +101,9 @@ builder.mutationFields((t) => ({
           extensions: { code: "FORBIDDEN" },
         });
       }
+      // Round-64 — a frame recorded by staff who don't captain either team is
+      // "entered by organizer" and drives the note on the match screen.
+      const frameByStaff = (isOrganizer || isAdmin) && !isCaptain;
       // Round-60 — a frame's winner can only be set once its block's lineup is
       // published (both captains submitted). Skip for legacy/INDIVIDUAL frames
       // that have no blockOrder.
@@ -166,6 +169,18 @@ builder.mutationFields((t) => ({
         await ctx.prisma.match.update({
           where: { id: match.id },
           data: { status: "IN_PROGRESS", startedAt: match.startedAt ?? new Date() },
+        });
+      }
+      // Round-64 — stamp the "entered by organizer" audit when staff recorded
+      // this result on behalf of the teams.
+      if (frameByStaff) {
+        await ctx.prisma.match.update({
+          where: { id: match.id },
+          data: {
+            staffInputById: ctx.viewer.id,
+            staffInputAt: new Date(),
+            staffEnteredResult: true,
+          },
         });
       }
       // Live: notify everyone watching this match. Standings don't move on
@@ -311,7 +326,7 @@ builder.mutationFields((t) => ({
               members: { select: { userId: true } },
             },
           },
-          matchday: { select: { competitionId: true, competition: { select: { id: true, slug: true } } } },
+          matchday: { select: { competitionId: true, competition: { select: { id: true, slug: true, organizerId: true } } } },
         },
       });
       if (match.status === "COMPLETED") {
@@ -320,11 +335,42 @@ builder.mutationFields((t) => ({
         });
       }
       // Round-48 — accept Team Captain OR per-competition Roster Captain.
-      const side = await findCaptainSide(ctx, match, ctx.viewer.id);
-      if (!side && ctx.viewer.role !== "SUPER_ADMIN") {
-        throw new GraphQLError("Only a captain may submit a lineup", {
-          extensions: { code: "FORBIDDEN" },
+      const captainSide = await findCaptainSide(ctx, match, ctx.viewer.id);
+      // Round-64 — the competition organizer / SUPER_ADMIN may also enter a
+      // lineup on behalf of a team. They have no side of their own, so they
+      // MUST pass `side` to say which team they're entering for.
+      const isOrganizer =
+        match.matchday.competition.organizerId === ctx.viewer.id;
+      const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
+      const isStaff = isOrganizer || isAdmin;
+      const wantSideRaw = args.input.side?.toUpperCase();
+      if (wantSideRaw && wantSideRaw !== "HOME" && wantSideRaw !== "AWAY") {
+        throw new GraphQLError('side must be "HOME" or "AWAY"', {
+          extensions: { code: "BAD_USER_INPUT" },
         });
+      }
+      const wantSide: "home" | "away" | null =
+        wantSideRaw === "HOME" ? "home" : wantSideRaw === "AWAY" ? "away" : null;
+      let side: "home" | "away";
+      // `actingAsStaff` = entering on behalf of a team the viewer does NOT
+      // captain. It drives the "entered by organizer" note and lets staff
+      // bypass the both-sides lock (to fix an already-locked lineup).
+      let actingAsStaff = false;
+      if (isStaff && wantSide) {
+        side = wantSide;
+        actingAsStaff = wantSide !== captainSide;
+      } else if (captainSide) {
+        side = captainSide;
+      } else if (isStaff) {
+        throw new GraphQLError(
+          "Choose which team's lineup to enter (side: HOME or AWAY).",
+          { extensions: { code: "BAD_USER_INPUT" } },
+        );
+      } else {
+        throw new GraphQLError(
+          "Only a captain or the organizer may submit a lineup",
+          { extensions: { code: "FORBIDDEN" } },
+        );
       }
       const sideUpper: "HOME" | "AWAY" = side === "home" ? "HOME" : "AWAY";
       // Lineups are limited to the roster the team locked in when it applied
@@ -375,7 +421,13 @@ builder.mutationFields((t) => ({
         select: { side: true },
       });
       const existingSides = new Set(blockRows.map((r) => r.side));
-      if (existingSides.has("HOME") && existingSides.has("AWAY")) {
+      // Staff acting on behalf of a team can override an already-locked block
+      // (e.g. fixing a bad lineup); captains cannot — they use edit requests.
+      if (
+        existingSides.has("HOME") &&
+        existingSides.has("AWAY") &&
+        !actingAsStaff
+      ) {
         throw new GraphQLError("This block's lineup is locked", {
           extensions: { code: "INVALID_TRANSITION" },
         });
@@ -472,6 +524,15 @@ builder.mutationFields((t) => ({
           });
         }
 
+        // Round-66 — optional proof photo(s). Only overwrite the stored set
+        // when the client actually sent the field (an edit that doesn't touch
+        // proof shouldn't wipe it).
+        const proofProvided = args.input.proofImageUrls != null;
+        const proofImageUrls = (args.input.proofImageUrls ?? [])
+          .map((u) => String(u).trim())
+          .filter(Boolean)
+          .slice(0, 3);
+
         // Upsert this side's per-block submission (re-submit refreshes it).
         await tx.matchBlockLineup.upsert({
           where: {
@@ -486,8 +547,13 @@ builder.mutationFields((t) => ({
             side: sideUpper,
             blockOrder,
             submittedById: ctx.viewer!.id,
+            proofImageUrls,
           },
-          update: { submittedById: ctx.viewer!.id, submittedAt: new Date() },
+          update: {
+            submittedById: ctx.viewer!.id,
+            submittedAt: new Date(),
+            ...(proofProvided ? { proofImageUrls } : {}),
+          },
         });
 
         // Notify opponent captain when they haven't submitted THIS block yet.
@@ -510,6 +576,19 @@ builder.mutationFields((t) => ({
               groupKey: `lineup-${match.id}-block-${blockOrder}`,
             });
           }
+        }
+
+        // Round-64 — stamp the "entered by organizer" audit when staff filled
+        // this lineup in on behalf of a team.
+        if (actingAsStaff) {
+          await tx.match.update({
+            where: { id: match.id },
+            data: {
+              staffInputById: ctx.viewer!.id,
+              staffInputAt: new Date(),
+              staffEnteredLineup: true,
+            },
+          });
         }
 
         return tx.match.findUniqueOrThrow({ ...query, where: { id: match.id } });

@@ -63,6 +63,9 @@ builder.prismaObject("PlayerCompStat", {
     user: t.relation("user"),
     competition: t.relation("competition"),
     matchesPlayed: t.exposeInt("matchesPlayed"),
+    // Round-65 — matchday-based appearance for the rating threshold + % column.
+    appearanceMatchdays: t.exposeInt("appearanceMatchdays"),
+    teamMatchdays: t.exposeInt("teamMatchdays"),
     framesWon: t.exposeInt("framesWon"),
     framesPlayed: t.exposeInt("framesPlayed"),
     singlesPlayed: t.exposeInt("singlesPlayed"),
