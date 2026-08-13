@@ -104,8 +104,9 @@ export default async function MatchdaysPage({
   const resolved = (m: (typeof ordered)[number]["matches"][number]) =>
     m.status === "COMPLETED" ||
     m.status === "CANCELLED" ||
-    !m.homeTeam ||
-    !m.awayTeam;
+    // A missing side is a bye (already resolved). Singles use players.
+    !(m.homeTeam || m.homePlayer) ||
+    !(m.awayTeam || m.awayPlayer);
   const firstUnresolvedIdx =
     header.status === "COMPLETED"
       ? -1
@@ -158,12 +159,17 @@ export default async function MatchdaysPage({
       status: m.status,
       homeScore: m.homeScore ?? null,
       awayScore: m.awayScore ?? null,
-      home: m.homeTeam
-        ? { name: m.homeTeam.name, slug: m.homeTeam.slug, logoUrl: m.homeTeam.logoUrl }
-        : null,
-      away: m.awayTeam
-        ? { name: m.awayTeam.name, slug: m.awayTeam.slug, logoUrl: m.awayTeam.logoUrl }
-        : null,
+      // Round-68 — Singles fixtures carry players, not teams.
+      home: m.homePlayer
+        ? { name: m.homePlayer.name, slug: m.homePlayer.username, logoUrl: m.homePlayer.avatarUrl }
+        : m.homeTeam
+          ? { name: m.homeTeam.name, slug: m.homeTeam.slug, logoUrl: m.homeTeam.logoUrl }
+          : null,
+      away: m.awayPlayer
+        ? { name: m.awayPlayer.name, slug: m.awayPlayer.username, logoUrl: m.awayPlayer.avatarUrl }
+        : m.awayTeam
+          ? { name: m.awayTeam.name, slug: m.awayTeam.slug, logoUrl: m.awayTeam.logoUrl }
+          : null,
       venueName: m.venue?.name ?? null,
       })),
     };

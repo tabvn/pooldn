@@ -25,6 +25,7 @@ export const MatchDetailQuery = graphql(/* GraphQL */ `
       staffInputAt
       staffEnteredLineup
       staffEnteredResult
+      resultProofImageUrls
       homeTeam {
         id
         name
@@ -44,6 +45,20 @@ export const MatchDetailQuery = graphql(/* GraphQL */ `
           id
           username
         }
+      }
+      homePlayer {
+        id
+        name
+        username
+        avatarUrl
+        nationality
+      }
+      awayPlayer {
+        id
+        name
+        username
+        avatarUrl
+        nationality
       }
       venue {
         id
@@ -80,6 +95,7 @@ export const MatchDetailQuery = graphql(/* GraphQL */ `
           slug
           name
           type
+          status
           bannerUrl
           raceToFrames
           breakAndRunRule
@@ -112,10 +128,8 @@ export const MatchDetailQuery = graphql(/* GraphQL */ `
         blockType
         homeSubmittedAt
         homeSubmittedById
-        homeProofImageUrls
         awaySubmittedAt
         awaySubmittedById
-        awayProofImageUrls
         published
         fullyDecided
         locked
@@ -311,6 +325,18 @@ export const RecordFrameMutation = graphql(/* GraphQL */ `
 export const SubmitMatchResultMutation = graphql(/* GraphQL */ `
   mutation SubmitMatchResult($input: SubmitMatchResultInput!) {
     submitMatchResult(input: $input) {
+      id
+      status
+      homeScore
+      awayScore
+      completedAt
+    }
+  }
+`);
+
+export const ReopenMatchMutation = graphql(/* GraphQL */ `
+  mutation ReopenMatch($matchId: ID!) {
+    reopenMatch(matchId: $matchId) {
       id
       status
       homeScore

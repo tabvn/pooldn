@@ -84,7 +84,11 @@ builder.mutationFields((t) => ({
           homeTeam: { select: { captainId: true } },
           awayTeam: { select: { captainId: true } },
           matchday: {
-            select: { competition: { select: { id: true, organizerId: true } } },
+            select: {
+              competition: {
+                select: { id: true, organizerId: true, raceToFrames: true },
+              },
+            },
           },
         },
       });
@@ -97,8 +101,13 @@ builder.mutationFields((t) => ({
       const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
       const isCaptain =
         (await findCaptainSide(ctx, match, ctx.viewer.id)) !== null;
-      if (!isOrganizer && !isCaptain && !isAdmin) {
-        throw new GraphQLError("Only a captain or organizer may record a frame", {
+      // Round-68 — in a Singles match the two sides ARE the players, so either
+      // player may record a frame.
+      const isSinglesPlayer =
+        match.homePlayerId === ctx.viewer.id ||
+        match.awayPlayerId === ctx.viewer.id;
+      if (!isOrganizer && !isCaptain && !isAdmin && !isSinglesPlayer) {
+        throw new GraphQLError("Only a player, captain or organizer may record a frame", {
           extensions: { code: "FORBIDDEN" },
         });
       }
@@ -153,6 +162,11 @@ builder.mutationFields((t) => ({
           homePlayer: args.input.homePlayer ?? null,
           awayPlayer: args.input.awayPlayer ?? null,
           breakAndRun: mergedBr,
+          // Round-68 — Singles: attribute every frame to the two players so
+          // per-player stats (MVP, win rate) count.
+          ...(match.homePlayerId
+            ? { homePlayerId: match.homePlayerId, awayPlayerId: match.awayPlayerId }
+            : {}),
         },
         create: {
           matchId: match.id,
@@ -161,6 +175,9 @@ builder.mutationFields((t) => ({
           homePlayer: args.input.homePlayer ?? null,
           awayPlayer: args.input.awayPlayer ?? null,
           breakAndRun: args.input.clearBreakAndRun ? false : incomingBr,
+          ...(match.homePlayerId
+            ? { homePlayerId: match.homePlayerId, awayPlayerId: match.awayPlayerId }
+            : {}),
         },
       });
       // Round-60 — first recorded frame flips the match to IN_PROGRESS so the
@@ -183,6 +200,35 @@ builder.mutationFields((t) => ({
             staffEnteredResult: true,
           },
         });
+      }
+      // Round-68 — Singles matches have no lineup/score-submission dance: once
+      // a player reaches the race-to target, the match auto-completes and (for
+      // brackets) the winner advances.
+      if (match.homePlayerId && match.status !== "COMPLETED") {
+        const raceTo = match.matchday.competition.raceToFrames;
+        const decided = await ctx.prisma.matchFrame.findMany({
+          where: { matchId: match.id, homeWon: { not: null } },
+          select: { homeWon: true },
+        });
+        const homeWonCount = decided.filter((f) => f.homeWon === true).length;
+        const awayWonCount = decided.filter((f) => f.homeWon === false).length;
+        if (homeWonCount >= raceTo || awayWonCount >= raceTo) {
+          await ctx.prisma.$transaction(async (tx) => {
+            await tx.match.update({
+              where: { id: match.id },
+              data: {
+                status: "COMPLETED",
+                homeScore: homeWonCount,
+                awayScore: awayWonCount,
+                completedAt: new Date(),
+                completionMode: "AUTO_AGREED",
+              },
+            });
+            await recomputeMvp(tx as never, match.matchday.competition.id);
+            await advanceBracketWinner(tx, match.id);
+          });
+          publishCompetitionStandingsUpdate(match.matchday.competition.id);
+        }
       }
       // Live: notify everyone watching this match. Standings don't move on
       // a frame change (only on full-match completion), so we don't publish
@@ -246,6 +292,11 @@ builder.mutationFields((t) => ({
               ctx.viewer!.role === "SUPER_ADMIN"
                 ? "ADMIN_OVERRIDE"
                 : "ORGANIZER_REVIEW",
+            // Round-69 — board proof the organizer attached at confirmation.
+            resultProofImageUrls: (args.input.boardImageUrls ?? [])
+              .map((u) => String(u).trim())
+              .filter(Boolean)
+              .slice(0, 3),
           },
         });
         await recomputeStandings(tx as never, competitionId);
@@ -1192,6 +1243,112 @@ builder.mutationFields((t) => ({
       });
       publishMatchUpdate(match.id);
       return updated;
+    },
+  }),
+
+  // Round-70 — organizer/admin re-opens a COMPLETED match to fix a mistake
+  // (wrong result, wrong lineup) while the competition is still ONGOING. The
+  // match returns to IN_PROGRESS and everything becomes editable again; the
+  // score is cleared and standings recompute (so it stops counting until it's
+  // re-confirmed). For brackets, the winner is pulled back out of the next
+  // round — but only if that next match hasn't been played yet.
+  reopenMatch: t.prismaField({
+    type: "Match",
+    description:
+      "Organizer/admin re-opens a completed match to fix errors while the competition is ongoing.",
+    args: { matchId: t.arg.id({ required: true }) },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const match = await ctx.prisma.match.findUniqueOrThrow({
+        where: { id: String(args.matchId) },
+        select: {
+          id: true,
+          status: true,
+          nextMatchId: true,
+          nextMatchSlot: true,
+          bracketRound: true,
+          homePlayerId: true,
+          awayPlayerId: true,
+          matchday: {
+            select: {
+              competition: {
+                select: { id: true, status: true, organizerId: true, slug: true },
+              },
+            },
+          },
+        },
+      });
+      const comp = match.matchday.competition;
+      const isOrganizer = comp.organizerId === ctx.viewer.id;
+      const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
+      if (!isOrganizer && !isAdmin) {
+        throw new GraphQLError(
+          "Only the organizer or an admin may reopen a match",
+          { extensions: { code: "FORBIDDEN" } },
+        );
+      }
+      if (match.status !== "COMPLETED") {
+        throw new GraphQLError("Only a completed match can be reopened", {
+          extensions: { code: "INVALID_TRANSITION" },
+        });
+      }
+      if (comp.status !== "ONGOING") {
+        throw new GraphQLError(
+          "Matches can only be reopened while the competition is ongoing",
+          { extensions: { code: "INVALID_TRANSITION" } },
+        );
+      }
+      const competitionId = comp.id;
+      const result = await ctx.prisma.$transaction(async (tx) => {
+        // Bracket: pull this match's winner back out of the next round.
+        if (match.nextMatchId) {
+          const next = await tx.match.findUniqueOrThrow({
+            where: { id: match.nextMatchId },
+            select: { status: true },
+          });
+          if (next.status === "COMPLETED") {
+            throw new GraphQLError(
+              "The next bracket match has already been played — reopen that one first.",
+              { extensions: { code: "INVALID_TRANSITION" } },
+            );
+          }
+          const isPlayer =
+            match.homePlayerId != null || match.awayPlayerId != null;
+          const away = match.nextMatchSlot === "AWAY";
+          await tx.match.update({
+            where: { id: match.nextMatchId },
+            data: isPlayer
+              ? away
+                ? { awayPlayerId: null }
+                : { homePlayerId: null }
+              : away
+                ? { awayTeamId: null }
+                : { homeTeamId: null },
+          });
+        }
+        const updated = await tx.match.update({
+          ...query,
+          where: { id: match.id },
+          data: {
+            status: "IN_PROGRESS",
+            homeScore: null,
+            awayScore: null,
+            completedAt: null,
+            completedById: null,
+            completionMode: null,
+            winType: "NORMAL",
+            forfeitTeamId: null,
+            forfeitReason: null,
+          },
+        });
+        // The match no longer counts until it's re-confirmed.
+        await recomputeStandings(tx as never, competitionId);
+        await recomputeMvp(tx as never, competitionId);
+        return updated;
+      });
+      publishMatchUpdate(match.id);
+      publishCompetitionStandingsUpdate(competitionId);
+      return result;
     },
   }),
 }));

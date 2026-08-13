@@ -21,7 +21,9 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Calendar,
   Check,
+  Clock,
   Coffee,
+  MapPin,
   GripVertical,
   Info,
   Plus,
@@ -311,6 +313,9 @@ export function TabEditor({
                 onSave={() =>
                   save(
                     {
+                      // Round-74 — elimination collects start date+time here;
+                      // send it so the single matchday persists from this tab.
+                      startDate: data.startDate,
                       matchVenueMode: data.matchVenueMode,
                       centralVenueId: data.centralVenueId,
                       gamesPerOpponent: data.gamesPerOpponent,
@@ -381,6 +386,11 @@ function DetailsTab({
   // the calendar day, so slice on read and re-stamp midnight on write.
   const startDay = data.startDate ? data.startDate.slice(0, 10) : "";
   const nameInvalid = data.name.trim().length === 0;
+  // Round-74 — elimination formats collect start date + time on the Schedule
+  // tab instead (that datetime IS the single matchday), so hide it here.
+  const isElimination =
+    data.format === "SINGLE_ELIMINATION" ||
+    data.format === "DOUBLE_ELIMINATION";
 
   return (
     <div className="space-y-5">
@@ -416,25 +426,27 @@ function DetailsTab({
         />
       </Field>
 
-      <Field label="Start Date">
-        <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3">
-          <Calendar className="size-4 text-muted-foreground" />
-          <input
-            type="date"
-            value={startDay}
-            onChange={(e) =>
-              onChange(
-                "startDate",
-                e.target.value
-                  ? new Date(`${e.target.value}T00:00:00`).toISOString()
-                  : null,
-              )
-            }
-            className="block w-full bg-transparent py-2 text-sm outline-none"
-            data-testid="details-start-date"
-          />
-        </div>
-      </Field>
+      {isElimination ? null : (
+        <Field label="Start Date">
+          <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3">
+            <Calendar className="size-4 text-muted-foreground" />
+            <input
+              type="date"
+              value={startDay}
+              onChange={(e) =>
+                onChange(
+                  "startDate",
+                  e.target.value
+                    ? new Date(`${e.target.value}T00:00:00`).toISOString()
+                    : null,
+                )
+              }
+              className="block w-full bg-transparent py-2 text-sm outline-none"
+              data-testid="details-start-date"
+            />
+          </div>
+        </Field>
+      )}
 
       <Field label="Prize Pool">
         <div className="flex items-stretch gap-2">
@@ -607,13 +619,49 @@ function ScheduleTab({
   const schedulingType = data.schedulingType ?? "WEEKLY_ROUNDS";
   const isWeekly = schedulingType === "WEEKLY_ROUNDS";
   const isCentral = data.matchVenueMode === "CENTRAL_VENUE";
+  // Round-74 — elimination brackets play out at a single venue: playoff
+  // games are short and happen in one place. So we drop the Team/Central
+  // venue tabs (single "Select Venue" list), "Games per Opponent" (a knockout
+  // game happens once — winner advances), and "Scheduling Type" (the start
+  // date + time collected here IS the single matchday). We also host the
+  // start date/time here so participants can plan their games.
+  const isElimination =
+    data.format === "SINGLE_ELIMINATION" ||
+    data.format === "DOUBLE_ELIMINATION";
+  // startDate is a full ISO DateTime; the separate date + time inputs each
+  // hold one half in local time, so split on read and recombine on write.
+  const startParts = data.startDate
+    ? (() => {
+        const d = new Date(data.startDate);
+        const p = (n: number) => String(n).padStart(2, "0");
+        return {
+          date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
+          time: `${p(d.getHours())}:${p(d.getMinutes())}`,
+        };
+      })()
+    : { date: "", time: "" };
+  // Combine the two fields into one ISO stamp. Editing time before a date is
+  // set defaults the day to today so the value isn't silently dropped.
+  const setStart = (dateStr: string, timeStr: string) => {
+    let date = dateStr;
+    if (!date && timeStr) {
+      const now = new Date();
+      const p = (n: number) => String(n).padStart(2, "0");
+      date = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+    }
+    if (!date) {
+      onChange("startDate", null);
+      return;
+    }
+    onChange("startDate", new Date(`${date}T${timeStr || "00:00"}`).toISOString());
+  };
 
   // Round-58 — venues list for the Central Venue dropdown. cache-first:
   // the list barely changes within an editing session.
   const venuesQuery = useQuery(VenuesListQuery, {
     fetchPolicy: "cache-first",
     errorPolicy: "ignore",
-    skip: !isCentral,
+    skip: !isCentral && !isElimination,
   });
   const venues = (venuesQuery.data?.venues ?? []).filter((v) => v.isActive);
   const centralVenue = venues.find((v) => v.id === data.centralVenueId) ?? null;
@@ -684,45 +732,99 @@ function ScheduleTab({
 
   return (
     <div className="space-y-5">
-      <Field label="Where Matches Are Played?">
-        <Segmented
-          value={data.matchVenueMode}
-          options={[
-            { value: "TEAM_VENUES", label: "Team Venues" },
-            { value: "CENTRAL_VENUE", label: "Central Venue" },
-          ]}
-          onChange={(v) =>
-            onChange(
-              "matchVenueMode",
-              v as "TEAM_VENUES" | "CENTRAL_VENUE",
-            )
-          }
-          testIdPrefix="schedule-venue"
-        />
-        {isCentral ? (
-          <select
-            value={data.centralVenueId ?? ""}
-            onChange={(e) =>
-              onChange("centralVenueId", e.target.value || null)
+      {isElimination ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Start Date">
+            <div className="flex min-h-[42px] items-center gap-2 rounded-md border border-border bg-background px-3 focus-within:border-primary">
+              <Calendar className="size-4 text-muted-foreground" />
+              <input
+                type="date"
+                value={startParts.date}
+                onChange={(e) => setStart(e.target.value, startParts.time)}
+                className="block w-full bg-transparent py-2 text-sm outline-none [color-scheme:dark]"
+                data-testid="schedule-start-date"
+              />
+            </div>
+          </Field>
+          <Field label="Start Time">
+            <div className="flex min-h-[42px] items-center gap-2 rounded-md border border-border bg-background px-3 focus-within:border-primary">
+              <Clock className="size-4 text-muted-foreground" />
+              <input
+                type="time"
+                value={startParts.time}
+                onChange={(e) => setStart(startParts.date, e.target.value)}
+                className="block w-full bg-transparent py-2 text-sm outline-none [color-scheme:dark]"
+                data-testid="schedule-start-time"
+              />
+            </div>
+            <InlineNote>
+              When the bracket is played — participants use this to plan their
+              games.
+            </InlineNote>
+          </Field>
+        </div>
+      ) : null}
+
+      <Field label={isElimination ? "Select Venue" : "Where Matches Are Played?"}>
+        {isElimination ? null : (
+          <Segmented
+            value={data.matchVenueMode}
+            options={[
+              { value: "TEAM_VENUES", label: "Team Venues" },
+              { value: "CENTRAL_VENUE", label: "Central Venue" },
+            ]}
+            onChange={(v) =>
+              onChange(
+                "matchVenueMode",
+                v as "TEAM_VENUES" | "CENTRAL_VENUE",
+              )
             }
-            className="mt-3 block w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-            data-testid="schedule-central-venue"
+            testIdPrefix="schedule-venue"
+          />
+        )}
+        {isCentral || isElimination ? (
+          <div
+            className={cn(
+              "flex min-h-[42px] items-center gap-2 rounded-md border border-border bg-background px-3 focus-within:border-primary",
+              isElimination ? "" : "mt-3",
+            )}
           >
-            <option value="">
-              {venuesQuery.loading ? "Loading venues…" : "Select a venue…"}
-            </option>
-            {venues.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-                {v.city ? ` · ${v.city.name}` : ""}
-                {v.tableCount ? ` · ${v.tableCount} tables` : ""}
+            <MapPin className="size-4 shrink-0 text-muted-foreground" />
+            <select
+              value={data.centralVenueId ?? ""}
+              onChange={(e) => {
+                onChange("centralVenueId", e.target.value || null);
+                // Round-74 — elimination has no venue tabs, so pin the mode to
+                // CENTRAL_VENUE here; the generator reads centralVenueId only
+                // when matchVenueMode === "CENTRAL_VENUE".
+                if (isElimination) onChange("matchVenueMode", "CENTRAL_VENUE");
+              }}
+              className="block w-full self-stretch bg-transparent text-sm outline-none [color-scheme:dark]"
+              data-testid="schedule-central-venue"
+            >
+              <option value="">
+                {venuesQuery.loading ? "Loading venues…" : "Select a venue…"}
               </option>
-            ))}
-          </select>
+              {venues.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                  {v.city ? ` · ${v.city.name}` : ""}
+                  {v.tableCount ? ` · ${v.tableCount} tables` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
         ) : null}
-        <InlineNote>{venueSentence}</InlineNote>
+        <InlineNote>
+          {isElimination
+            ? centralVenue
+              ? `All bracket matches will be played at ${centralVenue.name}`
+              : "Pick the venue all bracket matches will be played at"
+            : venueSentence}
+        </InlineNote>
       </Field>
 
+      {isElimination ? null : (
       <Field label="Games per Opponent">
         <Segmented
           value={data.gamesPerOpponent >= 2 ? "2" : "1"}
@@ -737,7 +839,9 @@ function ScheduleTab({
         />
         <InlineNote>{oppSentence}</InlineNote>
       </Field>
+      )}
 
+      {isElimination ? null : (
       <Field label="Scheduling Type">
         <Segmented
           value={schedulingType}
@@ -854,14 +958,25 @@ function ScheduleTab({
           </div>
         )}
       </Field>
+      )}
 
       <SummaryBox
-        items={[
-          venueSentence,
-          oppSentence,
-          scheduleSentence,
-          "Season Calendar will be generated after teams confirmed",
-        ]}
+        items={
+          isElimination
+            ? [
+                centralVenue
+                  ? `All bracket matches will be played at ${centralVenue.name}`
+                  : "Pick the venue all bracket matches will be played at",
+                "Knockout — each match is played once; the winner advances",
+                "Bracket will be generated from the start date after teams confirmed",
+              ]
+            : [
+                venueSentence,
+                oppSentence,
+                scheduleSentence,
+                "Season Calendar will be generated after teams confirmed",
+              ]
+        }
       />
 
       <SaveButton loading={saving} onClick={onSave}>
@@ -1168,13 +1283,39 @@ function ReviewTab({
   const breaks = data.blocks.filter((b) => b.breakAfterMin).length;
 
   const isWeekly = (data.schedulingType ?? "WEEKLY_ROUNDS") === "WEEKLY_ROUNDS";
+  // Round-74 — elimination has no weekday/fixed-date scheduling; its single
+  // matchday is the start date+time, so that's what publish requires instead.
+  const isElimination =
+    data.format === "SINGLE_ELIMINATION" ||
+    data.format === "DOUBLE_ELIMINATION";
+  // Round-74 — resolve the picked venue's name for the elimination summary.
+  const reviewVenuesQuery = useQuery(VenuesListQuery, {
+    fetchPolicy: "cache-first",
+    errorPolicy: "ignore",
+    skip: !isElimination || !data.centralVenueId,
+  });
+  const reviewVenueName =
+    (reviewVenuesQuery.data?.venues ?? []).find(
+      (v) => v.id === data.centralVenueId,
+    )?.name ?? null;
+  const startDateTime = data.startDate
+    ? new Date(data.startDate).toLocaleString(undefined, {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "—";
   const ready =
     !!data.maxTeams &&
     !!data.maxPlayersPerTeam &&
     (singles + doubles) > 0 &&
-    (isWeekly
-      ? data.weekdaySchedule.length > 0
-      : data.fixedMatchDates.length > 0) &&
+    (isElimination
+      ? !!data.startDate
+      : isWeekly
+        ? data.weekdaySchedule.length > 0
+        : data.fixedMatchDates.length > 0) &&
     // Round-58 — central-venue comps must actually have a venue picked.
     (data.matchVenueMode !== "CENTRAL_VENUE" || !!data.centralVenueId);
 
@@ -1185,16 +1326,21 @@ function ReviewTab({
         onEdit={() => onEdit("details")}
         rows={[
           ["Name", data.name || "—"],
-          [
-            "Start date",
-            data.startDate
-              ? new Date(data.startDate).toLocaleDateString(undefined, {
-                  month: "long",
-                  day: "numeric",
-                  year: "numeric",
-                })
-              : "—",
-          ],
+          // Round-74 — elimination collects start date on the Schedule tab.
+          ...(isElimination
+            ? []
+            : ([
+                [
+                  "Start date",
+                  data.startDate
+                    ? new Date(data.startDate).toLocaleDateString(undefined, {
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                      })
+                    : "—",
+                ],
+              ] as [string, string][])),
           [
             "Prize pool",
             data.prizePool
@@ -1221,34 +1367,43 @@ function ReviewTab({
       <ReviewRow
         label="Schedule"
         onEdit={() => onEdit("schedule")}
-        rows={[
-          [
-            "Where Matches Are Played",
-            data.matchVenueMode === "TEAM_VENUES" ? "Team Venues" : "Central Venue",
-          ],
-          [
-            "Games per Opponent",
-            data.gamesPerOpponent >= 2 ? "2 (Home & Away)" : "1 (Only Once)",
-          ],
-          [
-            "Scheduling Type",
-            (data.schedulingType ?? "WEEKLY_ROUNDS") === "WEEKLY_ROUNDS"
-              ? "Weekly Rounds"
-              : "Fixed Match Days",
-          ],
-          [
-            "Match days",
-            isWeekly
-              ? data.weekdaySchedule.length
-                ? data.weekdaySchedule
-                    .map((s) => `${WEEKDAYS[s.weekday] ?? "?"} ${s.time}`)
-                    .join(", ")
-                : "—"
-              : data.fixedMatchDates.length
-                ? data.fixedMatchDates.join(", ")
-                : "—",
-          ],
-        ]}
+        rows={
+          isElimination
+            ? [
+                ["Start date & time", startDateTime],
+                ["Venue", reviewVenueName ?? (data.centralVenueId ? "Selected" : "—")],
+              ]
+            : [
+                [
+                  "Where Matches Are Played",
+                  data.matchVenueMode === "TEAM_VENUES"
+                    ? "Team Venues"
+                    : "Central Venue",
+                ],
+                [
+                  "Games per Opponent",
+                  data.gamesPerOpponent >= 2 ? "2 (Home & Away)" : "1 (Only Once)",
+                ],
+                [
+                  "Scheduling Type",
+                  (data.schedulingType ?? "WEEKLY_ROUNDS") === "WEEKLY_ROUNDS"
+                    ? "Weekly Rounds"
+                    : "Fixed Match Days",
+                ],
+                [
+                  "Match days",
+                  isWeekly
+                    ? data.weekdaySchedule.length
+                      ? data.weekdaySchedule
+                          .map((s) => `${WEEKDAYS[s.weekday] ?? "?"} ${s.time}`)
+                          .join(", ")
+                      : "—"
+                    : data.fixedMatchDates.length
+                      ? data.fixedMatchDates.join(", ")
+                      : "—",
+                ],
+              ]
+        }
       />
       <ReviewRow
         label="Structure"

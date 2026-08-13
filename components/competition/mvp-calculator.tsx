@@ -43,10 +43,14 @@ export function MvpCalculator({
   competitionId,
   initial,
   players,
+  locked = false,
 }: {
   competitionId: string;
   initial: MvpConfig;
   players: MvpPreviewPlayer[];
+  // Round-72 — once the competition is COMPLETED the formula is frozen; the
+  // calculator opens read-only.
+  locked?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -87,6 +91,7 @@ export function MvpCalculator({
         type="number"
         min={0}
         max={max}
+        disabled={locked}
         value={String(cfg[key])}
         onChange={(e) => {
           const v = Math.max(0, Math.min(max, Math.round(Number(e.target.value) || 0)));
@@ -199,17 +204,24 @@ export function MvpCalculator({
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-4">
+            {locked ? (
+              <span className="mr-auto text-xs text-muted-foreground">
+                The competition is complete — the rating formula is locked.
+              </span>
+            ) : null}
             <Button variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
+              {locked ? "Close" : "Cancel"}
             </Button>
-            <Button
-              variant="primary"
-              onClick={onSave}
-              loading={loading}
-              data-testid="mvp-calculator-save"
-            >
-              Save &amp; recalculate
-            </Button>
+            {!locked ? (
+              <Button
+                variant="primary"
+                onClick={onSave}
+                loading={loading}
+                data-testid="mvp-calculator-save"
+              >
+                Save &amp; recalculate
+              </Button>
+            ) : null}
           </div>
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>

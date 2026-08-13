@@ -113,6 +113,8 @@ export async function advanceBracketWinner(
     select: {
       homeTeamId: true,
       awayTeamId: true,
+      homePlayerId: true,
+      awayPlayerId: true,
       homeScore: true,
       awayScore: true,
       forfeitTeamId: true,
@@ -127,40 +129,46 @@ export async function advanceBracketWinner(
   // A double no-show eliminates both sides — nobody advances.
   if (m.winType === "DOUBLE_FORFEIT") return;
 
-  // Round-1 byes are resolved at generation (the lone team is advanced there),
-  // so they never reach here. A match arriving with only one team set is a
+  // Round-68 — brackets are team- OR player-based (singles). Resolve the two
+  // participants generically so advancement works for both.
+  const isPlayer = m.homePlayerId != null || m.awayPlayerId != null;
+  const homeId = isPlayer ? m.homePlayerId : m.homeTeamId;
+  const awayId = isPlayer ? m.awayPlayerId : m.awayTeamId;
+
+  // Round-1 byes are resolved at generation (the lone side is advanced there),
+  // so they never reach here. A match arriving with only one side set is a
   // not-yet-ready slot (opponent still TBD) that shouldn't advance — only a
-  // forfeit or a real two-team score decides a winner.
+  // forfeit or a real two-side score decides a winner.
   let winnerId: string | null = null;
-  if (m.forfeitTeamId) {
-    // Loser forfeited → the other side advances.
+  if (!isPlayer && m.forfeitTeamId) {
+    // Loser forfeited → the other side advances (team forfeits only).
     winnerId =
       m.forfeitTeamId === m.homeTeamId ? m.awayTeamId : m.homeTeamId;
   } else if (
-    m.homeTeamId != null &&
-    m.awayTeamId != null &&
+    homeId != null &&
+    awayId != null &&
     m.homeScore != null &&
     m.awayScore != null
   ) {
-    if (m.homeScore > m.awayScore) winnerId = m.homeTeamId;
-    else if (m.awayScore > m.homeScore) winnerId = m.awayTeamId;
+    if (m.homeScore > m.awayScore) winnerId = homeId;
+    else if (m.awayScore > m.homeScore) winnerId = awayId;
   }
   if (!winnerId) return; // undecided (draw / not-ready) — nothing to advance
 
+  // No next match → this is the final; the champion is decided but the
+  // competition isn't finalised until the organizer publishes the winners
+  // (Round-71). Round-robin has no advancement at all.
   if (m.nextMatchId) {
+    const away = m.nextMatchSlot === "AWAY";
     await tx.match.update({
       where: { id: m.nextMatchId },
-      data:
-        m.nextMatchSlot === "AWAY"
+      data: isPlayer
+        ? away
+          ? { awayPlayerId: winnerId }
+          : { homePlayerId: winnerId }
+        : away
           ? { awayTeamId: winnerId }
           : { homeTeamId: winnerId },
-    });
-  } else {
-    // No next match → this is the final. The bracket winner is decided, so
-    // the competition is complete.
-    await tx.competition.update({
-      where: { id: m.matchday.competitionId },
-      data: { status: "COMPLETED" },
     });
   }
 }

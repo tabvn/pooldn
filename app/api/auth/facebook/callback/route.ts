@@ -69,7 +69,11 @@ async function pickUsername(base: string): Promise<string> {
 async function resolveUser(
   id: FacebookIdentity & { email: string },
 ): Promise<{ user: Awaited<ReturnType<typeof prisma.user.create>>; isNew: boolean }> {
-  const existing = await prisma.user.findUnique({ where: { email: id.email } });
+  // Round-75 — never resolve a shell (unclaimed placeholder). See the Google
+  // callback for the rationale; shells are taken over via /claim/<token>.
+  const existing = await prisma.user.findFirst({
+    where: { email: id.email, isShell: false },
+  });
   if (existing) {
     const data: Record<string, unknown> = {};
     if (!existing.emailVerified) data.emailVerified = true;

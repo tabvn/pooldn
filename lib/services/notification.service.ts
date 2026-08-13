@@ -36,8 +36,20 @@ export class NotificationService {
   constructor(private readonly prisma: PrismaClient | Prisma.TransactionClient) {}
 
   async create(args: CreateNotificationArgs): Promise<Notification[]> {
-    const recipients = Array.from(new Set(args.recipients)).filter(Boolean);
+    let recipients = Array.from(new Set(args.recipients)).filter(Boolean);
     if (recipients.length === 0) return [];
+    // Round-75 — never notify shell (unclaimed placeholder) accounts. Shells
+    // appear as roster members / match players, so fan-out mutations (result
+    // recorded, competition started, roster invite) will target them; drop them.
+    const shells = await this.prisma.user.findMany({
+      where: { id: { in: recipients }, isShell: true },
+      select: { id: true },
+    });
+    if (shells.length > 0) {
+      const shellIds = new Set(shells.map((s) => s.id));
+      recipients = recipients.filter((id) => !shellIds.has(id));
+      if (recipients.length === 0) return [];
+    }
     // Round-33 — respect per-user preferences on the IN_APP channel. Users
     // who muted this type don't get the row at all. EMAIL is handled by a
     // separate path (digest cron, transactional sends).

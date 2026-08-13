@@ -8,7 +8,12 @@
 import crypto from "node:crypto";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 
-export type EmailTokenPurpose = "VERIFY_EMAIL" | "PASSWORD_RESET";
+export type EmailTokenPurpose =
+  | "VERIFY_EMAIL"
+  | "PASSWORD_RESET"
+  // Round-75 — a per-shell "claim your profile" link. Long-lived (weeks); the
+  // holder proves email/OAuth control to upgrade the shell User in place.
+  | "CLAIM_PROFILE";
 
 const RAW_LEN = 32;
 
@@ -42,6 +47,26 @@ export async function issueEmailToken(
     },
   });
   return { token };
+}
+
+/**
+ * Validate a token WITHOUT consuming it — used by preview screens (e.g. the
+ * claim "Is this you?" page) that must render before the user commits. Returns
+ * the userId, or null if not found / wrong purpose / expired / already used.
+ */
+export async function peekEmailToken(
+  prisma: PrismaClient,
+  token: string,
+  purpose: EmailTokenPurpose,
+): Promise<{ userId: string } | null> {
+  const row = await prisma.emailToken.findUnique({
+    where: { tokenHash: hash(token) },
+  });
+  if (!row) return null;
+  if (row.purpose !== purpose) return null;
+  if (row.usedAt) return null;
+  if (row.expiresAt.getTime() < Date.now()) return null;
+  return { userId: row.userId };
 }
 
 /**

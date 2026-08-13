@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { ImageThumbnails } from "@/components/ui/image-lightbox";
 import {
   ApproveLineupEditMutation,
   RecordFrameMutation,
@@ -46,8 +45,6 @@ type BlockState = {
   blockType: string;
   homeSubmittedAt?: string | null;
   awaySubmittedAt?: string | null;
-  homeProofImageUrls?: string[];
-  awayProofImageUrls?: string[];
   published: boolean;
   fullyDecided: boolean;
   isCurrentActive: boolean;
@@ -178,8 +175,6 @@ export function MatchLineups({
   const [editingBlock, setEditingBlock] = useState<number | null>(null);
   // picks[frameNumber] = { primary, partner? }
   const [picks, setPicks] = useState<Record<number, { primary?: string; partner?: string }>>({});
-  // Round-66 — proof photo(s) for the lineup being entered (staff flow).
-  const [proofUrls, setProofUrls] = useState<string[]>([]);
   // Winner modal target frame.
   const [winnerFrame, setWinnerFrame] = useState<Frame | null>(null);
 
@@ -275,17 +270,11 @@ export function MatchLineups({
             slots,
             // Captains omit side (server derives it); staff acting on behalf
             // of a team must say which one.
-            ...(isCaptain
-              ? {}
-              : {
-                  side: side === "home" ? "HOME" : "AWAY",
-                  proofImageUrls: proofUrls,
-                }),
+            ...(isCaptain ? {} : { side: side === "home" ? "HOME" : "AWAY" }),
           },
         },
       });
       setEditingBlock(null);
-      setProofUrls([]);
       toast.success("Lineup submitted");
       await onChanged();
     } catch (e) {
@@ -410,8 +399,10 @@ export function MatchLineups({
         // Round-66 — staff may re-open a block to fix a lineup error at any
         // point before it's fully decided (the server allows staff to override
         // an already-locked block). `staffEditingThis` = they've opened it.
-        const staffCanEdit =
-          isStaff && !isCaptain && !completed && !fullyDecided;
+        // Round-70 — staff may edit a block's lineup any time the match isn't
+        // completed, including after all its games are decided (e.g. an
+        // organizer fixing a lineup mistake on a re-opened match).
+        const staffCanEdit = isStaff && !isCaptain && !completed;
         const staffEditingThis = staffCanEdit && editingBlock === block.order;
 
         // Round-64 — staff pick which team they're entering THIS block's lineup
@@ -460,17 +451,12 @@ export function MatchLineups({
                       type="button"
                       onClick={() => {
                         setStaffSide(s);
-                        // Seed the editor from this side's current lineup +
-                        // proof so staff edit from the existing state (fixing
-                        // errors) rather than a blank form; frame numbers are
-                        // shared across teams, so this also replaces any picks
-                        // bled in from the other side.
+                        // Seed the editor from this side's current lineup so
+                        // staff edit from the existing state (fixing errors)
+                        // rather than a blank form; frame numbers are shared
+                        // across teams, so this also replaces any picks bled in
+                        // from the other side.
                         seedPicks(frames, s);
-                        setProofUrls(
-                          s === "home"
-                            ? bs?.homeProofImageUrls ?? []
-                            : bs?.awayProofImageUrls ?? [],
-                        );
                       }}
                       className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
                         active
@@ -542,31 +528,18 @@ export function MatchLineups({
             {/* Per-block controls */}
             <div className="flex flex-col items-center gap-1 py-2">
               {editing ? (
-                <div className="flex w-full flex-col items-center gap-2">
-                  {/* Round-66 — proof photo(s) for the lineup (staff flow). */}
-                  {isStaff && !isCaptain && viewerId ? (
-                    <LineupProofUploader
-                      viewerId={viewerId}
-                      urls={proofUrls}
-                      onChange={setProofUrls}
-                    />
-                  ) : null}
-                  <div className="flex items-center gap-2">
-                    {staffEditingThis ? (
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          setEditingBlock(null);
-                          setProofUrls([]);
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    ) : null}
-                    <Button variant="primary" loading={submitting} onClick={() => onSubmitBlock(block.order, frames)}>
-                      Submit Lineup
+                <div className="flex items-center gap-2">
+                  {staffEditingThis ? (
+                    <Button
+                      variant="ghost"
+                      onClick={() => setEditingBlock(null)}
+                    >
+                      Cancel
                     </Button>
-                  </div>
+                  ) : null}
+                  <Button variant="primary" loading={submitting} onClick={() => onSubmitBlock(block.order, frames)}>
+                    Submit Lineup
+                  </Button>
                 </div>
               ) : null}
 
@@ -584,9 +557,9 @@ export function MatchLineups({
                 </>
               ) : null}
 
-              {published && !fullyDecided && (isCaptain || isStaff) && !staffEditingThis ? (
+              {published && (!fullyDecided || isStaff) && (isCaptain || isStaff) && !staffEditingThis ? (
                 <div className="flex flex-col items-center gap-1">
-                  {!completed ? (
+                  {!completed && !fullyDecided ? (
                     <p className="text-center text-sm font-semibold text-[#00bba7]">
                       Lineup published. Click a game card to select winners.
                     </p>
@@ -599,14 +572,7 @@ export function MatchLineups({
                       size="sm"
                       onClick={() => {
                         setEditingBlock(block.order);
-                        if (staffSide) {
-                          seedPicks(frames, staffSide);
-                          setProofUrls(
-                            staffSide === "home"
-                              ? bs?.homeProofImageUrls ?? []
-                              : bs?.awayProofImageUrls ?? [],
-                          );
-                        }
+                        if (staffSide) seedPicks(frames, staffSide);
                       }}
                       data-testid={`staff-edit-lineup-${block.order}`}
                     >
@@ -641,33 +607,6 @@ export function MatchLineups({
                 </div>
               ) : null}
             </div>
-
-            {/* Round-66 — proof photos attached to this block's lineups. */}
-            {(bs?.homeProofImageUrls?.length ?? 0) > 0 ||
-            (bs?.awayProofImageUrls?.length ?? 0) > 0 ? (
-              <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 pb-2">
-                {(
-                  [
-                    ["home", match.homeTeam?.name, bs?.homeProofImageUrls],
-                    ["away", match.awayTeam?.name, bs?.awayProofImageUrls],
-                  ] as const
-                ).map(([key, name, urls]) =>
-                  urls && urls.length > 0 ? (
-                    <div key={key} className="flex flex-col items-center gap-1">
-                      <span className="text-[11px] text-muted-foreground">
-                        {name ?? key} lineup proof
-                      </span>
-                      <ImageThumbnails
-                        images={urls}
-                        alt="Lineup proof"
-                        className="flex flex-wrap justify-center gap-1.5"
-                        testIdPrefix={`lineup-proof-${block.order}-${key}`}
-                      />
-                    </div>
-                  ) : null,
-                )}
-              </div>
-            ) : null}
 
             {block.breakAfterMin && block.breakAfterMin > 0 && bi < blocks.length - 1 ? (
               <div
@@ -860,27 +799,44 @@ function GameSide({
   const single = lines.length === 1;
   return (
     <div
-      className={`flex flex-1 items-center gap-2 px-3 py-3 ${tone} ${
+      className={`relative flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 ${tone} ${
         align === "right" ? "flex-row-reverse text-right" : ""
       }`}
     >
-      <Avatar size="sm" src={ref_?.avatarUrl ?? undefined} fallback={label ?? teamName} className="size-7 shrink-0" />
+      {/* Avatars are dropped on mobile so two names + the VS column fit a
+          narrow row without overflowing. */}
+      <Avatar
+        size="sm"
+        src={ref_?.avatarUrl ?? undefined}
+        fallback={label ?? teamName}
+        className="hidden size-7 shrink-0 sm:inline-flex"
+      />
       <span
         className={`flex min-w-0 flex-1 flex-col gap-0.5 text-sm leading-snug text-white/90 ${
           align === "right" ? "items-end" : "items-start"
-        }`}
+        } ${won ? (align === "right" ? "sm:pl-12" : "sm:pr-12") : ""}`}
       >
         {lines.map((n, i) => (
-          <span key={i} className="inline-flex max-w-full items-center gap-1 break-words">
-            {n}
+          <span key={i} className="flex min-w-0 max-w-full items-center gap-1">
+            {/* Truncate rather than wrap so a long name can't blow up the row
+                height / width. */}
+            <span className="min-w-0 truncate">{n}</span>
             {single && ref_?.nationality ? (
-              <CountryFlag code={ref_.nationality} className="leading-none" />
+              <CountryFlag code={ref_.nationality} className="shrink-0 leading-none" />
             ) : null}
           </span>
         ))}
       </span>
+      {/* Winner pill is absolutely positioned in the outer top corner so it
+          never widens the row; the teal tint already flags the winner. */}
+      {/* On mobile the teal tint alone flags the winner (keeps the row tight);
+          the "Winner" pill returns on ≥ sm where there's room. */}
       {won ? (
-        <span className="rounded bg-[#005f5a] px-1.5 py-0.5 text-[10px] font-semibold uppercase text-[#96f7e4]">
+        <span
+          className={`pointer-events-none absolute top-1 hidden rounded bg-[#005f5a] px-1.5 py-0.5 text-[10px] font-semibold uppercase text-[#96f7e4] sm:block ${
+            align === "right" ? "left-1" : "right-1"
+          }`}
+        >
           Winner
         </span>
       ) : null}
@@ -892,105 +848,6 @@ function WaitingSide() {
   return (
     <div className="flex flex-1 items-center justify-center px-3 py-3 text-sm text-muted-foreground">
       Waiting for opponent
-    </div>
-  );
-}
-
-/**
- * Round-66 — compact proof-photo uploader for a lineup submission (staff
- * flow). Drops files to /api/upload (kind=score-board, scoped to the uploader)
- * and accumulates the returned URLs; submit passes them as proofImageUrls.
- * Up to 3 photos.
- */
-function LineupProofUploader({
-  viewerId,
-  urls,
-  onChange,
-}: {
-  viewerId: string;
-  urls: string[];
-  onChange: (next: string[]) => void;
-}) {
-  const toast = useToast();
-  const [uploading, setUploading] = useState(false);
-  const MAX = 3;
-
-  async function upload(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    const room = MAX - urls.length;
-    if (room <= 0) {
-      toast.error(`At most ${MAX} photos`);
-      return;
-    }
-    setUploading(true);
-    try {
-      const next = [...urls];
-      for (const f of Array.from(files).slice(0, room)) {
-        const fd = new FormData();
-        fd.set("kind", "score-board");
-        fd.set("ownerId", viewerId);
-        fd.set("file", f);
-        const res = await fetch("/api/upload", { method: "POST", body: fd });
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({}));
-          throw new Error(json.error ?? "Upload failed");
-        }
-        const json = (await res.json()) as { url: string };
-        next.push(json.url);
-      }
-      onChange(next);
-    } catch (e) {
-      toast.error("Upload failed", e instanceof Error ? e.message : "Try again.");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <div className="w-full max-w-sm rounded-md border border-dashed border-border bg-background/40 p-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-muted-foreground">
-          Proof photo (optional)
-        </span>
-        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs hover:border-primary/40">
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/jpg,image/webp"
-            capture="environment"
-            multiple
-            className="hidden"
-            disabled={uploading || urls.length >= MAX}
-            onChange={(e) => {
-              void upload(e.target.files);
-              e.currentTarget.value = "";
-            }}
-            data-testid="lineup-proof-input"
-          />
-          {uploading ? "Uploading…" : `Add (${urls.length}/${MAX})`}
-        </label>
-      </div>
-      {urls.length > 0 ? (
-        <div className="mt-2 grid grid-cols-3 gap-1.5">
-          {urls.map((u, i) => (
-            <div
-              key={u}
-              className="relative aspect-square overflow-hidden rounded border border-border"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={u} alt="" className="size-full object-cover" />
-              <button
-                type="button"
-                onClick={() => onChange(urls.filter((_, idx) => idx !== i))}
-                className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-white hover:bg-black/80"
-                aria-label="Remove photo"
-                data-testid={`lineup-proof-remove-${i}`}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

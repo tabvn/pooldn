@@ -108,7 +108,10 @@ export async function loginUser(
   // we don't leak which emails exist on the platform. The login form surfaces
   // this string verbatim — keep it natural-language.
   const INVALID = "Email or password does not match. Try again.";
-  if (!user || !user.isActive) {
+  // Round-75 — shell (unclaimed placeholder) accounts are isActive:false, so
+  // the guard below already blocks them; the explicit isShell check is
+  // defense-in-depth and future-proofs against isActive semantics changing.
+  if (!user || !user.isActive || user.isShell) {
     throw new GraphQLError(INVALID, {
       extensions: { code: "UNAUTHORIZED" },
     });

@@ -49,8 +49,10 @@ export async function runWeeklyDigest(
   const weekEnd = endOfWeek(weekStart);
 
   // Pull every active user with an email; mirrors the audience for transactional.
+  // Round-75 — shells are isActive:false so already excluded; the explicit
+  // isShell:false makes the intent clear and future-proofs the audience query.
   const users = await prisma.user.findMany({
-    where: { isActive: true, email: { not: "" } },
+    where: { isActive: true, isShell: false, email: { not: "" } },
     select: { id: true, name: true, email: true },
   });
 

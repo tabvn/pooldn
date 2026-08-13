@@ -33,7 +33,7 @@ export default function ForgotPasswordPage() {
       </div>
       <p className="mt-6 text-center text-xs text-mist-400">
         Need help?{" "}
-        <Link href="/help" className="font-semibold text-primary hover:underline">
+        <Link href="/about/help" className="font-semibold text-primary hover:underline">
           Contact support
         </Link>
       </p>

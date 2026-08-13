@@ -10,11 +10,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Gavel,
+  Info,
   Lightbulb,
   Mail,
   MapPin,
   ShieldCheck,
   Trophy,
+  Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
@@ -22,7 +24,6 @@ import { useAppShell } from "./app-shell";
 import {
   BallMark,
   CommunityIcon,
-  HelpIcon,
   PoolhubIcon,
   SuggestIcon,
   TeamsIcon,
@@ -255,16 +256,16 @@ export function Sidebar() {
             {!collapsed ? "Suggest a Feature" : null}
           </Link>
         </CollapsedTooltip>
-        <CollapsedTooltip label="Need Help?" enabled={collapsed}>
+        <CollapsedTooltip label="About" enabled={collapsed}>
           <Link
-            href="/help"
+            href="/about"
             className={cn(
               "flex items-center gap-2 py-1.5 text-xs text-muted-foreground hover:text-foreground",
               collapsed ? "justify-center px-2" : "px-3",
             )}
           >
-            <HelpIcon className="size-4" />
-            {!collapsed ? "Need Help?" : null}
+            <Info className="size-4" />
+            {!collapsed ? "About" : null}
           </Link>
         </CollapsedTooltip>
       </div>
@@ -298,6 +299,11 @@ const ADMIN_ITEMS: AdminItem[] = [
     href: "/admin/score-submissions",
     label: "Score submissions",
     icon: <Trophy className="size-5" />,
+  },
+  {
+    href: "/admin/league-import",
+    label: "League import",
+    icon: <Upload className="size-5" />,
   },
   {
     href: "/admin/locations",

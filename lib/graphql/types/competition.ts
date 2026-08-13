@@ -36,6 +36,42 @@ export const WeekdaySlotInput = builder.inputType("WeekdaySlotInput", {
   }),
 });
 
+// Round-68 — computed per-player standings for INDIVIDUAL (Singles) leagues.
+// Player-vs-player match results, ranked by points then frame difference.
+type PlayerStandingShape = {
+  position: number;
+  userId: string;
+  name: string;
+  username: string;
+  avatarUrl: string | null;
+  nationality: string | null;
+  played: number;
+  won: number;
+  lost: number;
+  framesFor: number;
+  framesAgainst: number;
+  points: number;
+};
+
+const PlayerStanding = builder
+  .objectRef<PlayerStandingShape>("PlayerStanding")
+  .implement({
+    fields: (t) => ({
+      position: t.exposeInt("position"),
+      userId: t.exposeID("userId"),
+      name: t.exposeString("name"),
+      username: t.exposeString("username"),
+      avatarUrl: t.exposeString("avatarUrl", { nullable: true }),
+      nationality: t.exposeString("nationality", { nullable: true }),
+      played: t.exposeInt("played"),
+      won: t.exposeInt("won"),
+      lost: t.exposeInt("lost"),
+      framesFor: t.exposeInt("framesFor"),
+      framesAgainst: t.exposeInt("framesAgainst"),
+      points: t.exposeInt("points"),
+    }),
+  });
+
 builder.prismaObject("Competition", {
   fields: (t) => ({
     id: t.exposeID("id"),
@@ -222,6 +258,25 @@ builder.prismaObject("Competition", {
     standings: t.relation("standings", {
       query: () => ({ orderBy: [{ position: "asc" }, { points: "desc" }] }),
     }),
+    // Round-71 — every match has been played (completed or cancelled) and there
+    // is at least one. Drives the "all matches played — publish winners" step
+    // before the organizer finalises the competition.
+    allMatchesPlayed: t.boolean({
+      resolve: async (c, _args, ctx) => {
+        const [total, unplayed] = await Promise.all([
+          ctx.prisma.match.count({
+            where: { matchday: { competitionId: c.id } },
+          }),
+          ctx.prisma.match.count({
+            where: {
+              matchday: { competitionId: c.id },
+              status: { notIn: ["COMPLETED", "CANCELLED"] },
+            },
+          }),
+        ]);
+        return total > 0 && unplayed === 0;
+      },
+    }),
     playerStats: t.relation("playerStats"),
     // Round-67 — single-elimination bracket, ordered by round then slot so the
     // client can lay out the tree column-by-column.
@@ -236,6 +291,121 @@ builder.prismaObject("Competition", {
           },
           orderBy: [{ bracketRound: "asc" }, { bracketPosition: "asc" }],
         }),
+    }),
+    // Round-68 — per-player league table for INDIVIDUAL (Singles). Computed
+    // from completed player-vs-player matches; empty for team formats.
+    playerStandings: t.field({
+      type: [PlayerStanding],
+      resolve: async (c, _args, ctx) => {
+        if (c.type !== "INDIVIDUAL") return [];
+        const [matches, apps] = await Promise.all([
+          ctx.prisma.match.findMany({
+            where: {
+              matchday: { competitionId: c.id },
+              status: "COMPLETED",
+              homePlayerId: { not: null },
+              awayPlayerId: { not: null },
+              homeScore: { not: null },
+              awayScore: { not: null },
+            },
+            select: {
+              homePlayerId: true,
+              awayPlayerId: true,
+              homeScore: true,
+              awayScore: true,
+            },
+          }),
+          ctx.prisma.competitionApplication.findMany({
+            where: {
+              competitionId: c.id,
+              status: "APPROVED",
+              applicantUserId: { not: null },
+            },
+            select: { applicantUserId: true },
+          }),
+        ]);
+        type S = {
+          played: number;
+          won: number;
+          lost: number;
+          ff: number;
+          fa: number;
+          points: number;
+        };
+        const stats = new Map<string, S>();
+        const touch = (id: string): S => {
+          let s = stats.get(id);
+          if (!s) {
+            s = { played: 0, won: 0, lost: 0, ff: 0, fa: 0, points: 0 };
+            stats.set(id, s);
+          }
+          return s;
+        };
+        for (const a of apps) if (a.applicantUserId) touch(a.applicantUserId);
+        for (const m of matches) {
+          if (!m.homePlayerId || !m.awayPlayerId) continue;
+          if (m.homeScore == null || m.awayScore == null) continue;
+          const h = touch(m.homePlayerId);
+          const a = touch(m.awayPlayerId);
+          h.played += 1;
+          a.played += 1;
+          h.ff += m.homeScore;
+          h.fa += m.awayScore;
+          a.ff += m.awayScore;
+          a.fa += m.homeScore;
+          if (m.homeScore > m.awayScore) {
+            h.won += 1;
+            a.lost += 1;
+            h.points += c.pointsWin;
+            a.points += c.pointsLoss;
+          } else if (m.awayScore > m.homeScore) {
+            a.won += 1;
+            h.lost += 1;
+            a.points += c.pointsWin;
+            h.points += c.pointsLoss;
+          } else {
+            h.points += c.pointsDraw;
+            a.points += c.pointsDraw;
+          }
+        }
+        const ids = [...stats.keys()];
+        const users = await ctx.prisma.user.findMany({
+          where: { id: { in: ids } },
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatarUrl: true,
+            nationality: true,
+          },
+        });
+        const byId = new Map(users.map((u) => [u.id, u]));
+        const rows = ids.map((id) => {
+          const s = stats.get(id)!;
+          const u = byId.get(id);
+          return {
+            userId: id,
+            name: u?.name ?? "Unknown",
+            username: u?.username ?? "",
+            avatarUrl: u?.avatarUrl ?? null,
+            nationality: u?.nationality ?? null,
+            played: s.played,
+            won: s.won,
+            lost: s.lost,
+            framesFor: s.ff,
+            framesAgainst: s.fa,
+            points: s.points,
+          };
+        });
+        rows.sort(
+          (a, b) =>
+            b.points - a.points ||
+            b.framesFor - b.framesAgainst - (a.framesFor - a.framesAgainst) ||
+            b.framesFor - a.framesFor ||
+            a.name.localeCompare(b.name),
+        );
+        return rows.map((r, i) => ({ ...r, position: i + 1 }));
+      },
     }),
     // Round-50 — locked roster rows. Every approved-team player ends up here
     // (auto-accept of an invite, or organizer approval of a manual apply).
@@ -347,6 +517,10 @@ export const CompetitionFilters = builder.inputType("CompetitionFilters", {
     cityId: t.id(),
     gameType: t.field({ type: GameTypeEnum }),
     search: t.string(),
+    // Round-73 — recently-completed window (in days) for the dashboard: keeps
+    // just-finished competitions visible instead of vanishing the instant they
+    // complete. Filters to COMPLETED comps touched within the window.
+    completedWithinDays: t.int(),
   }),
 });
 

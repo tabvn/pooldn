@@ -147,6 +147,7 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
       id
       name
       status
+      allMatchesPlayed
       prizePool
       currency
       minTeams
@@ -238,6 +239,32 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
           slug
           logoUrl
         }
+        homePlayer {
+          id
+          name
+          username
+          avatarUrl
+        }
+        awayPlayer {
+          id
+          name
+          username
+          avatarUrl
+        }
+      }
+      playerStandings {
+        position
+        userId
+        name
+        username
+        avatarUrl
+        nationality
+        played
+        won
+        lost
+        framesFor
+        framesAgainst
+        points
       }
       playerStats {
         id
@@ -321,6 +348,18 @@ export const CompetitionMatchdaysQuery = graphql(/* GraphQL */ `
             slug
             logoUrl
           }
+          homePlayer {
+            id
+            name
+            username
+            avatarUrl
+          }
+          awayPlayer {
+            id
+            name
+            username
+            avatarUrl
+          }
           venue {
             id
             name
@@ -336,6 +375,7 @@ export const CompetitionPlayersQuery = graphql(/* GraphQL */ `
     competition(slug: $slug) {
       id
       name
+      status
       organizer {
         id
       }

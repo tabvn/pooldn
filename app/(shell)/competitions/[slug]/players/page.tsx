@@ -113,6 +113,7 @@ export default async function PlayersPage({
               minAppearancePct: c.mvpMinAppearancePct,
             }}
             players={previewPlayers}
+            locked={c.status === "COMPLETED"}
           />
         ) : null}
       </div>

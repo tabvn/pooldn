@@ -50,6 +50,12 @@ export async function createContext(
   if (viewer && viewer.bannedAt) {
     viewer = null;
   }
+  // Round-75 — a shell (unclaimed placeholder) can never legitimately hold a
+  // session (no login path issues one), but treat it as anonymous at the API
+  // boundary as belt-and-suspenders so no request can act as a shell.
+  if (viewer && viewer.isShell) {
+    viewer = null;
+  }
 
   const ability = defineAbilityFor(
     viewer ? { id: viewer.id, role: viewer.role } : null,

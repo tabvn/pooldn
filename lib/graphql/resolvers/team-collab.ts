@@ -55,12 +55,23 @@ builder.mutationFields((t) => ({
       let invitedUserId: string | null = null;
       let email: string | null = null;
       if (args.userId) {
-        invitedUserId = String(args.userId);
+        // Round-75 — reject shells (unclaimed placeholders): they can't accept
+        // an invite (no login), and a real person shouldn't be bound to one.
+        const u = await ctx.prisma.user.findUnique({
+          where: { id: String(args.userId) },
+          select: { id: true, isShell: true },
+        });
+        if (!u || u.isShell) {
+          throw new GraphQLError("No such user", {
+            extensions: { code: "NOT_FOUND" },
+          });
+        }
+        invitedUserId = u.id;
       } else if (args.username) {
         const u = await ctx.prisma.user.findUnique({
           where: { username: String(args.username) },
         });
-        if (!u) {
+        if (!u || u.isShell) {
           throw new GraphQLError(`No user @${args.username}`, {
             extensions: { code: "NOT_FOUND" },
           });
@@ -70,7 +81,7 @@ builder.mutationFields((t) => ({
         const u = await ctx.prisma.user.findUnique({
           where: { email: String(args.email).toLowerCase() },
         });
-        if (u) invitedUserId = u.id;
+        if (u && !u.isShell) invitedUserId = u.id;
         else email = String(args.email).toLowerCase();
       } else {
         throw new GraphQLError("Provide userId, username, or email", {

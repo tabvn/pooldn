@@ -166,6 +166,9 @@ builder.prismaObject("Match", {
     venue: t.relation("venue", { nullable: true }),
     homeTeam: t.relation("homeTeam", { nullable: true }),
     awayTeam: t.relation("awayTeam", { nullable: true }),
+    // Round-68 — Singles (INDIVIDUAL) match participants.
+    homePlayer: t.relation("homePlayer", { nullable: true }),
+    awayPlayer: t.relation("awayPlayer", { nullable: true }),
     scheduledAt: t.expose("scheduledAt", { type: "DateTime", nullable: true }),
     startedAt: t.expose("startedAt", { type: "DateTime", nullable: true }),
     completedAt: t.expose("completedAt", {
@@ -187,6 +190,7 @@ builder.prismaObject("Match", {
     }),
     staffEnteredLineup: t.exposeBoolean("staffEnteredLineup"),
     staffEnteredResult: t.exposeBoolean("staffEnteredResult"),
+    resultProofImageUrls: t.exposeStringList("resultProofImageUrls"),
     homeScore: t.exposeInt("homeScore", { nullable: true }),
     awayScore: t.exposeInt("awayScore", { nullable: true }),
     notes: t.exposeString("notes", { nullable: true }),
@@ -325,6 +329,8 @@ export const SubmitMatchResultInput = builder.inputType(
       matchId: t.id({ required: true }),
       homeScore: t.int({ required: true }),
       awayScore: t.int({ required: true }),
+      // Round-69 — optional board/scoresheet proof for this direct result.
+      boardImageUrls: t.stringList(),
     }),
   },
 );

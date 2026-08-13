@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "@apollo/client/react";
 import {
   CalendarClock,
   Flag,
+  RotateCcw,
   Send,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +19,7 @@ import { useToast } from "@/components/ui/toast";
 import {
   ForfeitMatchMutation,
   MatchRescheduleRequestsQuery,
+  ReopenMatchMutation,
   RequestMatchRescheduleMutation,
   ReviewRescheduleRequestMutation,
   UpdateMatchScheduleMutation,
@@ -45,6 +47,7 @@ export function MatchAdminActions({
   homeTeam,
   awayTeam,
   status,
+  competitionStatus,
   scheduledAt,
   onMutated,
 }: {
@@ -54,12 +57,14 @@ export function MatchAdminActions({
   homeTeam: Team;
   awayTeam: Team;
   status: string;
+  competitionStatus?: string | null;
   scheduledAt: string | null;
   onMutated: () => void | Promise<void>;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [forfeit, forfeitState] = useMutation(ForfeitMatchMutation);
+  const [reopen, reopenState] = useMutation(ReopenMatchMutation);
   const [updateSchedule, schedState] = useMutation(UpdateMatchScheduleMutation);
   const [requestResched, reqState] = useMutation(RequestMatchRescheduleMutation);
   const [reviewResched, reviewState] = useMutation(ReviewRescheduleRequestMutation);
@@ -85,6 +90,22 @@ export function MatchAdminActions({
   async function refresh() {
     await Promise.all([reqsQuery.refetch(), Promise.resolve(onMutated())]);
     router.refresh();
+  }
+
+  async function onReopen() {
+    try {
+      await reopen({ variables: { matchId } });
+      toast.success(
+        "Match reopened",
+        "Fix the lineups or results, then confirm again.",
+      );
+      await refresh();
+    } catch (e) {
+      toast.error(
+        "Could not reopen match",
+        e instanceof Error ? e.message : "Try again.",
+      );
+    }
   }
 
   async function onForfeit() {
@@ -213,6 +234,29 @@ export function MatchAdminActions({
             >
               Reschedule
             </Button>
+          </div>
+        ) : null}
+
+        {/* Round-70 — reopen a completed match to fix a mistake (organizer/
+            admin, only while the competition is still ongoing). */}
+        {isOrganizer && completed && competitionStatus === "ONGOING" ? (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                loading={reopenState.loading}
+                iconBefore={<RotateCcw className="size-4" />}
+                onClick={onReopen}
+                data-testid="reopen-match"
+              >
+                Reopen match
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Puts the match back in progress so you can correct the lineups or
+              result, then confirm again.
+            </p>
           </div>
         ) : null}
 

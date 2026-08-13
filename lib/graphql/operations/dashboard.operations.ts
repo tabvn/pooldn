@@ -1,7 +1,7 @@
 import { graphql } from "@/lib/graphql/generated";
 
 export const DashboardQuery = graphql(/* GraphQL */ `
-  query Dashboard {
+  query Dashboard($cityId: ID) {
     viewer {
       id
       name
@@ -75,7 +75,7 @@ export const DashboardQuery = graphql(/* GraphQL */ `
       }
     }
     upcoming: competitions(
-      filters: { status: OPEN_FOR_APPLICATIONS }
+      filters: { status: OPEN_FOR_APPLICATIONS, cityId: $cityId }
     ) {
       id
       slug
@@ -96,7 +96,29 @@ export const DashboardQuery = graphql(/* GraphQL */ `
         name
       }
     }
-    active: competitions(filters: { status: ONGOING }) {
+    active: competitions(filters: { status: ONGOING, cityId: $cityId }) {
+      id
+      slug
+      name
+      status
+      type
+      format
+      gameType
+      bannerUrl
+      startDate
+      endDate
+      prizePool
+      currency
+      minTeams
+      maxTeams
+      city {
+        id
+        name
+      }
+    }
+    recentlyCompleted: competitions(
+      filters: { completedWithinDays: 31, cityId: $cityId }
+    ) {
       id
       slug
       name
