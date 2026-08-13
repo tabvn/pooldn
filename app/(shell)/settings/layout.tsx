@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
-import { User } from "lucide-react";
-import { PageTitle } from "@/components/layout/page-title";
+import { DetailHero } from "@/components/layout/detail-hero";
 import { TabNav } from "@/components/layout/tab-nav";
 import { requireViewer } from "@/lib/auth/server";
 
@@ -13,14 +12,11 @@ export default async function SettingsLayout({
 
   return (
     <div className="flex flex-col">
-      <PageTitle
-        title="Settings"
-        eyebrow={
-          <span className="inline-flex items-center gap-2">
-            <User className="size-3.5" /> @{viewer.username}
-          </span>
-        }
-        description="Profile, account, and security."
+      {/* Round-74 — use the app's compact DetailHero (teams / venues / profile)
+          instead of the old full-bleed PageTitle band for a consistent header. */}
+      <DetailHero
+        title="Edit Profile"
+        meta={<span>@{viewer.username}</span>}
       />
       <div className="mx-auto w-full max-w-5xl px-4 pt-4 md:px-10 md:pt-6">
         <TabNav

@@ -990,6 +990,171 @@ builder.mutationFields((t) => ({
           { extensions: { code: "ALREADY_GENERATED" } },
         );
       }
+      // Round-68 — INDIVIDUAL (Singles) generates player-vs-player matches
+      // (round-robin or a knockout bracket over the approved applicants).
+      if (competition.type === "INDIVIDUAL") {
+        const playerIds = competition.applications
+          .map((a) => a.applicantUserId)
+          .filter((id): id is string => Boolean(id));
+        if (playerIds.length < 2) {
+          throw new GraphQLError(
+            "Need at least 2 approved players to generate matches.",
+            { extensions: { code: "BAD_USER_INPUT" } },
+          );
+        }
+        const centralVenueId =
+          competition.matchVenueMode === "CENTRAL_VENUE"
+            ? competition.centralVenueId
+            : null;
+        const { planMatchdays } = await import(
+          "@/lib/services/match-schedule.service"
+        );
+        const notifyAndActivate = async (
+          tx: Parameters<
+            Parameters<typeof ctx.prisma.$transaction>[0]
+          >[0],
+          rounds: number,
+          label: string,
+        ) => {
+          await new NotificationService(tx).create({
+            type: "MATCH_SCHEDULED",
+            title: `${label} generated for ${competition.name}`,
+            message: `${rounds} round${rounds === 1 ? "" : "s"} — ${playerIds.length} players.`,
+            recipients: Array.from(
+              new Set([competition.organizerId, ...playerIds]),
+            ),
+            entity: {
+              type: "COMPETITION",
+              id: competition.id,
+              slug: competition.slug,
+            },
+            groupKey: `gen-md-${competition.id}`,
+          });
+          const activate =
+            competition.status === "OPEN_FOR_APPLICATIONS" ||
+            competition.status === "APPLICATIONS_CLOSED";
+          return tx.competition.update({
+            ...query,
+            where: { id: competition.id },
+            data: { status: activate ? "ONGOING" : competition.status },
+          });
+        };
+
+        if (competition.format === "SINGLE_ELIMINATION") {
+          const { buildBracket, nextSlot, roundName } = await import(
+            "@/lib/services/bracket.service"
+          );
+          const plan = buildBracket(playerIds);
+          const days = planMatchdays({
+            startDate: competition.startDate,
+            endDate: competition.endDate,
+            matchdayCount: plan.totalRounds,
+          });
+          return ctx.prisma.$transaction(async (tx) => {
+            const mdByRound = new Map<number, string>();
+            for (let r = 1; r <= plan.totalRounds; r++) {
+              const day = days[r - 1];
+              const md = await tx.matchday.create({
+                data: {
+                  competitionId: competition.id,
+                  number: r,
+                  label: roundName(r, plan.totalRounds),
+                  scheduledDate: day ? new Date(day.scheduledDate) : null,
+                  isGenerated: true,
+                },
+              });
+              mdByRound.set(r, md.id);
+            }
+            const idByRP = new Map<string, string>();
+            for (const bm of plan.matches) {
+              const day = days[bm.round - 1];
+              const created = await tx.match.create({
+                data: {
+                  matchdayId: mdByRound.get(bm.round)!,
+                  homePlayerId: bm.home,
+                  awayPlayerId: bm.away,
+                  venueId: centralVenueId,
+                  scheduledAt: day ? new Date(day.scheduledDate) : null,
+                  status: "SCHEDULED",
+                  bracketRound: bm.round,
+                  bracketPosition: bm.position,
+                },
+              });
+              idByRP.set(`${bm.round}:${bm.position}`, created.id);
+            }
+            for (const bm of plan.matches) {
+              if (bm.round >= plan.totalRounds) continue;
+              await tx.match.update({
+                where: { id: idByRP.get(`${bm.round}:${bm.position}`)! },
+                data: {
+                  nextMatchId: idByRP.get(
+                    `${bm.round + 1}:${Math.floor(bm.position / 2)}`,
+                  )!,
+                  nextMatchSlot: nextSlot(bm.position),
+                },
+              });
+            }
+            for (const bm of plan.matches) {
+              if (!bm.isBye) continue;
+              await tx.match.update({
+                where: { id: idByRP.get(`${bm.round}:${bm.position}`)! },
+                data: { status: "COMPLETED", completedAt: new Date() },
+              });
+              const nextId = idByRP.get(
+                `${bm.round + 1}:${Math.floor(bm.position / 2)}`,
+              )!;
+              await tx.match.update({
+                where: { id: nextId },
+                data:
+                  nextSlot(bm.position) === "HOME"
+                    ? { homePlayerId: bm.home }
+                    : { awayPlayerId: bm.home },
+              });
+            }
+            return notifyAndActivate(tx, plan.totalRounds, "Bracket");
+          });
+        }
+
+        // Round-robin over players.
+        const { bergerPairings } = await import(
+          "@/lib/services/scheduling.service"
+        );
+        const rounds = bergerPairings(playerIds);
+        const days = planMatchdays({
+          startDate: competition.startDate,
+          endDate: competition.endDate,
+          matchdayCount: rounds.length,
+        });
+        return ctx.prisma.$transaction(async (tx) => {
+          for (let r = 0; r < rounds.length; r++) {
+            const day = days[r];
+            const scheduledDate = day ? new Date(day.scheduledDate) : null;
+            const md = await tx.matchday.create({
+              data: {
+                competitionId: competition.id,
+                number: r + 1,
+                label: `Matchday ${r + 1}`,
+                scheduledDate,
+                isGenerated: true,
+              },
+            });
+            if (rounds[r]!.length > 0) {
+              await tx.match.createMany({
+                data: rounds[r]!.map(([home, away]) => ({
+                  matchdayId: md.id,
+                  homePlayerId: home,
+                  awayPlayerId: away,
+                  venueId: centralVenueId,
+                  scheduledAt: scheduledDate,
+                  status: "SCHEDULED" as const,
+                })),
+              });
+            }
+          }
+          return notifyAndActivate(tx, rounds.length, "Schedule");
+        });
+      }
+
       // Round-53 — teamId is nullable on the model now (INDIVIDUAL
       // applications use applicantUserId instead). Matchday generation
       // is the team-flow only, so drop any solo rows here.

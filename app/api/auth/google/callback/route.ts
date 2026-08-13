@@ -77,7 +77,13 @@ async function pickUsername(base: string): Promise<string> {
 async function resolveUser(
   id: GoogleIdentity,
 ): Promise<{ user: Awaited<ReturnType<typeof prisma.user.create>>; isNew: boolean }> {
-  const existing = await prisma.user.findUnique({ where: { email: id.email } });
+  // Round-75 — never resolve a shell (unclaimed placeholder) here. Shells carry
+  // synthetic `.invalid` emails so a real Google email can't match one anyway,
+  // but the explicit isShell:false filter guarantees OAuth can never silently
+  // sign in / upgrade a shell. Real people take over a shell via /claim/<token>.
+  const existing = await prisma.user.findFirst({
+    where: { email: id.email, isShell: false },
+  });
   if (existing) {
     const data: Record<string, unknown> = {};
     if (!existing.emailVerified) data.emailVerified = true;

@@ -26,9 +26,14 @@ export type EnqueueArgs = {
  * Skip *.local addresses outright — seed users / test fixtures have those,
  * and bouncing real Gmail traffic at them would burn deliverability score
  * without anyone reading the message anyway.
+ *
+ * Round-75 — also skip *.invalid: shell (unclaimed placeholder) accounts carry
+ * synthetic `shell+<id>@placeholder.pooldn.invalid` emails. They must never
+ * generate real sends or bounces until a real person claims the profile.
  */
 function isTestAddress(to: string): boolean {
-  return to.trim().toLowerCase().endsWith(".local");
+  const addr = to.trim().toLowerCase();
+  return addr.endsWith(".local") || addr.endsWith(".invalid");
 }
 
 export async function enqueueEmail(

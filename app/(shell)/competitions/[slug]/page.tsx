@@ -10,6 +10,7 @@ import {
 import { LiveStandingsListener } from "@/components/live/live-standings-listener";
 import { InviteBanner } from "@/components/competition/invite-banner";
 import { BracketTree } from "@/components/competition/bracket-tree";
+import { FinalizeWinnersCard } from "@/components/competition/finalize-winners-card";
 
 const STANDINGS_LEGEND =
   "P: Played • W: Won • D: Drawn • L: Lost • PF: Points For • PA: Points Against • PD: Point Difference • Pts: Points";
@@ -206,6 +207,97 @@ function StandingsTable({
   );
 }
 
+type PlayerStandingRow = {
+  position: number;
+  userId: string;
+  name: string;
+  username: string;
+  avatarUrl?: string | null;
+  nationality?: string | null;
+  played: number;
+  won: number;
+  lost: number;
+  framesFor: number;
+  framesAgainst: number;
+  points: number;
+};
+
+/** Round-68 — per-player league table for Singles (INDIVIDUAL) competitions. */
+function PlayerStandingsTable({ rows }: { rows: PlayerStandingRow[] }) {
+  const cell = "whitespace-nowrap px-3 py-2 text-right tabular-nums text-white/90";
+  const head = "whitespace-nowrap px-3 py-2 text-right font-semibold text-white/70";
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-border">
+            <th className="w-10 px-3 py-2 text-right font-semibold text-white/70">#</th>
+            <th className="min-w-[160px] px-3 py-2 text-left font-semibold text-white/70">
+              Player
+            </th>
+            <th className={head}>P</th>
+            <th className={head}>W</th>
+            <th className={head}>L</th>
+            <th className={head}>FF</th>
+            <th className={head}>FA</th>
+            <th className={head}>FD</th>
+            <th className="min-w-[64px] py-2 pl-3 pr-6 text-right font-semibold text-white/90">
+              Pts
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const isFirst = r.position === 1;
+            const accent = isFirst ? "text-primary" : "text-white/90";
+            const fd = r.framesFor - r.framesAgainst;
+            return (
+              <tr
+                key={r.userId}
+                className={`border-b border-border ${isFirst ? "bg-primary/10" : r.position % 2 === 0 ? "bg-white/[0.03]" : ""}`}
+              >
+                <td className={`px-3 py-2 text-right font-semibold tabular-nums ${accent}`}>
+                  {r.position}
+                </td>
+                <td className="px-3 py-2">
+                  <Link
+                    href={`/players/${r.username}`}
+                    className={`inline-flex items-center gap-3 whitespace-nowrap font-semibold hover:underline ${accent}`}
+                  >
+                    <Avatar
+                      size="sm"
+                      src={r.avatarUrl ?? undefined}
+                      fallback={r.name}
+                      className="size-6"
+                    />
+                    <span className="inline-flex items-center gap-1.5">
+                      {r.name}
+                      <CountryFlag code={r.nationality} className="leading-none" />
+                    </span>
+                  </Link>
+                </td>
+                <td className={cell}>{r.played}</td>
+                <td className={cell}>{r.won}</td>
+                <td className={cell}>{r.lost}</td>
+                <td className={cell}>{r.framesFor}</td>
+                <td className={cell}>{r.framesAgainst}</td>
+                <td className={cell}>{fd > 0 ? `+${fd}` : fd}</td>
+                <td className={`py-2 pl-3 pr-6 text-right font-semibold tabular-nums ${accent}`}>
+                  {r.points}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div className="bg-white/5 p-4 text-[11px] leading-4 text-muted-foreground">
+        P: Played · W: Won · L: Lost · FF: Frames For · FA: Frames Against · FD:
+        Frame Difference · Pts: Points
+      </div>
+    </div>
+  );
+}
+
 export default async function CompetitionOverviewPage({
   params,
 }: {
@@ -245,25 +337,55 @@ export default async function CompetitionOverviewPage({
 
   const isCompleted = c.status === "COMPLETED";
   const isBracket = c.format === "SINGLE_ELIMINATION";
-  // Round-67 — a knockout's champion is the final match's winner (there's no
-  // points table). Fall back to the standings leader for round-robin.
-  const bracketWinnerTeam = (() => {
-    if (!isBracket || !c.bracketMatches?.length) return null;
-    const maxR = Math.max(
-      ...c.bracketMatches.map((m) => m.bracketRound ?? 1),
-    );
-    const fin = c.bracketMatches.find((m) => (m.bracketRound ?? 1) === maxR);
-    if (!fin || fin.status !== "COMPLETED") return null;
-    const hs = fin.homeScore;
-    const as = fin.awayScore;
-    if (fin.awayTeam == null) return fin.homeTeam;
-    if (hs != null && as != null)
-      return hs > as ? fin.homeTeam : as > hs ? fin.awayTeam : null;
-    return null;
+  const isIndividual = c.type === "INDIVIDUAL";
+  // Round-71 — "all matches played but not yet finalised": the winner is
+  // decided, but the organizer must review and publish before the competition
+  // becomes COMPLETED (a window to fix results / MVP config).
+  const readyToFinalize = c.status === "ONGOING" && !!c.allMatchesPlayed;
+  const showWinner = isCompleted || readyToFinalize;
+  // Round-67/68 — the champion is a team or a player depending on the format:
+  // knockout → the final's winner; league → the standings leader.
+  type Champ = { name: string; href: string; image?: string | null; team: boolean };
+  const champion: Champ | null = (() => {
+    if (isBracket) {
+      if (!c.bracketMatches?.length) return null;
+      const maxR = Math.max(...c.bracketMatches.map((m) => m.bracketRound ?? 1));
+      const fin = c.bracketMatches.find((m) => (m.bracketRound ?? 1) === maxR);
+      if (!fin || fin.status !== "COMPLETED") return null;
+      const hs = fin.homeScore;
+      const as = fin.awayScore;
+      const homeSideOnly = fin.awayTeam == null && fin.awayPlayer == null;
+      const pick = homeSideOnly
+        ? "home"
+        : hs != null && as != null
+          ? hs > as
+            ? "home"
+            : as > hs
+              ? "away"
+              : null
+          : null;
+      if (!pick) return null;
+      const pl = pick === "home" ? fin.homePlayer : fin.awayPlayer;
+      const tm = pick === "home" ? fin.homeTeam : fin.awayTeam;
+      if (pl)
+        return { name: pl.name, href: `/players/${pl.username}`, image: pl.avatarUrl, team: false };
+      if (tm)
+        return { name: tm.name, href: `/teams/${tm.slug}`, image: tm.logoUrl, team: true };
+      return null;
+    }
+    if (!showWinner) return null;
+    if (isIndividual) {
+      const top = c.playerStandings?.[0];
+      return top
+        ? { name: top.name, href: `/players/${top.username}`, image: top.avatarUrl, team: false }
+        : null;
+    }
+    const top = c.standings[0];
+    return top
+      ? { name: top.team.name, href: `/teams/${top.team.slug}`, image: top.team.logoUrl, team: true }
+      : null;
   })();
-  const winner = isCompleted ? c.standings[0] : null;
-  const winnerTeam = isBracket ? bracketWinnerTeam : winner?.team ?? null;
-  const mvp = isCompleted ? c.playerStats.find((p) => p.isMvp) : null;
+  const mvp = showWinner ? c.playerStats.find((p) => p.isMvp) : null;
 
   return (
     <div className="space-y-8">
@@ -277,7 +399,7 @@ export default async function CompetitionOverviewPage({
           teams" strip (League Standings already lists every team). */}
 
       {/* Round-15 — live banner when the competition is in progress. */}
-      {c.status === "ONGOING" ? (
+      {c.status === "ONGOING" && !readyToFinalize ? (
         <div
           className="flex items-center gap-3 rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success"
           data-testid="ongoing-live-banner"
@@ -285,6 +407,36 @@ export default async function CompetitionOverviewPage({
           <span className="inline-block size-2 rounded-full bg-success animate-pulse" />
           Competition is live — matchdays update in real time as matches complete.
         </div>
+      ) : null}
+
+      {/* Round-71 — all matches played, awaiting the organizer to finalise.
+          Managers get a Winner/MVP review + publish CTA; everyone else a
+          "declared soon" banner. */}
+      {readyToFinalize ? (
+        canManage ? (
+          <FinalizeWinnersCard
+            competitionId={c.id}
+            champion={champion}
+            mvp={
+              mvp
+                ? {
+                    username: mvp.user.username,
+                    name: mvp.user.name,
+                    avatarUrl: mvp.user.avatarUrl,
+                    nationality: mvp.user.nationality,
+                  }
+                : null
+            }
+          />
+        ) : (
+          <div
+            className="flex items-center gap-3 rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-sm text-primary"
+            data-testid="winners-soon-banner"
+          >
+            <span className="inline-block size-2 rounded-full bg-primary" />
+            All matches are played — winners will be declared soon.
+          </div>
+        )
       ) : null}
 
       <LiveStandingsListener competitionId={c.id} />
@@ -303,17 +455,17 @@ export default async function CompetitionOverviewPage({
           >
             <div className="flex min-w-0 flex-col items-center gap-3">
               <Link
-                href={winnerTeam ? `/teams/${winnerTeam.slug}` : "#"}
+                href={champion?.href ?? "#"}
                 className="flex flex-col items-center gap-2 hover:opacity-90"
               >
                 <Avatar
                   size="xl"
-                  src={winnerTeam?.logoUrl ?? undefined}
-                  fallback={winnerTeam?.name ?? "—"}
-                  shape="team"
+                  src={champion?.image ?? undefined}
+                  fallback={champion?.name ?? "—"}
+                  shape={champion?.team === false ? "user" : "team"}
                 />
                 <div className="text-center text-xl font-semibold text-white/90 hover:underline">
-                  {winnerTeam?.name ?? "TBD"}
+                  {champion?.name ?? "TBD"}
                 </div>
               </Link>
               <span className="text-base font-semibold text-primary">
@@ -347,7 +499,7 @@ export default async function CompetitionOverviewPage({
           {/* Header (node 493:13627) — Bracket for knockouts, Standings else */}
           <div className="flex items-center justify-between border-b border-border p-6">
             <span className="text-base font-semibold text-white/50">
-              {isBracket ? "Bracket" : "League Standings"}
+              {isBracket ? "Bracket" : isIndividual ? "Standings" : "League Standings"}
             </span>
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Final
@@ -356,6 +508,8 @@ export default async function CompetitionOverviewPage({
 
           {isBracket ? (
             <BracketTree matches={c.bracketMatches} />
+          ) : isIndividual ? (
+            <PlayerStandingsTable rows={c.playerStandings} />
           ) : (
             <>
               <StandingsTable standings={c.standings} isCompleted />
@@ -375,7 +529,21 @@ export default async function CompetitionOverviewPage({
             ) : (
               <p className="p-6 text-sm text-muted-foreground">
                 The knockout bracket appears here once the organizer generates
-                the draw from the confirmed teams.
+                the draw from the confirmed {isIndividual ? "players" : "teams"}.
+              </p>
+            )}
+          </div>
+        </section>
+      ) : isIndividual ? (
+        <section className="space-y-3">
+          <h2 className="text-xl font-semibold">Standings</h2>
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
+            {c.playerStandings.length > 0 ? (
+              <PlayerStandingsTable rows={c.playerStandings} />
+            ) : (
+              <p className="p-6 text-sm text-muted-foreground">
+                The standings appear here once the organizer generates the
+                schedule from the confirmed players.
               </p>
             )}
           </div>

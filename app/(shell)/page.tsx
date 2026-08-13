@@ -6,6 +6,7 @@ import { TodayMatchCard } from "@/components/dashboard/today-match-card";
 import { getClient } from "@/lib/apollo/client";
 import { DashboardQuery } from "@/lib/graphql/operations/dashboard.operations";
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
+import { getHeaderCityId } from "@/lib/headers/city";
 
 function firstName(full?: string | null) {
   if (!full) return null;
@@ -23,8 +24,15 @@ function firstName(full?: string | null) {
  */
 export default async function PoolhubDashboard() {
   const client = getClient();
+  // Round-73 — scope the discovery rails (upcoming / active / recently
+  // completed) to the header-selected city, like every other list surface.
+  const cityId = await getHeaderCityId();
   const [{ data }, viewerResult] = await Promise.all([
-    client.query({ query: DashboardQuery, errorPolicy: "ignore" }),
+    client.query({
+      query: DashboardQuery,
+      variables: { cityId: cityId ?? undefined },
+      errorPolicy: "ignore",
+    }),
     client.query({ query: ViewerQuery, errorPolicy: "ignore" }),
   ]);
   const viewer = data?.viewer ?? viewerResult.data?.viewer ?? null;
@@ -49,6 +57,13 @@ export default async function PoolhubDashboard() {
   };
   const upcoming = [...(data?.upcoming ?? [])].sort(bySoonestStart);
   const active = [...(data?.active ?? [])].sort(bySoonestStart);
+  // Round-73 — competitions completed in the last ~month, most-recently-ended
+  // first, so a finished comp lingers instead of vanishing the moment it ends.
+  const recentlyCompleted = [...(data?.recentlyCompleted ?? [])].sort((a, b) => {
+    const ae = a.endDate ? new Date(a.endDate).getTime() : 0;
+    const be = b.endDate ? new Date(b.endDate).getTime() : 0;
+    return be - ae;
+  });
   // Round-57 — surface DRAFT comps the viewer is organizing so they can
   // resume editing without hunting through /competitions. Filter from
   // the broader `myCompetitions` so we don't add a new resolver.
@@ -202,6 +217,23 @@ export default async function PoolhubDashboard() {
           </div>
         )}
       </section>
+
+      {/* Round-73 — recently completed comps linger for ~a month so they don't
+          vanish abruptly the moment they finish. */}
+      {recentlyCompleted.length > 0 ? (
+        <section className="space-y-3" data-testid="dashboard-recently-completed">
+          <SectionHeader
+            title="Recently Completed"
+            href="/competitions?status=COMPLETED"
+            showLink={recentlyCompleted.length > 3}
+          />
+          <div className="space-y-2.5">
+            {recentlyCompleted.slice(0, 3).map((c) => (
+              <CompetitionRowCard key={c.id} c={c} accent="muted" />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
     </div>
   );

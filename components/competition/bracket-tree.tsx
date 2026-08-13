@@ -11,6 +11,9 @@ import { Avatar } from "@/components/ui/avatar";
  * on narrow screens.
  */
 
+type Team = { id: string; name: string; slug: string; logoUrl?: string | null };
+type Player = { id: string; name: string; username: string; avatarUrl?: string | null };
+
 export type BracketMatch = {
   id: string;
   bracketRound?: number | null;
@@ -19,9 +22,36 @@ export type BracketMatch = {
   homeScore?: number | null;
   awayScore?: number | null;
   winType?: string | null;
-  homeTeam?: { id: string; name: string; slug: string; logoUrl?: string | null } | null;
-  awayTeam?: { id: string; name: string; slug: string; logoUrl?: string | null } | null;
+  homeTeam?: Team | null;
+  awayTeam?: Team | null;
+  homePlayer?: Player | null;
+  awayPlayer?: Player | null;
 };
+
+// A bracket side is a team or a player; normalise to a common shape.
+type Participant = {
+  name: string;
+  href: string;
+  image?: string | null;
+  team: boolean;
+};
+function toParticipant(team?: Team | null, player?: Player | null): Participant | null {
+  if (player)
+    return {
+      name: player.name,
+      href: `/players/${player.username}`,
+      image: player.avatarUrl,
+      team: false,
+    };
+  if (team)
+    return {
+      name: team.name,
+      href: `/teams/${team.slug}`,
+      image: team.logoUrl,
+      team: true,
+    };
+  return null;
+}
 
 const CARD_W = 208;
 const CARD_H = 60;
@@ -152,12 +182,13 @@ function MatchCard({
   const completed = m.status === "COMPLETED";
   const hs = m.homeScore ?? null;
   const as = m.awayScore ?? null;
-  // Winner: by score, or a bye (only one team on a completed match).
+  const home = toParticipant(m.homeTeam, m.homePlayer);
+  const away = toParticipant(m.awayTeam, m.awayPlayer);
+  // Winner: by score, or a bye (only one side on a completed match).
   const homeWon =
-    completed &&
-    (m.awayTeam == null || (hs != null && as != null && hs > as));
+    completed && (away == null || (hs != null && as != null && hs > as));
   const awayWon =
-    completed && m.homeTeam != null && hs != null && as != null && as > hs;
+    completed && home != null && hs != null && as != null && as > hs;
 
   return (
     <Link
@@ -166,30 +197,25 @@ function MatchCard({
       className="flex flex-col overflow-hidden rounded-lg border border-border bg-card text-xs hover:border-primary/50"
       data-testid={`bracket-match-${m.bracketRound}-${m.bracketPosition}`}
     >
-      <Side
-        team={m.homeTeam}
-        score={hs}
-        won={homeWon}
-        placeholder="TBD"
-      />
+      <Side p={home} score={hs} won={homeWon} placeholder="TBD" />
       <div className="h-px bg-border" />
       <Side
-        team={m.awayTeam}
+        p={away}
         score={as}
         won={awayWon}
-        placeholder={completed && m.homeTeam ? "BYE" : "TBD"}
+        placeholder={completed && home ? "BYE" : "TBD"}
       />
     </Link>
   );
 }
 
 function Side({
-  team,
+  p,
   score,
   won,
   placeholder,
 }: {
-  team?: { name: string; slug: string; logoUrl?: string | null } | null;
+  p: Participant | null;
   score: number | null;
   won: boolean;
   placeholder: string;
@@ -200,12 +226,12 @@ function Side({
         won ? "bg-primary/10" : ""
       }`}
     >
-      {team ? (
+      {p ? (
         <Avatar
           size="sm"
-          src={team.logoUrl ?? undefined}
-          fallback={team.name}
-          shape="team"
+          src={p.image ?? undefined}
+          fallback={p.name}
+          shape={p.team ? "team" : "user"}
           className="size-5 shrink-0"
         />
       ) : (
@@ -213,10 +239,10 @@ function Side({
       )}
       <span
         className={`min-w-0 flex-1 truncate ${
-          won ? "font-semibold text-primary" : team ? "text-white/90" : "text-muted-foreground"
+          won ? "font-semibold text-primary" : p ? "text-white/90" : "text-muted-foreground"
         }`}
       >
-        {team?.name ?? placeholder}
+        {p?.name ?? placeholder}
       </span>
       {score != null ? (
         <span

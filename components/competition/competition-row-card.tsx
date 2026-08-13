@@ -79,7 +79,13 @@ export function CompetitionRowCard({
             {c.name}
           </h3>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            {c.type === "TEAMS" ? <TypeBadge>Teams</TypeBadge> : null}
+            {c.type === "TEAMS" ? (
+              <TypeBadge tone="teams">Teams</TypeBadge>
+            ) : c.type === "INDIVIDUAL" ? (
+              <TypeBadge tone="singles">Singles</TypeBadge>
+            ) : c.type === "DOUBLES" ? (
+              <TypeBadge tone="doubles">Doubles</TypeBadge>
+            ) : null}
             <span>{FORMAT_SHORT[c.format] ?? c.format}</span>
             <span aria-hidden>·</span>
             <span>{GAME_SHORT[c.gameType] ?? c.gameType}</span>
@@ -114,9 +120,25 @@ export function CompetitionRowCard({
   );
 }
 
-function TypeBadge({ children }: { children: React.ReactNode }) {
+function TypeBadge({
+  children,
+  tone = "teams",
+}: {
+  children: React.ReactNode;
+  tone?: "teams" | "singles" | "doubles";
+}) {
+  // Teams keeps the brand lime; Singles/Doubles get their own colour so the
+  // format is distinguishable at a glance.
+  const cls =
+    tone === "singles"
+      ? "bg-violet-600 text-white"
+      : tone === "doubles"
+        ? "bg-sky-500 text-white"
+        : "bg-primary text-primary-foreground";
   return (
-    <span className="inline-flex items-center rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
+    <span
+      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${cls}`}
+    >
       {children}
     </span>
   );

@@ -209,6 +209,14 @@ model User {
   cityId        String
   emailVerified Boolean  @default(false)
   isActive      Boolean  @default(true)
+  // Round-75 — "shell" (placeholder) accounts created when importing an
+  // offline league. A shell has synthetic credentials (a `.invalid` email +
+  // random password) and CANNOT sign in, receive notifications, or appear as
+  // a real player. A real person claims it via /claim/<token>, which upgrades
+  // THIS row in place (same id → all derived stats/history carry over) and
+  // flips isShell → false. See lib/services/email-token.service.ts CLAIM_PROFILE.
+  isShell       Boolean  @default(false)
+  claimedAt     DateTime?
   // Round-46 — admin-managed lockout. When `bannedAt` is set the user can't
   // access ANY page or call ANY mutation; they only see the "your account
   // is banned" screen. `banReason` is shown on that screen verbatim.
@@ -250,6 +258,8 @@ model User {
   feedbackResolved        Feedback[]            @relation("FeedbackResolver")
   matchesCompleted        Match[]               @relation("MatchCompletedBy")
   matchesStaffInput       Match[]               @relation("MatchStaffInput")
+  homeSinglesMatches      Match[]               @relation("MatchHomePlayer")
+  awaySinglesMatches      Match[]               @relation("MatchAwayPlayer")
   blockLineupsSubmitted   MatchBlockLineup[]    @relation("BlockLineupSubmittedBy")
   notificationPreferences NotificationPreference[]
   digestRuns              DigestRun[]
@@ -267,6 +277,7 @@ model User {
 
   @@index([isActive])
   @@index([bannedAt])
+  @@index([isShell])
   @@map("users")
 }
 
@@ -759,6 +770,12 @@ model Match {
   homeTeam    Team?       @relation("HomeTeam", fields: [homeTeamId], references: [id])
   awayTeamId  String?
   awayTeam    Team?       @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  // Round-68 — INDIVIDUAL (Singles) matches are player-vs-player: the two
+  // sides are users, not teams. Team-format matches leave these null.
+  homePlayerId String?
+  homePlayer   User?      @relation("MatchHomePlayer", fields: [homePlayerId], references: [id])
+  awayPlayerId String?
+  awayPlayer   User?      @relation("MatchAwayPlayer", fields: [awayPlayerId], references: [id])
   status      MatchStatus @default(SCHEDULED)
   scheduledAt DateTime?
   startedAt   DateTime?
@@ -811,6 +828,10 @@ model Match {
   staffInputAt       DateTime?
   staffEnteredLineup Boolean   @default(false)
   staffEnteredResult Boolean   @default(false)
+  // Round-69 — board/scoresheet proof attached when an organizer/admin
+  // confirms the final result directly (submitMatchResult), mirroring the
+  // captains' per-submission board photos.
+  resultProofImageUrls String[] @default([])
 
   // Round-67 — single-elimination bracket linkage. bracketRound is 1 for the
   // first round and increases toward the final; bracketPosition is the 0-based

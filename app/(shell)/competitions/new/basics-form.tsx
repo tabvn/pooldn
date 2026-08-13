@@ -53,7 +53,7 @@ const GAME_OPTIONS: GameOption[] = [
 // toggle won't let them pick those yet.
 const FORMAT_OPTIONS: FormatOption[] = [
   { value: "TEAMS", label: "Teams" },
-  { value: "INDIVIDUAL", label: "Singles", soon: true },
+  { value: "INDIVIDUAL", label: "Singles" },
   { value: "DOUBLES", label: "Doubles (2v2)", soon: true },
 ];
 

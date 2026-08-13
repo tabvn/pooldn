@@ -22,6 +22,7 @@ import { MatchUpdatedSubscription } from "@/lib/graphql/operations/subscriptions
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
 import { MatchAdminActions } from "./match-admin-actions";
 import { MatchLineups, type MatchLineupsData } from "@/components/match/match-lineups";
+import { SinglesMatch, type SinglesMatchData } from "@/components/match/singles-match";
 
 export function MatchFlow({ id }: { id: string }) {
   const router = useRouter();
@@ -68,18 +69,26 @@ export function MatchFlow({ id }: { id: string }) {
   const awayWins = match.frames.filter((f) => f.homeWon === false).length;
   const undecided = match.frames.filter((f) => f.homeWon == null).length;
   const completed = match.status === "COMPLETED";
+  // Round-68 — a Singles (1v1) match has players, not teams.
+  const isSingles = !!match.homePlayer;
   const matchId = match.id;
 
   async function onConfirmResult() {
-    // Legacy single-captain instant-complete — kept only for organizer/admin
-    // direct submit. Captains use submitMatchScore below.
+    // Organizer/admin direct submit. Board proof is attached here at the
+    // confirmation step (mirrors the captains' score-submission uploader).
     try {
       await submitResult({
         variables: {
-          input: { matchId, homeScore: homeWins, awayScore: awayWins },
+          input: {
+            matchId,
+            homeScore: homeWins,
+            awayScore: awayWins,
+            boardImageUrls: draftBoardImages,
+          },
         },
       });
       toast.success("Match completed");
+      setDraftBoardImages([]);
       await refetch();
       router.refresh();
     } catch (e) {
@@ -140,7 +149,7 @@ export function MatchFlow({ id }: { id: string }) {
   return (
     <div className="flex flex-col">
       <DetailHero
-        title={`${match.homeTeam?.name ?? "TBD"} vs ${match.awayTeam?.name ?? "TBD"}`}
+        title={`${match.homePlayer?.name ?? match.homeTeam?.name ?? "TBD"} vs ${match.awayPlayer?.name ?? match.awayTeam?.name ?? "TBD"}`}
         meta={
           <>
             <Link
@@ -178,6 +187,20 @@ export function MatchFlow({ id }: { id: string }) {
             <h2 className="text-lg font-semibold">Match Details</h2>
           </div>
 
+          {isSingles ? (
+            <div className="px-6 py-6">
+              <SinglesMatch
+                match={match as unknown as SinglesMatchData}
+                viewerId={viewerId ?? null}
+                viewerRole={viewer?.role ?? null}
+                organizerId={match.matchday.competition.organizer?.id ?? null}
+                onChanged={async () => {
+                  await refetch();
+                }}
+              />
+            </div>
+          ) : (
+          <>
           {/* Compact scoreboard */}
           <div className="flex items-center justify-center gap-6 border-b border-border bg-secondary/20 px-6 py-5">
             <ScoreTeam name={match.homeTeam?.name} logoUrl={match.homeTeam?.logoUrl} />
@@ -259,6 +282,8 @@ export function MatchFlow({ id }: { id: string }) {
               </div>
             ) : null}
           </div>
+          </>
+          )}
         </div>
 
         {/* Round-31 — audit panel: who/when accepted the final score. */}
@@ -267,7 +292,25 @@ export function MatchFlow({ id }: { id: string }) {
             completedAt={match.completedAt ?? null}
             completionMode={match.completionMode ?? null}
             completedBy={match.completedBy ?? null}
+            isSingles={isSingles}
           />
+        ) : null}
+
+        {/* Round-69 — board proof the organizer attached at confirmation. */}
+        {completed && (match.resultProofImageUrls?.length ?? 0) > 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Result proof</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ImageThumbnails
+                images={match.resultProofImageUrls}
+                alt="Result proof"
+                className="flex flex-wrap gap-1.5"
+                testIdPrefix="result-proof"
+              />
+            </CardContent>
+          </Card>
         ) : null}
 
         {/* Round-31 — submissions trail: both captains' submissions side by side. */}
@@ -291,6 +334,7 @@ export function MatchFlow({ id }: { id: string }) {
           homeTeam={match.homeTeam ?? null}
           awayTeam={match.awayTeam ?? null}
           status={match.status}
+          competitionStatus={match.matchday.competition.status}
           scheduledAt={match.scheduledAt ?? null}
           onMutated={async () => {
             await refetch();
@@ -405,6 +449,7 @@ function ResultAuditCard({
   completedAt,
   completionMode,
   completedBy,
+  isSingles = false,
 }: {
   completedAt: string | null;
   completionMode:
@@ -421,6 +466,7 @@ function ResultAuditCard({
         avatarUrl?: string | null;
       }
     | null;
+  isSingles?: boolean;
 }) {
   if (!completionMode && !completedAt) return null;
   const when = completedAt
@@ -431,8 +477,12 @@ function ResultAuditCard({
   let badge: { label: string; variant: "primary" | "warning" | "success" | "neutral" } | null = null;
   switch (completionMode) {
     case "AUTO_AGREED":
-      title = "Auto-confirmed by both captains";
-      subtitle = `Both captains submitted matching scores at ${when}.`;
+      // Round-68 — a Singles match has no captains; it auto-completes once a
+      // player reaches the race-to target.
+      title = isSingles ? "Auto-confirmed" : "Auto-confirmed by both captains";
+      subtitle = isSingles
+        ? `The match reached its race-to target at ${when}.`
+        : `Both captains submitted matching scores at ${when}.`;
       badge = { label: "Auto", variant: "success" };
       break;
     case "ORGANIZER_REVIEW":
@@ -689,7 +739,11 @@ function ScoreSubmissionBanner({
   // Show the uploader on a fresh submission OR a re-submission after conflict
   // — the uploader is the affordance that asks for fresh board photos, which
   // matter most when there's a disagreement.
-  const showUploader = isCaptain && viewerId && (!mySubmission || canResubmit);
+  // Round-69 — the organizer/admin gets the same board-proof uploader here at
+  // confirmation (previously it lived in the lineup editor).
+  const showUploader =
+    !!viewerId &&
+    ((isCaptain && (!mySubmission || canResubmit)) || (isAdmin && !isCaptain));
   return (
     <div className="space-y-3">
       <div

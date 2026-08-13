@@ -28,6 +28,11 @@ builder.queryFields((t) => ({
         ...query,
         where: {
           isActive: true,
+          // Round-75 — shells are isActive:false so already excluded here; the
+          // explicit isShell:false keeps unclaimed placeholders out of the
+          // public directory even if isActive semantics ever change. (Their
+          // profile PAGE still renders via userByUsername for the claim preview.)
+          isShell: false,
           ...(args.cityId ? { cityId: String(args.cityId) } : {}),
         },
         orderBy: [{ createdAt: "desc" }, { id: "asc" }],

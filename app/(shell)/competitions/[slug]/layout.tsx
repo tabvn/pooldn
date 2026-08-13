@@ -43,9 +43,14 @@ export default async function CompetitionLayout({
   const preStart =
     c.status === "OPEN_FOR_APPLICATIONS" ||
     c.status === "APPLICATIONS_CLOSED";
+  // Round-68 — Singles (INDIVIDUAL) has no team rosters / MVP rating, so the
+  // Players tab (which shows exactly that) is dropped. The player league table
+  // lives on Overview instead.
   const secondaryTabs = [
     { href: `/competitions/${slug}/matchdays`, label: "Matchdays" },
-    { href: `/competitions/${slug}/players`, label: "Players" },
+    ...(c.type === "INDIVIDUAL"
+      ? []
+      : [{ href: `/competitions/${slug}/players`, label: "Players" }]),
     { href: `/competitions/${slug}/about`, label: "About" },
   ];
   const tabs: Array<{ href: string; label: string; badge?: number | null }> =

@@ -23,6 +23,21 @@ builder.queryFields((t) => ({
             ...(f?.status ? [{ status: f.status }] : []),
             ...(f?.cityId ? [{ cityId: String(f.cityId) }] : []),
             ...(f?.gameType ? [{ gameType: f.gameType }] : []),
+            // Round-73 — recently completed (last N days). Uses updatedAt as
+            // the completion proxy: it's set to the completion time and only
+            // grows, so the window is "at least N days" after completing.
+            ...(f?.completedWithinDays != null
+              ? [
+                  {
+                    status: "COMPLETED" as const,
+                    updatedAt: {
+                      gte: new Date(
+                        Date.now() - f.completedWithinDays * 86_400_000,
+                      ),
+                    },
+                  },
+                ]
+              : []),
             ...(f?.search
               ? [
                   {
