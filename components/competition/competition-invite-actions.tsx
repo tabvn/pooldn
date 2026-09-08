@@ -8,6 +8,7 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { WithdrawApplicationMutation } from "@/lib/graphql/operations/competition-mutations.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 /**
  * Round-49 — shared Accept / Decline action pair for competition invites.
@@ -28,7 +29,10 @@ export function CompetitionInviteActions({
 }: {
   applicationId: string;
   competitionSlug: string;
-  teamId: string;
+  /** Round-76 — null for a Singles invite: the viewer enters as themselves,
+   *  and /apply picks the solo form from the competition type. */
+  teamId: string | null;
+  /** Team name, or the invited player's name for Singles. */
   teamName: string;
   size?: "sm" | "md" | "lg";
   onDeclined?: () => void;
@@ -43,15 +47,17 @@ export function CompetitionInviteActions({
     try {
       await withdraw({ variables: { id: applicationId } });
       toast.success(
-        `Invite declined for ${teamName}`,
-        "The organizer can re-invite your team later if they'd like.",
+        teamId ? `Invite declined for ${teamName}` : "Invite declined",
+        teamId
+          ? "The organizer can re-invite your team later if they'd like."
+          : "The organizer can invite you again later if they'd like.",
       );
       onDeclined?.();
       router.refresh();
     } catch (e) {
       toast.error(
         "Couldn't decline invite",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     } finally {
       setDeclining(false);
@@ -66,14 +72,18 @@ export function CompetitionInviteActions({
         loading={declining}
         disabled={declining}
         onClick={onDecline}
-        data-testid={`competition-invite-decline-${teamId}`}
+        data-testid={`competition-invite-decline-${teamId ?? "solo"}`}
       >
         <X className="size-4" />
         Decline
       </Button>
       <Link
-        href={`/competitions/${competitionSlug}/apply?teamId=${teamId}`}
-        data-testid={`competition-invite-accept-${teamId}`}
+        href={
+          teamId
+            ? `/competitions/${competitionSlug}/apply?teamId=${teamId}`
+            : `/competitions/${competitionSlug}/apply`
+        }
+        data-testid={`competition-invite-accept-${teamId ?? "solo"}`}
       >
         <Button variant="primary" size={size} disabled={declining}>
           Accept invite

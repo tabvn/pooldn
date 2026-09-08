@@ -13,7 +13,12 @@ test.describe("Notifications", () => {
     await expect(
       page.getByRole("heading", { name: "Notifications" }),
     ).toBeVisible();
-    await expect(page.getByText("Welcome to PoolDN")).toBeVisible();
+    // Assert the inbox actually lists something rather than pinning to the
+    // seeded welcome row: the list pages 20 at a time, so on an account with a
+    // real history that row sits pages down and the test failed on data age.
+    await expect(
+      page.locator('[data-testid^="notification-"]').first(),
+    ).toBeVisible();
   });
 
   test("Mark read removes the New badge", async ({ page }) => {

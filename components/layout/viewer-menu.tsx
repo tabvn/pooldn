@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useApolloClient, useMutation } from "@apollo/client/react";
 import {
   ChevronDown,
+  Ghost,
   LogOut,
   Mail,
   Settings,
@@ -80,6 +81,14 @@ export function ViewerMenu({
         >
           <Mail className="size-4" />
           <span>Invitations</span>
+        </DropdownMenuItem>
+        {/* Round-88 — both halves of placeholder-profile claiming: what you
+            asked for, and (for organizers/admins) what's waiting on you. */}
+        <DropdownMenuItem
+          render={(props) => <Link href="/claims" {...props} />}
+        >
+          <Ghost className="size-4" />
+          <span>Profile claims</span>
         </DropdownMenuItem>
         <DropdownMenuItem
           render={(props) => <Link href="/settings" {...props} />}

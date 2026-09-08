@@ -8,6 +8,18 @@ const OPEN_COMP_SLUG = "spring-open-2027";
 // systematically verify role gating. Keep assertions narrow so any one
 // failure points at the offending page.
 
+/**
+ * Round-89 — this matrix is the app's CURRENT model, not the original one:
+ *
+ *  - Any signed-in user may organize a competition (Round-47; see the comment
+ *    in app/(shell)/competitions/new/page.tsx and `can("create", "Competition")`
+ *    for every signed-in branch of lib/casl/ability.ts). So the create CTA and
+ *    /competitions/new are open to all roles here, not just ORGANIZER+.
+ *  - A non-manager opening a competition's Applications tab gets the read-only
+ *    confirmed list rather than a redirect (Round-60).
+ *  - /apply loads for any signed-in role; whether they may actually apply is
+ *    gated server-side by Competition.viewerCanApply.
+ */
 const matrix: Record<
   DemoRole,
   {
@@ -30,6 +42,8 @@ const matrix: Record<
     canSeeCreateCTA: true,
     canVisitNewCompetition: true,
     canVisitApplications: true,
+    // michael ORGANIZES the competition this test applies to (spring-open-2027),
+    // and an organizer can't enter their own — the apply route bounces them.
     canVisitApply: false,
   },
   alex: {
@@ -40,85 +54,85 @@ const matrix: Record<
     // competitions, so the page loads but renders empty. The CASL filter
     // does the work; the role-only redirect lets him through.
     canVisitApplications: true,
-    canVisitApply: false,
+    canVisitApply: true,
   },
   thomas: {
     name: "Thomas Bryan",
-    canSeeCreateCTA: false,
-    canVisitNewCompetition: false,
-    canVisitApplications: false,
+    canSeeCreateCTA: true,
+    canVisitNewCompetition: true,
+    canVisitApplications: true,
     canVisitApply: true,
   },
   gen: {
     name: "Gen Hoang",
-    canSeeCreateCTA: false,
-    canVisitNewCompetition: false,
-    canVisitApplications: false,
+    canSeeCreateCTA: true,
+    canVisitNewCompetition: true,
+    canVisitApplications: true,
     canVisitApply: true,
   },
   hai: {
     name: "Hai Le",
-    canSeeCreateCTA: false,
-    canVisitNewCompetition: false,
-    canVisitApplications: false,
+    canSeeCreateCTA: true,
+    canVisitNewCompetition: true,
+    canVisitApplications: true,
     canVisitApply: true,
   },
   // Round-69 demo captains — same gating as the other team captains.
   long: {
     name: "Long Duong",
-    canSeeCreateCTA: false,
-    canVisitNewCompetition: false,
-    canVisitApplications: false,
+    canSeeCreateCTA: true,
+    canVisitNewCompetition: true,
+    canVisitApplications: true,
     canVisitApply: true,
   },
   duc: {
     name: "Duc Tran",
-    canSeeCreateCTA: false,
-    canVisitNewCompetition: false,
-    canVisitApplications: false,
+    canSeeCreateCTA: true,
+    canVisitNewCompetition: true,
+    canVisitApplications: true,
     canVisitApply: true,
   },
   kenji: {
     name: "Kenji Sato",
-    canSeeCreateCTA: false,
-    canVisitNewCompetition: false,
-    canVisitApplications: false,
+    canSeeCreateCTA: true,
+    canVisitNewCompetition: true,
+    canVisitApplications: true,
     canVisitApply: true,
   },
   sofia: {
     name: "Sofia Garcia",
-    canSeeCreateCTA: false,
-    canVisitNewCompetition: false,
-    canVisitApplications: false,
+    canSeeCreateCTA: true,
+    canVisitNewCompetition: true,
+    canVisitApplications: true,
     canVisitApply: true,
   },
   raj: {
     name: "Raj Patel",
-    canSeeCreateCTA: false,
-    canVisitNewCompetition: false,
-    canVisitApplications: false,
+    canSeeCreateCTA: true,
+    canVisitNewCompetition: true,
+    canVisitApplications: true,
     canVisitApply: true,
   },
   player1: {
     name: "Linh Tran",
-    canSeeCreateCTA: false,
-    canVisitNewCompetition: false,
-    canVisitApplications: false,
-    canVisitApply: false,
+    canSeeCreateCTA: true,
+    canVisitNewCompetition: true,
+    canVisitApplications: true,
+    canVisitApply: true,
   },
   player2: {
     name: "An Pham",
-    canSeeCreateCTA: false,
-    canVisitNewCompetition: false,
-    canVisitApplications: false,
-    canVisitApply: false,
+    canSeeCreateCTA: true,
+    canVisitNewCompetition: true,
+    canVisitApplications: true,
+    canVisitApply: true,
   },
   viewer: {
     name: "Viewer Demo",
-    canSeeCreateCTA: false,
-    canVisitNewCompetition: false,
-    canVisitApplications: false,
-    canVisitApply: false,
+    canSeeCreateCTA: true,
+    canVisitNewCompetition: true,
+    canVisitApplications: true,
+    canVisitApply: true,
   },
 };
 
@@ -179,11 +193,7 @@ for (const [role, spec] of Object.entries(matrix) as Array<
         await expect(page).toHaveURL("/competitions/new");
         await expect(
           page.getByRole("heading", { level: 1 }),
-        ).toContainText(/step 1/i);
-        return;
-        await expect(
-          page.getByRole("heading", { name: /create competition/i }),
-        ).toBeVisible();
+        ).toContainText(/create new competition/i);
       } else {
         // requireViewer redirects to /
         await expect(page).toHaveURL("/");

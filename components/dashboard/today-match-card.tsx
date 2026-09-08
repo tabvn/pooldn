@@ -143,7 +143,7 @@ function TeamSide({
         {name ?? "TBD"}
       </span>
       {won ? (
-        <span className="rounded bg-[#005f5a] px-1.5 py-0.5 text-[10px] font-semibold uppercase text-[#96f7e4]">
+        <span className="rounded bg-[#005f5a] px-1.5 py-0.5 text-[11px] font-semibold uppercase text-[#96f7e4]">
           Winner
         </span>
       ) : null}
@@ -160,7 +160,7 @@ function ScoreBox({ value, tone }: { value: number | null; tone: Tone }) {
         ? "bg-[#861043] text-[#fccee8]"
         : tone === "draw"
           ? "bg-white/10 text-white/90"
-          : "bg-white/5 text-white/50";
+          : "bg-white/5 text-white/70";
   return (
     <div
       className={`flex size-8 items-center justify-center rounded text-base font-semibold tabular-nums ${cls}`}

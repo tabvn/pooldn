@@ -51,6 +51,11 @@ export const MatchScoreSubmissionsForMatchQuery = graphql(/* GraphQL */ `
         id
         name
       }
+      # Round-79 — set instead of forTeam on Singles submissions.
+      forUser {
+        id
+        name
+      }
     }
   }
 `);
@@ -75,6 +80,11 @@ export const MatchScoreSubmissionsListQuery = graphql(/* GraphQL */ `
         name
       }
       forTeam {
+        id
+        name
+      }
+      # Round-79 — set instead of forTeam on Singles submissions.
+      forUser {
         id
         name
       }

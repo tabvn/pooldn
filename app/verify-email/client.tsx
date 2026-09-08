@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useMutation } from "@apollo/client/react";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { VerifyEmailTokenMutation } from "@/lib/graphql/operations/profile.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 export function VerifyEmailClient({ token }: { token: string }) {
   const [verify] = useMutation(VerifyEmailTokenMutation);
@@ -21,7 +22,7 @@ export function VerifyEmailClient({ token }: { token: string }) {
       } catch (e) {
         if (cancelled) return;
         setStatus("fail");
-        setMessage(e instanceof Error ? e.message : "Verification failed");
+        setMessage(errorText(e, "Verification failed"));
       }
     })();
     return () => {

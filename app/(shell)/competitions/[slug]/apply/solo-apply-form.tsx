@@ -16,6 +16,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { ApplyToCompetitionMutation } from "@/lib/graphql/operations/competition-mutations.operations";
 import { CompetitionHeaderQuery } from "@/lib/graphql/operations/competition.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 /**
  * Round-53 — apply form for INDIVIDUAL (Singles) competitions.
@@ -91,7 +92,7 @@ export function SoloApplyForm({ slug }: { slug: string }) {
     } catch (e) {
       toast.error(
         "Could not apply",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }

@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsPanel, TabsTrigger } from "@/components/ui/tabs";
+import { errorText } from "@/lib/apollo/error-message";
 import {
   BannedTeamsQuery,
   BannedUsersQuery,
@@ -193,7 +194,7 @@ function BannedUsersTable() {
                 <TableRow>
                   <TableCell colSpan={4}>
                     <p className="py-10 text-center text-sm text-destructive">
-                      Could not load banned users: {error.message}
+                      Could not load banned users: {errorText(error, "please retry")}
                     </p>
                   </TableCell>
                 </TableRow>
@@ -376,7 +377,7 @@ function BannedTeamsTable() {
                 <TableRow>
                   <TableCell colSpan={4}>
                     <p className="py-10 text-center text-sm text-destructive">
-                      Could not load banned teams: {error.message}
+                      Could not load banned teams: {errorText(error, "please retry")}
                     </p>
                   </TableCell>
                 </TableRow>

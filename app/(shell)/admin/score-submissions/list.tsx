@@ -13,6 +13,7 @@ import { Select } from "@/components/ui/select";
 import { CompetitionAutocomplete } from "@/components/competition/competition-autocomplete";
 import { PageTitle } from "@/components/layout/page-title";
 import { useToast } from "@/components/ui/toast";
+import { errorText } from "@/lib/apollo/error-message";
 import type { ResultOf } from "@graphql-typed-document-node/core";
 import {
   MatchScoreSubmissionsListQuery,
@@ -69,7 +70,7 @@ export function SubmissionsList() {
     } catch (e) {
       toast.error(
         "Could not resolve",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -206,8 +207,13 @@ export function SubmissionsList() {
                           </span>
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          @{s.submittedBy.username} · for {s.forTeam.name} ·{" "}
-                          {new Date(s.createdAt).toLocaleString()}
+                          @{s.submittedBy.username}
+                          {/* Round-79 — Singles submissions are for a player,
+                              not a team. */}
+                          {s.forTeam ?? s.forUser
+                            ? ` · for ${(s.forTeam ?? s.forUser)!.name}`
+                            : ""}{" "}
+                          · {new Date(s.createdAt).toLocaleString()}
                         </div>
                         {s.reviewedBy ? (
                           <div className="mt-1 text-xs text-primary">

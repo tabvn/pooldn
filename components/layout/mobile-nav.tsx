@@ -76,7 +76,7 @@ export function MobileNav() {
                 href={item.href}
                 data-active={active || undefined}
                 className={cn(
-                  "flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium uppercase tracking-wider",
+                  "flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium uppercase tracking-wider",
                   active ? "text-primary" : "text-muted-foreground",
                 )}
               >

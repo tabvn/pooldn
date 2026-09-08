@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LocalDateTime } from "@/components/ui/local-datetime";
 import { useToast } from "@/components/ui/toast";
+import { errorText } from "@/lib/apollo/error-message";
 import {
   ForfeitMatchMutation,
   MatchRescheduleRequestsQuery,
@@ -49,6 +50,7 @@ export function MatchAdminActions({
   status,
   competitionStatus,
   scheduledAt,
+  isSingles = false,
   onMutated,
 }: {
   matchId: string;
@@ -59,6 +61,8 @@ export function MatchAdminActions({
   status: string;
   competitionStatus?: string | null;
   scheduledAt: string | null;
+  /** Singles (1v1) matches have no lineups — drop lineup wording from copy. */
+  isSingles?: boolean;
   onMutated: () => void | Promise<void>;
 }) {
   const router = useRouter();
@@ -97,13 +101,13 @@ export function MatchAdminActions({
       await reopen({ variables: { matchId } });
       toast.success(
         "Match reopened",
-        "Fix the lineups or results, then confirm again.",
+        "Score and frame results cleared — record them again, then confirm.",
       );
       await refresh();
     } catch (e) {
       toast.error(
         "Could not reopen match",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -128,7 +132,7 @@ export function MatchAdminActions({
     } catch (e) {
       toast.error(
         "Could not forfeit",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -151,7 +155,7 @@ export function MatchAdminActions({
     } catch (e) {
       toast.error(
         "Could not reschedule",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -176,7 +180,7 @@ export function MatchAdminActions({
     } catch (e) {
       toast.error(
         "Could not request",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -189,7 +193,7 @@ export function MatchAdminActions({
     } catch (e) {
       toast.error(
         "Could not review",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -254,8 +258,9 @@ export function MatchAdminActions({
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Puts the match back in progress so you can correct the lineups or
-              result, then confirm again.
+              Clears the score and every frame result and puts the match back in
+              progress, so you can record them again and confirm.
+              {isSingles ? null : " The submitted lineups are kept."}
             </p>
           </div>
         ) : null}

@@ -20,6 +20,18 @@ builder.prismaObject("Team", {
       }),
     }),
     isActive: t.exposeBoolean("isActive"),
+    // Round-88 — a placeholder team an organizer created so a competition
+    // could include a side that isn't on PoolDN yet. Cleared automatically
+    // once every member has been claimed by a real account.
+    isShell: t.exposeBoolean("isShell"),
+    shellMemberCount: t.int({
+      description:
+        "Members of this team that are still unclaimed placeholders.",
+      resolve: (team, _args, ctx) =>
+        ctx.prisma.teamMember.count({
+          where: { teamId: team.id, isActive: true, user: { isShell: true } },
+        }),
+    }),
     bannedAt: t.expose("bannedAt", { type: "DateTime", nullable: true }),
     banReason: t.exposeString("banReason", { nullable: true }),
     createdAt: t.expose("createdAt", { type: "DateTime" }),

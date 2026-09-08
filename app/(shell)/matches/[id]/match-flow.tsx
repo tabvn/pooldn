@@ -11,10 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MatchStatusChip } from "@/components/ui/status-chip";
 import { ImageThumbnails } from "@/components/ui/image-lightbox";
+import { BackLink } from "@/components/layout/back-link";
 import { DetailHero } from "@/components/layout/detail-hero";
 import { useToast } from "@/components/ui/toast";
 import { MatchDetailQuery, SubmitMatchResultMutation } from "@/lib/graphql/operations/match.operations";
 import {
+  ReviewMatchScoreMutation,
   SubmitMatchScoreMutation,
   MatchScoreSubmissionsForMatchQuery,
 } from "@/lib/graphql/operations/score-submission.operations";
@@ -23,6 +25,7 @@ import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
 import { MatchAdminActions } from "./match-admin-actions";
 import { MatchLineups, type MatchLineupsData } from "@/components/match/match-lineups";
 import { SinglesMatch, type SinglesMatchData } from "@/components/match/singles-match";
+import { errorText } from "@/lib/apollo/error-message";
 
 export function MatchFlow({ id }: { id: string }) {
   const router = useRouter();
@@ -51,6 +54,7 @@ export function MatchFlow({ id }: { id: string }) {
   });
   const [submitScore, { loading: scoreSubmitting, error: scoreSubmitError }] =
     useMutation(SubmitMatchScoreMutation);
+  const [reviewScore] = useMutation(ReviewMatchScoreMutation);
   // Round-32 — board photos collected before submission. Held locally; the
   // mutation persists them into MatchScoreSubmission.boardImageUrls.
   // MUST be declared with all other hooks BEFORE any early return — moving
@@ -94,7 +98,7 @@ export function MatchFlow({ id }: { id: string }) {
     } catch (e) {
       toast.error(
         "Could not confirm result",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -118,7 +122,7 @@ export function MatchFlow({ id }: { id: string }) {
     } catch (e) {
       toast.error(
         "Could not submit score",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -149,6 +153,13 @@ export function MatchFlow({ id }: { id: string }) {
   return (
     <div className="flex flex-col">
       <DetailHero
+        // Round-80 — history-first Back; the matchday list is the fallback for
+        // arrivals from an email link or a pasted URL.
+        back={
+          <BackLink
+            href={`/competitions/${match.matchday.competition.slug}/matchdays`}
+          />
+        }
         title={`${match.homePlayer?.name ?? match.homeTeam?.name ?? "TBD"} vs ${match.awayPlayer?.name ?? match.awayTeam?.name ?? "TBD"}`}
         meta={
           <>
@@ -194,6 +205,40 @@ export function MatchFlow({ id }: { id: string }) {
                 viewerId={viewerId ?? null}
                 viewerRole={viewer?.role ?? null}
                 organizerId={match.matchday.competition.organizer?.id ?? null}
+                // Round-79 — a Singles result is no longer decided by whoever
+                // taps the last frame. Both players confirm the final score
+                // (or the organizer settles it), same as the team flow.
+                mySubmission={mySubmission}
+                otherSubmission={otherSubmission}
+                // Round-81 — staff aren't a side, so my/other split the two
+                // player submissions arbitrarily and the organizer only ever
+                // saw one of them. Pass the full list so they can compare.
+                allSubmissions={submissions}
+                hasConflict={hasConflict}
+                onSubmitScore={async (homeScore, awayScore) => {
+                  await submitScore({
+                    variables: { input: { matchId, homeScore, awayScore } },
+                  });
+                  await Promise.all([refetch(), submissionsQuery.refetch()]);
+                  router.refresh();
+                }}
+                onOrganizerConfirm={async (homeScore, awayScore) => {
+                  // With submissions on the table, resolving through
+                  // reviewMatchScore is what marks the matching one APPROVED
+                  // and the rest REJECTED. submitMatchResult would complete
+                  // the match but leave both sitting in CONFLICT.
+                  if (submissions.length > 0) {
+                    await reviewScore({
+                      variables: { input: { matchId, homeScore, awayScore } },
+                    });
+                  } else {
+                    await submitResult({
+                      variables: { input: { matchId, homeScore, awayScore } },
+                    });
+                  }
+                  await Promise.all([refetch(), submissionsQuery.refetch()]);
+                  router.refresh();
+                }}
                 onChanged={async () => {
                   await refetch();
                 }}
@@ -336,6 +381,7 @@ export function MatchFlow({ id }: { id: string }) {
           status={match.status}
           competitionStatus={match.matchday.competition.status}
           scheduledAt={match.scheduledAt ?? null}
+          isSingles={isSingles}
           onMutated={async () => {
             await refetch();
           }}
@@ -565,7 +611,10 @@ function SubmissionsTrail({
     reviewedAt?: string | null;
     submittedBy: { id: string; name: string; username: string };
     reviewedBy?: { id: string; name: string } | null;
-    forTeam: { id: string; name: string };
+    // Round-79 — a submission speaks for a team, or (Singles) the player who
+    // made it. Exactly one is set.
+    forTeam?: { id: string; name: string } | null;
+    forUser?: { id: string; name: string } | null;
   }>;
 }) {
   const STATUS_BADGE: Record<
@@ -606,9 +655,11 @@ function SubmissionsTrail({
                 >
                   {s.submittedBy.name}
                 </Link>
-                <span className="text-xs text-muted-foreground">
-                  for {s.forTeam.name}
-                </span>
+                {s.forTeam ?? s.forUser ? (
+                  <span className="text-xs text-muted-foreground">
+                    for {(s.forTeam ?? s.forUser)!.name}
+                  </span>
+                ) : null}
               </div>
               <div className="text-xs text-muted-foreground">
                 Submitted {new Date(s.createdAt).toLocaleString()}
@@ -636,7 +687,7 @@ function SubmissionsTrail({
                   testIdPrefix={`submission-photo-${s.id}`}
                 />
               ) : (
-                <p className="mt-1 text-[11px] text-muted-foreground/70">
+                <p className="mt-1 text-xs text-muted-foreground">
                   No board photo attached.
                 </p>
               )}
@@ -891,7 +942,7 @@ function BoardPhotosUploader({
               <button
                 type="button"
                 onClick={() => remove(i)}
-                className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-white hover:bg-black/80"
+                className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[11px] font-bold text-white hover:bg-black/80"
                 aria-label="Remove photo"
                 data-testid={`score-board-remove-${i}`}
               >

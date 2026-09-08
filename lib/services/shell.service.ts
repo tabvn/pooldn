@@ -9,7 +9,7 @@
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import type { PrismaClient, User } from "@/lib/generated/prisma/client";
-import { defaultUserLocation } from "./user.service";
+import { defaultUserLocation, padUsernameToMinimum } from "./user.service";
 import { issueEmailToken } from "./email-token.service";
 
 const BCRYPT_ROUNDS = 10;
@@ -25,7 +25,9 @@ function slugifyUsername(name: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 20);
-  return base || "player";
+  // Round-78 — pad short slugs up to the 4-character username minimum so an
+  // imported "Al" doesn't land a handle the rules would later reject.
+  return padUsernameToMinimum(base || "player");
 }
 
 /** Case-insensitive-unique username derived from the player's real name. */
@@ -88,6 +90,24 @@ export async function createShellUser(
     ttlMs: CLAIM_TTL_MS,
   });
   return { user, claimToken: token };
+}
+
+/**
+ * Round-85 — mint a FRESH claim link for an existing shell. Claim tokens are
+ * stored hashed, so the original URL can never be shown again — the admin
+ * shells screen re-issues instead. Any earlier token stays valid until it
+ * expires; that's fine, they all lead to the same one-shot claim.
+ */
+export async function reissueClaimToken(
+  prisma: PrismaClient,
+  userId: string,
+): Promise<string> {
+  const { token } = await issueEmailToken(prisma, {
+    userId,
+    purpose: "CLAIM_PROFILE",
+    ttlMs: CLAIM_TTL_MS,
+  });
+  return token;
 }
 
 const APP_URL =

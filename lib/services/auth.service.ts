@@ -2,7 +2,10 @@ import { GraphQLError } from "graphql";
 import bcrypt from "bcryptjs";
 import type { PrismaClient, User } from "@/lib/generated/prisma/client";
 import { signSessionToken, signRefreshToken } from "@/lib/auth/jwt";
-import { defaultUserLocation } from "@/lib/services/user.service";
+import {
+  defaultUserLocation,
+  padUsernameToMinimum,
+} from "@/lib/services/user.service";
 
 const BCRYPT_ROUNDS = 10;
 
@@ -18,7 +21,10 @@ async function pickAvailableUsername(
   prisma: PrismaClient,
   candidate: string,
 ): Promise<string> {
-  const base = sanitize(candidate) || "player";
+  // Round-78 — a two-letter display name would slugify below the 4-character
+  // minimum, producing an account whose username the rules reject the moment
+  // its owner tries to edit it. Pad first, then truncate.
+  const base = padUsernameToMinimum(sanitize(candidate) || "player");
   // Truncate to 22 chars to leave room for a 2-digit suffix.
   const head = base.slice(0, 22);
   for (let i = 0; i < 50; i++) {

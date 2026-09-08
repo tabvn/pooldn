@@ -11,11 +11,13 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
+  Ghost,
   Heart,
   Inbox,
   Mail,
   Megaphone,
   MessageCircle,
+  MessageSquare,
   Quote,
   Reply,
   Trophy,
@@ -51,6 +53,12 @@ const ACCENT: Record<NotificationType, Accent> = {
     icon: <ClipboardCheck className="size-4" />,
     tone: "bg-info/15 text-info",
     border: "border-l-info",
+  },
+  // Round-77 — a reply on an application thread (either direction).
+  APPLICATION_MESSAGE: {
+    icon: <MessageSquare className="size-4" />,
+    tone: "bg-primary/15 text-primary",
+    border: "border-l-primary",
   },
   APPLICATION_APPROVED: {
     icon: <CheckCircle2 className="size-4" />,
@@ -126,6 +134,23 @@ const ACCENT: Record<NotificationType, Accent> = {
     icon: <Quote className="size-4" />,
     tone: "bg-info/15 text-info",
     border: "border-l-info",
+  },
+  // Round-88 — someone asking to take over a placeholder profile, and the
+  // organizer's answer.
+  SHELL_CLAIM_REQUESTED: {
+    icon: <Ghost className="size-4" />,
+    tone: "bg-warning/15 text-warning",
+    border: "border-l-warning",
+  },
+  SHELL_CLAIM_APPROVED: {
+    icon: <CheckCircle2 className="size-4" />,
+    tone: "bg-success/15 text-success",
+    border: "border-l-success",
+  },
+  SHELL_CLAIM_REJECTED: {
+    icon: <XCircle className="size-4" />,
+    tone: "bg-destructive/15 text-destructive",
+    border: "border-l-destructive",
   },
 };
 
@@ -417,7 +442,7 @@ export function NotificationsInbox() {
                             {relativeTime(head.createdAt)}
                           </span>
                           <span className="mx-1.5">·</span>
-                          <span className="text-[10px]">
+                          <span className="text-[11px]">
                             {new Date(head.createdAt).toLocaleString()}
                           </span>
                         </p>
@@ -487,7 +512,7 @@ export function NotificationsInbox() {
                               <p className="text-xs text-muted-foreground">
                                 {n.message}
                               </p>
-                              <p className="text-[10px] text-muted-foreground">
+                              <p className="text-[11px] text-muted-foreground">
                                 {relativeTime(n.createdAt)}
                               </p>
                             </div>

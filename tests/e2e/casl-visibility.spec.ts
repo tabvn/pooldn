@@ -36,12 +36,17 @@ test.describe("CASL competition visibility", () => {
     await signInAs(page, "alex");
     // Dashboard only surfaces Upcoming + Active; DRAFTs live on the browse
     // page with a status filter, where the organizer's own draft is visible.
-    await page.goto("/competitions?status=DRAFT");
-    await expect(page.getByText("Toronto Bayside Cup")).toBeVisible();
+    // NB: their draft is filed under Toronto, and the header city scope pins to
+    // the only active city (Da Nang), so the browse LIST legitimately hides it
+    // — city is the app's top-level filter. What CASL governs is whether the
+    // owner can open it, so assert that.
+    // A DRAFT has no public detail screen: its owner is redirected into the
+    // 4-tab editor (see app/(shell)/competitions/[slug]/page.tsx), which is
+    // exactly the access CASL is granting here.
     await page.goto("/competitions/toronto-bayside-cup-2027");
-    await expect(
-      page.getByRole("heading", { name: "Toronto Bayside Cup" }),
-    ).toBeVisible();
+    await expect(page).toHaveURL(/\/competitions\/toronto-bayside-cup-2027\/edit/);
+    // The name lives in the editor's form field, so assert the editor itself.
+    await expect(page.getByText("Review & Publish").first()).toBeVisible();
   });
 
   test("super-admin sees ALL competitions including drafts on browse", async ({
@@ -49,6 +54,9 @@ test.describe("CASL competition visibility", () => {
   }) => {
     await signInAs(page, "toan");
     await page.goto("/competitions?status=DRAFT");
-    await expect(page.getByText("Toronto Bayside Cup")).toBeVisible();
+    // Someone else's draft in the active city — an admin sees drafts they
+    // don't organize. (A draft in an inactive city is hidden by the city
+    // scope, not by CASL, so it isn't the right probe here.)
+    await expect(page.getByText("Singles League by Olga")).toBeVisible();
   });
 });

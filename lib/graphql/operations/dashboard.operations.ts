@@ -88,7 +88,6 @@ export const DashboardQuery = graphql(/* GraphQL */ `
       startDate
       endDate
       prizePool
-      currency
       minTeams
       maxTeams
       city {
@@ -108,7 +107,6 @@ export const DashboardQuery = graphql(/* GraphQL */ `
       startDate
       endDate
       prizePool
-      currency
       minTeams
       maxTeams
       city {
@@ -130,7 +128,6 @@ export const DashboardQuery = graphql(/* GraphQL */ `
       startDate
       endDate
       prizePool
-      currency
       minTeams
       maxTeams
       city {
@@ -154,7 +151,6 @@ export const DashboardQuery = graphql(/* GraphQL */ `
       startDate
       endDate
       prizePool
-      currency
       minTeams
       maxTeams
       updatedAt

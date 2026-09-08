@@ -1,12 +1,23 @@
 import * as React from "react";
+import { Ghost } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const sizeMap = {
-  xs: "size-5 text-[10px]",
+  xs: "size-5 text-[11px]",
   sm: "size-7 text-xs",
   md: "size-10 text-sm",
   lg: "size-14 text-base",
   xl: "size-20 text-lg",
+} as const;
+
+// Round-88 — the ghost mark for a placeholder (shell) profile. Sized per
+// avatar size so it reads at 20px and at 80px.
+const ghostIconSize = {
+  xs: "size-3",
+  sm: "size-4",
+  md: "size-5",
+  lg: "size-7",
+  xl: "size-10",
 } as const;
 
 /**
@@ -29,6 +40,13 @@ export type AvatarProps = React.HTMLAttributes<HTMLDivElement> & {
   shape?: "user" | "team" | "competition";
   /** Opt out of the auto-placeholder and force initials when src is null. */
   disablePlaceholder?: boolean;
+  /**
+   * Round-88 — this profile is an unclaimed placeholder (User.isShell). Renders
+   * a ghost mark on a dashed muted ring INSTEAD of a face, so a placeholder is
+   * never mistaken for a real player at a glance. Wins over `src`: a shell has
+   * no photo of its own, and an organizer-set one would be misleading.
+   */
+  ghost?: boolean;
 };
 
 function initials(text: string | undefined) {
@@ -59,9 +77,27 @@ export function Avatar({
   size = "md",
   shape = "user",
   disablePlaceholder = false,
+  ghost = false,
   className,
   ...props
 }: AvatarProps) {
+  if (ghost) {
+    return (
+      <div
+        data-slot="avatar"
+        data-ghost="true"
+        aria-label={alt ?? (fallback ? `${fallback} (placeholder)` : "placeholder")}
+        className={cn(
+          "inline-flex shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/50 bg-muted text-muted-foreground",
+          sizeMap[size],
+          className,
+        )}
+        {...props}
+      >
+        <Ghost className={ghostIconSize[size]} strokeWidth={1.75} />
+      </div>
+    );
+  }
   const resolved =
     src ||
     (!disablePlaceholder && fallback ? placeholderUrl(shape, fallback) : null);

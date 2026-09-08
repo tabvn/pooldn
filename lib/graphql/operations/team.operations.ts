@@ -8,6 +8,9 @@ export const TeamsListQuery = graphql(/* GraphQL */ `
       name
       logoUrl
       isActive
+      # Round-88 — a placeholder team (its roster is still placeholders).
+      isShell
+      shellMemberCount
       captain {
         id
         name
@@ -65,6 +68,8 @@ export const TeamDetailQuery = graphql(/* GraphQL */ `
       logoUrl
       description
       isActive
+      isShell
+      shellMemberCount
       bannedAt
       banReason
       createdAt
@@ -84,6 +89,7 @@ export const TeamDetailQuery = graphql(/* GraphQL */ `
         username
         avatarUrl
         nationality
+        isShell
       }
       homeVenue {
         id
@@ -103,6 +109,7 @@ export const TeamDetailQuery = graphql(/* GraphQL */ `
           username
           avatarUrl
           nationality
+          isShell
         }
       }
       applications {

@@ -12,6 +12,7 @@ import { PageTitle } from "@/components/layout/page-title";
 import { CompetitionInviteActions } from "@/components/competition/competition-invite-actions";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { errorText } from "@/lib/apollo/error-message";
 import {
   CancelJoinRequestMutation,
   MyInvitationsInboxQuery,
@@ -49,7 +50,7 @@ export function InvitationsList() {
     } catch (e) {
       toast.error(
         "Could not respond",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }

@@ -17,15 +17,20 @@ export function DetailHero({
   title,
   meta,
   actions,
+  back,
 }: {
   media?: ReactNode;
   title: string;
   meta?: ReactNode;
   actions?: ReactNode;
+  /** Optional back affordance rendered above the title (see BackLink). */
+  back?: ReactNode;
 }) {
   return (
     <header className="bg-primary/10">
-      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-start justify-between gap-4 px-4 py-5 md:px-10 md:py-10">
+      <div className="mx-auto w-full max-w-5xl px-4 py-5 md:px-10 md:py-10">
+        {back ? <div className="mb-3">{back}</div> : null}
+        <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-4">
           {media ? <div className="shrink-0">{media}</div> : null}
           <div className="min-w-0 space-y-3">
@@ -42,6 +47,7 @@ export function DetailHero({
         {actions ? (
           <div className="flex shrink-0 items-center gap-2">{actions}</div>
         ) : null}
+        </div>
       </div>
     </header>
   );

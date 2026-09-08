@@ -7,6 +7,7 @@ import { MapPin } from "lucide-react";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { LocalDateTime } from "@/components/ui/local-datetime";
 import { CaptainJoinRequestsPanel } from "@/components/team/captain-join-requests-panel";
+import { ShellBadge } from "@/components/shell/shell-badge";
 import { getClient } from "@/lib/apollo/client";
 import { TeamDetailQuery } from "@/lib/graphql/operations/team.operations";
 
@@ -74,14 +75,16 @@ export default async function TeamOverviewPage({
                 size="lg"
                 src={team.captain.avatarUrl ?? undefined}
                 fallback={team.captain.name}
+                ghost={team.captain.isShell}
               />
               <div>
-                <div className="text-sm font-semibold">
+                <div className="flex items-center gap-1.5 text-sm font-semibold">
                   {team.captain.name}
                   <CountryFlag
                     code={team.captain.nationality}
-                    className="ml-1.5 leading-none"
+                    className="leading-none"
                   />
+                  {team.captain.isShell ? <ShellBadge /> : null}
                 </div>
                 <div className="text-xs text-muted-foreground">
                   @{team.captain.username}

@@ -59,7 +59,7 @@ Reference competition in design: **"Da Nang International Pool League"** — Rou
 ## 3. Screen-by-Screen Specification
 
 ### 3.0 App Shell (global layout)
-**Sidebar (left):** logo "Pool DN" + Beta badge; nav **Poolhub, Teams, Venues, Community**; promo card "PoolDN Mobile App — Coming Soon"; footer **Suggest a Feature, Need Help?**
+**Sidebar (left):** logo "PoolDN" + Beta badge; nav **Poolhub, Teams, Venues, Community**; promo card "PoolDN Mobile App — Coming Soon"; footer **Suggest a Feature, Need Help?**
 **Header (top):** location selector (e.g. "Da Nang, Vietnam"), notifications bell, user avatar + name dropdown (e.g. "Michael D.").
 **Behavior:** sidebar active state highlights current section; header persists across all authenticated pages.
 

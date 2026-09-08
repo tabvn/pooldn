@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { PageTitle } from "@/components/layout/page-title";
 import { useToast } from "@/components/ui/toast";
+import { errorText } from "@/lib/apollo/error-message";
 import {
   UpdateProfileMutation,
   ViewerSettingsQuery,
@@ -65,7 +66,7 @@ export function OnboardingForm({
     } catch (e) {
       toast.error(
         "Could not save profile",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }

@@ -16,8 +16,10 @@ test("anonymous viewer can browse the Poolhub dashboard", async ({ page }) => {
 
 test("anonymous viewer can browse /competitions", async ({ page }) => {
   await page.goto("/competitions");
+  // The browse screen's h1 is "Competitions"; "Browse competitions" is the
+  // empty-state link label, not the heading.
   await expect(
-    page.getByRole("heading", { name: "Browse competitions" }),
+    page.getByRole("heading", { name: "Competitions", exact: true }),
   ).toBeVisible();
 });
 
@@ -47,9 +49,12 @@ test("anonymous viewer can browse a Competition's tabs", async ({ page }) => {
     page.getByRole("cell", { name: /Gen Hoang/ }),
   ).toBeVisible();
 
-  await page.getByRole("link", { name: "About" }).click();
-  // About tab now lists the structure with multiple "Race to X" chips per block.
-  await expect(page.getByText(/Race to/i).first()).toBeVisible();
+  // Scope to the page body: the sidebar has its own "About" link, so an
+  // unscoped role query is ambiguous under strict mode.
+  await page.locator("#app-scroll").getByRole("link", { name: "About" }).click();
+  // About tab lists the competition's structure. A team competition shows the
+  // per-matchday layout; "Race To" is the Singles-only row.
+  await expect(page.getByText("Match Layout")).toBeVisible();
 });
 
 test("anonymous viewer can browse teams and venues", async ({ page }) => {

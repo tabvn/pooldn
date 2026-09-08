@@ -48,8 +48,21 @@ async function refreshSession(): Promise<boolean> {
 const refreshLink = new ApolloLink((operation, forward) => {
   return new Observable((sink) => {
     let retried = false;
+    // Round-89 — the handler below is async, and the source's `complete`
+    // arrives while it is still awaiting the refresh call. Completing the sink
+    // right then closed the stream BEFORE `sink.next(result)` ran, so the
+    // operation finished having emitted nothing and Apollo synthesised its own
+    // generic error — which is what put "An error occurred! … go.apollo.dev"
+    // in front of anyone who mistyped their password (login errors carry
+    // UNAUTHORIZED, so they take exactly this path) or whose session had
+    // expired. Hold completion until the in-flight work is done.
+    let sourceCompleted = false;
+    let pending = 0;
+    const finishIfIdle = () => {
+      if (sourceCompleted && pending === 0) sink.complete();
+    };
     const sub = forward(operation).subscribe({
-      next: async (result) => {
+      next: (result) => {
         const needsRefresh =
           !retried &&
           Array.isArray(result.errors) &&
@@ -63,20 +76,83 @@ const refreshLink = new ApolloLink((operation, forward) => {
           return;
         }
         retried = true;
-        const ok = await refreshSession();
-        if (!ok) {
-          sink.next(result);
-          return;
-        }
-        // Retry the original operation against the fresh cookies.
-        const retrySub = forward(operation).subscribe({
-          next: (r) => sink.next(r),
-          error: (e) => sink.error(e),
-          complete: () => sink.complete(),
-        });
-        sink.add(() => retrySub.unsubscribe());
+        pending += 1;
+        void (async () => {
+          try {
+            const ok = await refreshSession();
+            if (!ok) {
+              sink.next(result);
+              return;
+            }
+            // Retry the original operation against the fresh cookies.
+            await new Promise<void>((resolve) => {
+              const retrySub = forward(operation).subscribe({
+                next: (r) => sink.next(r),
+                error: (e) => {
+                  sink.error(e);
+                  resolve();
+                },
+                complete: () => resolve(),
+              });
+              sink.add(() => retrySub.unsubscribe());
+            });
+          } finally {
+            pending -= 1;
+            finishIfIdle();
+          }
+        })();
       },
       error: (e) => sink.error(e),
+      complete: () => {
+        sourceCompleted = true;
+        finishIfIdle();
+      },
+    });
+    return () => sub.unsubscribe();
+  });
+});
+
+/**
+ * Round-89 — carry the server's error message to the UI.
+ *
+ * Apollo Client 4 hands `useMutation` an error whose `message` is minified in
+ * production ("An error occurred! … go.apollo.dev/c/err#…") and which carries
+ * no `graphQLErrors` at all — verified against a prod build: own properties are
+ * just name/message/stack. So every "couldn't do that" surface in the app was
+ * showing users an Apollo debug link instead of "Email or password does not
+ * match", and `extractRateLimit` on the sign-in page (which reads
+ * `graphQLErrors`) could never find its RATE_LIMITED extension either.
+ *
+ * The errors are intact here at the link level, so convert a failed mutation
+ * result into a real Error that keeps them. Scoped to MUTATIONS on purpose:
+ * queries rely on Apollo's errorPolicy handling (several call sites pass
+ * `errorPolicy: "ignore"`), and erroring the stream early would defeat it.
+ */
+const mutationErrorLink = new ApolloLink((operation, forward) => {
+  const def = getMainDefinition(operation.query);
+  const isMutation =
+    def.kind === "OperationDefinition" && def.operation === "mutation";
+  if (!isMutation) return forward(operation);
+  return new Observable((sink) => {
+    const sub = forward(operation).subscribe({
+      next: (result) => {
+        const errors = result.errors;
+        // Only when the mutation produced nothing usable — a partial result
+        // with errors still goes through untouched.
+        if (Array.isArray(errors) && errors.length > 0 && !result.data) {
+          const err = new Error(errors[0]?.message ?? "Request failed") as Error & {
+            graphQLErrors?: readonly unknown[];
+          };
+          err.graphQLErrors = errors;
+          sink.error(err);
+          return;
+        }
+        sink.next(result);
+      },
+      error: (e) => {
+        const a = e as any;
+        sink.error(e);
+      },
       complete: () => sink.complete(),
     });
     return () => sub.unsubscribe();
@@ -89,7 +165,11 @@ function makeClient(): ApolloClient {
   // both query+mutation failures (subscriptions use their own connect path).
   const http = new HttpLink({ uri: GRAPHQL_URL, credentials: "include" });
   const sse = new SSELink(GRAPHQL_URL);
-  const httpWithRefresh = ApolloLink.from([refreshLink, http]);
+  const httpWithRefresh = ApolloLink.from([
+    mutationErrorLink,
+    refreshLink,
+    http,
+  ]);
   const link = split(
     ({ query }) => {
       const def = getMainDefinition(query);

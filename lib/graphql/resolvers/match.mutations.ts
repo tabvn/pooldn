@@ -138,6 +138,58 @@ builder.mutationFields((t) => ({
           });
         }
       }
+      // Round-80 — Singles guards on the shared frame log.
+      //
+      // Two holes closed here. (a) Nothing stopped a race-to-3 match reaching
+      // 4–1: frames were accepted forever. (b) Once a player submitted a
+      // final score, the other player could keep recording frames, so the
+      // tally drifted away from what was submitted and their "confirm" button
+      // offered a score the first player never saw — an automatic conflict.
+      // The log is the shared source of truth for both submissions, so it
+      // freezes the moment one lands — for the PLAYERS.
+      //
+      // Round-89 — the organizer and admins are exempt. The freeze used to
+      // apply to everyone, and `reopenMatch` only accepts a COMPLETED match,
+      // so a wrong frame recorded before a submission was unfixable by anyone
+      // while the match was still live: frames rejected with SCORE_SUBMITTED,
+      // reopen rejected with INVALID_TRANSITION. The organizer is exactly who
+      // should be able to correct the log in that state.
+      if (match.homePlayerId || match.awayPlayerId) {
+        const submissionCount =
+          isOrganizer || isAdmin
+            ? 0
+            : await ctx.prisma.matchScoreSubmission.count({
+                where: { matchId: match.id },
+              });
+        if (submissionCount > 0) {
+          throw new GraphQLError(
+            "A final score has been submitted — confirm it, or submit a different score if you disagree.",
+            { extensions: { code: "SCORE_SUBMITTED" } },
+          );
+        }
+        const raceTo = match.matchday.competition.raceToFrames;
+        const decided = await ctx.prisma.matchFrame.findMany({
+          where: {
+            matchId: match.id,
+            homeWon: { not: null },
+            // An overwrite of THIS frame replaces its own contribution.
+            frameNumber: { not: args.input.frameNumber },
+          },
+          select: { homeWon: true },
+        });
+        const homeAfter =
+          decided.filter((f) => f.homeWon === true).length +
+          (args.input.homeWon === true ? 1 : 0);
+        const awayAfter =
+          decided.filter((f) => f.homeWon === false).length +
+          (args.input.homeWon === false ? 1 : 0);
+        if (homeAfter > raceTo || awayAfter > raceTo) {
+          throw new GraphQLError(
+            `This match is a race to ${raceTo} — that frame would take it past the target.`,
+            { extensions: { code: "RACE_TO_REACHED" } },
+          );
+        }
+      }
       // Round-63 — sticky B&R. A break-and-run is an objective event, so once
       // either captain marks a frame B&R a subsequent frame write can't
       // silently clear it — we OR the incoming flag with what's stored. This
@@ -201,35 +253,16 @@ builder.mutationFields((t) => ({
           },
         });
       }
-      // Round-68 — Singles matches have no lineup/score-submission dance: once
-      // a player reaches the race-to target, the match auto-completes and (for
-      // brackets) the winner advances.
-      if (match.homePlayerId && match.status !== "COMPLETED") {
-        const raceTo = match.matchday.competition.raceToFrames;
-        const decided = await ctx.prisma.matchFrame.findMany({
-          where: { matchId: match.id, homeWon: { not: null } },
-          select: { homeWon: true },
-        });
-        const homeWonCount = decided.filter((f) => f.homeWon === true).length;
-        const awayWonCount = decided.filter((f) => f.homeWon === false).length;
-        if (homeWonCount >= raceTo || awayWonCount >= raceTo) {
-          await ctx.prisma.$transaction(async (tx) => {
-            await tx.match.update({
-              where: { id: match.id },
-              data: {
-                status: "COMPLETED",
-                homeScore: homeWonCount,
-                awayScore: awayWonCount,
-                completedAt: new Date(),
-                completionMode: "AUTO_AGREED",
-              },
-            });
-            await recomputeMvp(tx as never, match.matchday.competition.id);
-            await advanceBracketWinner(tx, match.id);
-          });
-          publishCompetitionStandingsUpdate(match.matchday.competition.id);
-        }
-      }
+      // Round-79 — recording a frame NO LONGER completes a Singles match.
+      //
+      // It used to: the moment either player's tally hit the race-to target
+      // the match auto-completed at whatever score that player had entered,
+      // so one player could unilaterally decide the result. The frame log is
+      // now a shared running score, and finalizing goes through the same
+      // dual-confirmation path every other format uses — both players submit
+      // via submitMatchScore (agreement auto-completes, disagreement raises a
+      // CONFLICT for the organizer), or the organizer/admin finalizes
+      // directly with submitMatchResult.
       // Live: notify everyone watching this match. Standings don't move on
       // a frame change (only on full-match completion), so we don't publish
       // a standings event here.
@@ -1326,6 +1359,36 @@ builder.mutationFields((t) => ({
                 : { homeTeamId: null },
           });
         }
+        // Round-70 — a reopen is a full reset of the RESULT, not just the
+        // headline score. Leaving the recorded frames behind meant the
+        // scoreboard still read the old score, and re-entering results
+        // appended to the old ones instead of replacing them.
+        //  - Block-based (team) competitions: the frames are a scaffold built
+        //    from MatchFormatBlock, so clear the recorded outcome in place and
+        //    keep the scaffold + the submitted lineups. The organizer re-enters
+        //    winners; they don't have to rebuild the lineups.
+        //  - No blocks (INDIVIDUAL / Singles): frames are an append-only log
+        //    keyed on max(frameNumber) + 1, so they must be DELETED. Clearing
+        //    homeWon in place would leave dead rows that keep pushing the next
+        //    frame number up.
+        const blockCount = await tx.matchFormatBlock.count({
+          where: { competitionId },
+        });
+        if (blockCount > 0) {
+          await tx.matchFrame.updateMany({
+            where: { matchId: match.id },
+            data: { homeWon: null, isWalkover: false, breakAndRun: false },
+          });
+        } else {
+          await tx.matchFrame.deleteMany({ where: { matchId: match.id } });
+        }
+        // Drop the captains' score submissions too. They're keyed per captain
+        // and submitMatchScore compares a new submission against whatever the
+        // other captain last posted — a stale pair would auto-approve the OLD
+        // score the moment one captain re-submitted.
+        await tx.matchScoreSubmission.deleteMany({
+          where: { matchId: match.id },
+        });
         const updated = await tx.match.update({
           ...query,
           where: { id: match.id },
@@ -1339,6 +1402,11 @@ builder.mutationFields((t) => ({
             winType: "NORMAL",
             forfeitTeamId: null,
             forfeitReason: null,
+            // The board proof and the "organizer entered the result" audit
+            // both describe the result we just wiped. staffEnteredLineup is
+            // left alone — the lineups survive a reopen.
+            resultProofImageUrls: [],
+            staffEnteredResult: false,
           },
         });
         // The match no longer counts until it's re-confirmed.

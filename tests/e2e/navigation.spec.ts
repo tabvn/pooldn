@@ -3,24 +3,28 @@ import { test, expect } from "@playwright/test";
 test.describe("Shell navigation", () => {
   test("sidebar links navigate to each section", async ({ page }) => {
     await page.goto("/");
+    // Scope every hop to the sidebar: competition cards on the dashboard carry
+    // "Teams" in their accessible name (the format chip), which makes a bare
+    // role query ambiguous under strict mode.
+    const sidebar = page.getByRole("complementary");
     // Poolhub link goes to /
-    await page.getByRole("link", { name: "Poolhub" }).click();
+    await sidebar.getByRole("link", { name: "Poolhub" }).click();
     await expect(page).toHaveURL("/");
     await expect(
       page.getByRole("heading", { level: 1 }),
     ).toContainText(/welcome/i);
 
-    await page.getByRole("link", { name: "Teams" }).click();
+    await sidebar.getByRole("link", { name: "Teams", exact: true }).click();
     await expect(page).toHaveURL("/teams");
     await expect(
       page.getByRole("heading", { name: /^Teams( in .+)?$/ }),
     ).toBeVisible();
 
-    await page.getByRole("link", { name: "Venues" }).click();
+    await sidebar.getByRole("link", { name: "Venues", exact: true }).click();
     await expect(page).toHaveURL("/venues");
     await expect(page.getByRole("heading", { name: "Venues" })).toBeVisible();
 
-    await page.getByRole("link", { name: "Community" }).click();
+    await sidebar.getByRole("link", { name: "Community", exact: true }).click();
     await expect(page).toHaveURL("/community");
     await expect(
       page.getByRole("heading", { name: "Community" }),

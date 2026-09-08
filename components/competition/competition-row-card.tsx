@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Calendar, Trophy, Users } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatPrize } from "@/lib/utils";
 import { LocalDateTime } from "@/components/ui/local-datetime";
 import { competitionStatusLabel } from "@/components/ui/status-chip";
 import type {
@@ -8,8 +8,6 @@ import type {
   CompetitionStatus,
   GameType,
 } from "@/lib/generated/prisma/enums";
-
-const NUM = new Intl.NumberFormat("en-US");
 
 const GAME_SHORT: Record<string, string> = {
   EIGHT_BALL: "8-ball",
@@ -36,7 +34,6 @@ export type CompetitionRowCardData = {
   startDate?: string | null;
   endDate?: string | null;
   prizePool?: string | null;
-  currency?: string | null;
   minTeams?: number | null;
   maxTeams?: number | null;
   bannerUrl?: string | null;
@@ -109,10 +106,10 @@ export function CompetitionRowCard({
             {c.maxTeams ? `/${c.maxTeams}` : "+"}
           </span>
         ) : null}
-        {c.prizePool ? (
+        {formatPrize(c.prizePool) ? (
           <span className="inline-flex items-center gap-1.5">
             <Trophy className="size-3.5" />
-            {NUM.format(Number(c.prizePool))} {c.currency ?? ""}
+            {formatPrize(c.prizePool)}
           </span>
         ) : null}
       </div>
@@ -137,7 +134,7 @@ function TypeBadge({
         : "bg-primary text-primary-foreground";
   return (
     <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${cls}`}
+      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider ${cls}`}
     >
       {children}
     </span>
@@ -160,7 +157,7 @@ function StatusPill({ status }: { status: CompetitionStatus }) {
   return (
     <span
       className={cn(
-        "shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+        "shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider",
         tone === "lime" && "bg-primary text-primary-foreground",
         tone === "teal" && "bg-teal-700 text-white",
         tone === "muted" && "bg-secondary text-muted-foreground",

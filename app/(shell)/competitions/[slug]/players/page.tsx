@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { CountryFlag } from "@/components/ui/country-flag";
+import { ShellBadge } from "@/components/shell/shell-badge";
+import { AddPlaceholderModal } from "@/components/shell/add-placeholder";
 import { cn } from "@/lib/utils";
 import { getClient } from "@/lib/apollo/client";
 import {
@@ -89,12 +91,29 @@ export default async function PlayersPage({
     brWon: r.stat?.brWon ?? 0,
   }));
 
+  // Round-88 — the organizer's placeholder tools live here too, not only on
+  // the Applications tab: that tab disappears once the competition starts,
+  // and a missing player is exactly a mid-season problem.
+  const enteredTeams = Array.from(
+    new Map(c.rosters.map((r) => [r.team.id, { id: r.team.id, name: r.team.name }])).values(),
+  );
+  const placeholderButton = canEditRating ? (
+    <AddPlaceholderModal
+      competitionId={c.id}
+      isIndividual={false}
+      teams={enteredTeams}
+    />
+  ) : null;
+
   if (rows.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        No players locked in yet — approved teams will appear here once their
-        rosters are set.
-      </p>
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          No players locked in yet — approved teams will appear here once their
+          rosters are set.
+        </p>
+        {placeholderButton}
+      </div>
     );
   }
 
@@ -102,6 +121,11 @@ export default async function PlayersPage({
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
         <h2 className="text-sm font-semibold">Player MVP Rating</h2>
+        <div className="flex flex-wrap items-center gap-2">
+        {/* Round-88 — the Applications tab disappears once a competition
+            starts, and a missing player is exactly a mid-season problem, so
+            the placeholder action lives on this tab too. */}
+        {placeholderButton}
         {canEditRating ? (
           <MvpCalculator
             competitionId={c.id}
@@ -116,6 +140,7 @@ export default async function PlayersPage({
             locked={c.status === "COMPLETED"}
           />
         ) : null}
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -171,7 +196,7 @@ export default async function PlayersPage({
         </table>
       </div>
 
-      <div className="space-y-1 border-t border-border px-4 py-3 text-[11px] leading-4 text-muted-foreground">
+      <div className="space-y-1 border-t border-border px-4 py-3 text-xs leading-4 text-muted-foreground">
         <p>
           # = Appearances (matchdays) · % = Appearance percentage (matchdays
           shown up ÷ team matchdays) · PL: Played · W: Won · L: Lost · W%: Win
@@ -236,6 +261,7 @@ function PlayerRow({
               size="md"
               src={r.user.avatarUrl ?? undefined}
               fallback={r.user.name}
+              ghost={r.user.isShell}
             />
           </Link>
           <div className="min-w-0">
@@ -250,18 +276,32 @@ function PlayerRow({
                 code={r.user.nationality}
                 className="leading-none"
               />
+              {r.user.isShell ? <ShellBadge /> : null}
               {s?.isMvp ? (
                 <Badge variant="primary" size="sm">
                   MVP
                 </Badge>
               ) : null}
             </div>
-            <Link
-              href={`/teams/${r.team.slug}`}
-              className="truncate text-xs text-muted-foreground hover:underline"
-            >
-              {r.team.name}
-            </Link>
+            <div className="flex items-center gap-1.5">
+              <Link
+                href={`/teams/${r.team.slug}`}
+                className="truncate text-xs text-muted-foreground hover:underline"
+              >
+                {r.team.name}
+              </Link>
+              {/* Round-88 — the claim entry point right where someone finds
+                  their own name. The profile page carries the full panel. */}
+              {r.user.isShell ? (
+                <Link
+                  href={`/players/${r.user.username}`}
+                  className="whitespace-nowrap text-xs font-semibold text-primary hover:underline"
+                  data-testid={`claim-link-${r.user.username}`}
+                >
+                  Is this you?
+                </Link>
+              ) : null}
+            </div>
           </div>
         </div>
       </td>
@@ -289,7 +329,7 @@ function PlayerRow({
       <Td group className="font-bold text-foreground">
         {s?.mvpScore ?? 0}
       </Td>
-      <td className="px-2 py-2.5 text-center">
+      <td className="px-1.5 py-2.5 text-center">
         {rank === null ? (
           <span className="text-muted-foreground">—</span>
         ) : medal ? (
@@ -329,7 +369,7 @@ function Th({
       colSpan={colSpan}
       rowSpan={rowSpan}
       className={cn(
-        "whitespace-nowrap px-2 py-2 text-center font-semibold",
+        "whitespace-nowrap px-1.5 py-2 text-center font-semibold",
         sticky ? "sticky left-0 z-10 bg-card px-4" : "",
         group ? "border-l border-border" : "",
         className,
@@ -352,7 +392,7 @@ function Td({
   return (
     <td
       className={cn(
-        "whitespace-nowrap px-2 py-2.5 text-center tabular-nums text-muted-foreground",
+        "whitespace-nowrap px-1.5 py-2.5 text-center tabular-nums text-muted-foreground",
         group ? "border-l border-border/60" : "",
         className,
       )}

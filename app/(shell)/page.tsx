@@ -6,7 +6,7 @@ import { TodayMatchCard } from "@/components/dashboard/today-match-card";
 import { getClient } from "@/lib/apollo/client";
 import { DashboardQuery } from "@/lib/graphql/operations/dashboard.operations";
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
-import { getHeaderCityId } from "@/lib/headers/city";
+import { getHeaderCityId, getHeaderCityName } from "@/lib/headers/city";
 
 function firstName(full?: string | null) {
   if (!full) return null;
@@ -26,7 +26,10 @@ export default async function PoolhubDashboard() {
   const client = getClient();
   // Round-73 — scope the discovery rails (upcoming / active / recently
   // completed) to the header-selected city, like every other list surface.
-  const cityId = await getHeaderCityId();
+  const [cityId, cityName] = await Promise.all([
+    getHeaderCityId(),
+    getHeaderCityName(),
+  ]);
   const [{ data }, viewerResult] = await Promise.all([
     client.query({
       query: DashboardQuery,
@@ -90,10 +93,10 @@ export default async function PoolhubDashboard() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
-      {/* Greeting — lime only for the welcome line; signed-out viewers get
-          no heading here (the section titles below stand on their own).
-          Create-competition CTA sits on the right since this is the only
-          entry point from the dashboard. */}
+      {/* Greeting — lime only for the welcome line. Both viewer states get
+          a heading: signed-in greets by first name with the create-competition
+          CTA (the only entry point from the dashboard); signed-out states what
+          the app is and routes into sign-in / sign-up. */}
       {viewer ? (
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div className="space-y-1">
@@ -111,7 +114,38 @@ export default async function PoolhubDashboard() {
             </Button>
           </Link>
         </header>
-      ) : null}
+      ) : (
+        // Round-76 — signed-out counterpart to the "Welcome back" header.
+        // Guests previously got no heading at all, so the page opened on a
+        // bare "Upcoming Competitions" list with no statement of what the
+        // app is and no route into it — the header's Log In / Join chips
+        // were the only entry point. Mirrors the signed-in block's shape
+        // (heading + subtitle left, actions right) so the two states read
+        // as the same page.
+        <header
+          className="flex flex-wrap items-end justify-between gap-3"
+          data-testid="dashboard-guest-welcome"
+        >
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold text-primary md:text-3xl">
+              Welcome to PoolDN
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {cityName
+                ? `Browse competitions and teams in ${cityName} — sign in to join one or run your own.`
+                : "Browse competitions and teams — sign in to join one or run your own."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/sign-in" data-testid="dashboard-guest-signin">
+              <Button variant="primary">Sign in</Button>
+            </Link>
+            <Link href="/sign-up" data-testid="dashboard-guest-signup">
+              <Button variant="outline">Create account</Button>
+            </Link>
+          </div>
+        </header>
+      )}
 
       {/* Today's Match (or next scheduled). Hidden in the signed-out viewer
           dashboard — there's no "your card" when there's no viewer. */}
@@ -134,7 +168,7 @@ export default async function PoolhubDashboard() {
                 <div className="flex items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning/5 px-4 py-3 transition-colors hover:border-warning/70">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center rounded bg-pink-600 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                      <span className="inline-flex items-center rounded bg-pink-600 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white">
                         Draft
                       </span>
                       <span className="truncate text-sm font-semibold">

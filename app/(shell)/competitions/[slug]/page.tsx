@@ -8,6 +8,8 @@ import {
   ViewerQuery,
 } from "@/lib/graphql/operations/competition.operations";
 import { LiveStandingsListener } from "@/components/live/live-standings-listener";
+import { ShellTeamBadge } from "@/components/shell/shell-badge";
+import { AddPlaceholderModal } from "@/components/shell/add-placeholder";
 import { InviteBanner } from "@/components/competition/invite-banner";
 import { BracketTree } from "@/components/competition/bracket-tree";
 import { FinalizeWinnersCard } from "@/components/competition/finalize-winners-card";
@@ -18,7 +20,13 @@ const STANDINGS_LEGEND =
 type StandingRow = {
   id: string;
   position?: number | null;
-  team: { slug: string; name: string; logoUrl?: string | null };
+  team: {
+    slug: string;
+    name: string;
+    logoUrl?: string | null;
+    /** Round-88 — a placeholder team sitting in the table with the real ones. */
+    isShell?: boolean;
+  };
   played: number;
   won: number;
   drawn: number;
@@ -179,6 +187,9 @@ function StandingsTable({
                     />
                     {s.team.name}
                   </Link>
+                  {s.team.isShell ? (
+                    <ShellTeamBadge className="ml-2 align-middle" />
+                  ) : null}
                   {/* Recent-form dots sit under the name, aligned with it
                       past the avatar (size-6 + gap-3 = 36px). */}
                   <div className="pl-9">
@@ -290,7 +301,7 @@ function PlayerStandingsTable({ rows }: { rows: PlayerStandingRow[] }) {
           })}
         </tbody>
       </table>
-      <div className="bg-white/5 p-4 text-[11px] leading-4 text-muted-foreground">
+      <div className="bg-white/5 p-4 text-xs leading-4 text-muted-foreground">
         P: Played · W: Won · L: Lost · FF: Frames For · FA: Frames Against · FD:
         Frame Difference · Pts: Points
       </div>
@@ -385,7 +396,11 @@ export default async function CompetitionOverviewPage({
       ? { name: top.team.name, href: `/teams/${top.team.slug}`, image: top.team.logoUrl, team: true }
       : null;
   })();
-  const mvp = showWinner ? c.playerStats.find((p) => p.isMvp) : null;
+  // Round-82 — Singles has no MVP: 1v1 over one race-to means "most valuable"
+  // and "won the most" are the same person, and that's the winner. Completed
+  // Singles competitions show the Winner alone.
+  const mvp =
+    showWinner && !isIndividual ? c.playerStats.find((p) => p.isMvp) : null;
 
   return (
     <div className="space-y-8">
@@ -417,6 +432,7 @@ export default async function CompetitionOverviewPage({
           <FinalizeWinnersCard
             competitionId={c.id}
             champion={champion}
+            showMvp={!isIndividual}
             mvp={
               mvp
                 ? {
@@ -447,7 +463,9 @@ export default async function CompetitionOverviewPage({
         <div className="overflow-hidden rounded-xl border border-border bg-card">
           {/* Winner + MVP banner (node 493:13616) */}
           <div
-            className="grid grid-cols-2 gap-3 border-b border-border p-6"
+            className={`grid gap-3 border-b border-border p-6 ${
+              isIndividual ? "grid-cols-1" : "grid-cols-2"
+            }`}
             style={{
               backgroundImage:
                 "linear-gradient(90deg, #3c0366 0%, #052f4a 100%)",
@@ -472,33 +490,37 @@ export default async function CompetitionOverviewPage({
                 Winner!
               </span>
             </div>
-            <div className="flex min-w-0 flex-col items-center gap-3">
-              <Link
-                href={mvp ? `/players/${mvp.user.username}` : "#"}
-                className="flex flex-col items-center gap-2 hover:opacity-90"
-              >
-                <Avatar
-                  size="xl"
-                  src={mvp?.user.avatarUrl ?? undefined}
-                  fallback={mvp?.user.name ?? "—"}
-                />
-                <div className="flex items-center gap-2 text-center text-xl font-semibold text-white/90 hover:underline">
-                  <span>{mvp?.user.name ?? "—"}</span>
-                  {mvp?.user.nationality ? (
-                    <CountryFlag
-                      code={mvp.user.nationality}
-                      className="text-2xl leading-none"
-                    />
-                  ) : null}
-                </div>
-              </Link>
-              <span className="text-base font-semibold text-primary">MVP</span>
-            </div>
+            {isIndividual ? null : (
+              <div className="flex min-w-0 flex-col items-center gap-3">
+                <Link
+                  href={mvp ? `/players/${mvp.user.username}` : "#"}
+                  className="flex flex-col items-center gap-2 hover:opacity-90"
+                >
+                  <Avatar
+                    size="xl"
+                    src={mvp?.user.avatarUrl ?? undefined}
+                    fallback={mvp?.user.name ?? "—"}
+                  />
+                  <div className="flex items-center gap-2 text-center text-xl font-semibold text-white/90 hover:underline">
+                    <span>{mvp?.user.name ?? "—"}</span>
+                    {mvp?.user.nationality ? (
+                      <CountryFlag
+                        code={mvp.user.nationality}
+                        className="text-2xl leading-none"
+                      />
+                    ) : null}
+                  </div>
+                </Link>
+                <span className="text-base font-semibold text-primary">
+                  MVP
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Header (node 493:13627) — Bracket for knockouts, Standings else */}
           <div className="flex items-center justify-between border-b border-border p-6">
-            <span className="text-base font-semibold text-white/50">
+            <span className="text-base font-semibold text-white/70">
               {isBracket ? "Bracket" : isIndividual ? "Standings" : "League Standings"}
             </span>
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -559,6 +581,20 @@ export default async function CompetitionOverviewPage({
           </div>
         </section>
       )}
+
+      {/* Round-88 — Singles has no Players tab and loses its Applications tab
+          once it starts, so the organizer's placeholder action lives here for
+          that format. Team formats carry it on the Players tab. */}
+      {canManage && isIndividual ? (
+        <div className="flex justify-end">
+          <AddPlaceholderModal
+            competitionId={c.id}
+            isIndividual
+            teams={[]}
+            triggerLabel="Add placeholder player"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -31,7 +31,7 @@ export default async function VenueDetailPage({
         actions={<VenueActionsMenu slug={slug} canEdit={canEdit} />}
         meta={
           <>
-            <span className="inline-flex items-center rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
+            <span className="inline-flex items-center rounded bg-primary px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-primary-foreground">
               Venue
             </span>
             <span>{v.city.name}</span>

@@ -35,6 +35,8 @@ async function loadCaptainContext(
     include: {
       homeTeam: { select: { id: true, name: true, captainId: true } },
       awayTeam: { select: { id: true, name: true, captainId: true } },
+      homePlayer: { select: { id: true, name: true } },
+      awayPlayer: { select: { id: true, name: true } },
       matchday: {
         select: {
           competition: {
@@ -44,6 +46,34 @@ async function loadCaptainContext(
       },
     },
   });
+  // Round-79 — Singles (1v1) has no teams: the two players ARE the sides, so
+  // each submits for themselves. Everything downstream keys off "which side
+  // is this submission for", which is a team id or a user id.
+  if (match.homePlayerId || match.awayPlayerId) {
+    const isPlayer =
+      match.homePlayerId === viewerId || match.awayPlayerId === viewerId;
+    // Round-89 — no admin exemption here, unlike the team branch below. A
+    // submission is FOR a side; an admin who isn't one of the two players has
+    // no side, so the row landed with both forTeamId and forUserId NULL
+    // (breaking the "exactly one is set" invariant) and was diffed against the
+    // home player's submission only. Admins settle a 1v1 with reviewMatchScore
+    // or submitMatchResult instead.
+    if (!isPlayer) {
+      throw new GraphQLError(
+        "Only the two players may submit a score for this match",
+        { extensions: { code: "FORBIDDEN" } },
+      );
+    }
+    return {
+      match,
+      forTeamId: null,
+      forUserId: viewerId,
+      opponentId:
+        match.homePlayerId === viewerId
+          ? match.awayPlayerId
+          : match.homePlayerId,
+    };
+  }
   let forTeamId: string | null = null;
   if (match.homeTeam?.captainId === viewerId) forTeamId = match.homeTeam.id;
   else if (match.awayTeam?.captainId === viewerId) forTeamId = match.awayTeam.id;
@@ -70,7 +100,7 @@ async function loadCaptainContext(
       extensions: { code: "FORBIDDEN" },
     });
   }
-  return { match, forTeamId };
+  return { match, forTeamId, forUserId: null, opponentId: null };
 }
 
 builder.mutationFields((t) => ({
@@ -82,7 +112,7 @@ builder.mutationFields((t) => ({
     resolve: async (query, _root, args, ctx) => {
       requireUser(ctx.viewer);
       const matchId = String(args.input.matchId);
-      const { match, forTeamId } = await loadCaptainContext(
+      const { match, forTeamId, forUserId, opponentId } = await loadCaptainContext(
         ctx.prisma,
         ctx.viewer.id,
         ctx.viewer.role,
@@ -93,12 +123,26 @@ builder.mutationFields((t) => ({
           extensions: { code: "INVALID_TRANSITION" },
         });
       }
-      const teamId = forTeamId ?? match.homeTeamId ?? match.awayTeamId;
-      if (!teamId) {
+      // Round-79 — a submission belongs to a side: a team, or (Singles) the
+      // submitting player. Exactly one of the two is set.
+      const isSingles = !!(match.homePlayerId || match.awayPlayerId);
+      const teamId = isSingles
+        ? null
+        : forTeamId ?? match.homeTeamId ?? match.awayTeamId;
+      if (!isSingles && !teamId) {
         throw new GraphQLError("Match has no teams to attribute the score to", {
           extensions: { code: "BAD_USER_INPUT" } ,
         });
       }
+      // Display names for the notifications below — teams, or the players.
+      const homeLabel = match.homeTeam?.name ?? match.homePlayer?.name ?? "Home";
+      const awayLabel = match.awayTeam?.name ?? match.awayPlayer?.name ?? "Away";
+      /** Everyone who should hear about this match's result. */
+      const sideRecipients = (
+        isSingles
+          ? [match.homePlayerId, match.awayPlayerId]
+          : [match.homeTeam?.captainId, match.awayTeam?.captainId]
+      ).filter((id): id is string => !!id);
       const competitionId = match.matchday.competition.id;
 
       const boardImageUrls = (args.input.boardImageUrls ?? [])
@@ -117,6 +161,7 @@ builder.mutationFields((t) => ({
           },
           update: {
             forTeamId: teamId,
+            forUserId: forUserId ?? null,
             homeScore: args.input.homeScore,
             awayScore: args.input.awayScore,
             note: args.input.note ?? null,
@@ -129,6 +174,7 @@ builder.mutationFields((t) => ({
             matchId: match.id,
             submittedById: ctx.viewer!.id,
             forTeamId: teamId,
+            forUserId: forUserId ?? null,
             homeScore: args.input.homeScore,
             awayScore: args.input.awayScore,
             note: args.input.note ?? null,
@@ -137,8 +183,11 @@ builder.mutationFields((t) => ({
           },
         });
 
-        const otherCaptainId =
-          match.homeTeam?.captainId === ctx.viewer!.id
+        // Round-79 — the opposite side's submitter: the other captain, or
+        // (Singles) the opponent.
+        const otherCaptainId = isSingles
+          ? opponentId
+          : match.homeTeam?.captainId === ctx.viewer!.id
             ? match.awayTeam?.captainId
             : match.homeTeam?.captainId;
 
@@ -154,11 +203,11 @@ builder.mutationFields((t) => ({
           : null;
 
         if (!other) {
-          // Solo submission — notify the other captain (if any).
+          // First submission — ask the other side to confirm.
           if (otherCaptainId) {
             await new NotificationService(tx).create({
               type: "MATCH_RESULT_RECORDED",
-              title: `Score submitted for ${match.homeTeam?.name ?? "Home"} vs ${match.awayTeam?.name ?? "Away"}`,
+              title: `Score submitted for ${homeLabel} vs ${awayLabel}`,
               message: "Confirm or submit your own score.",
               recipients: [otherCaptainId],
               entity: {
@@ -208,12 +257,13 @@ builder.mutationFields((t) => ({
           await advanceBracketWinner(tx, match.id);
           await new NotificationService(tx).create({
             type: "MATCH_RESULT_RECORDED",
-            title: `Match completed: ${match.homeTeam?.name ?? "Home"} ${args.input.homeScore} – ${args.input.awayScore} ${match.awayTeam?.name ?? "Away"}`,
-            message: "Both captains agreed — standings updated.",
+            title: `Match completed: ${homeLabel} ${args.input.homeScore} – ${args.input.awayScore} ${awayLabel}`,
+            message: isSingles
+              ? "Both players agreed — standings updated."
+              : "Both captains agreed — standings updated.",
             recipients: [
               match.matchday.competition.organizerId,
-              match.homeTeam?.captainId,
-              match.awayTeam?.captainId,
+              ...sideRecipients,
             ].filter((id): id is string => !!id),
             entity: {
               type: "MATCH",
@@ -230,8 +280,10 @@ builder.mutationFields((t) => ({
           });
           await new NotificationService(tx).create({
             type: "MATCH_RESULT_RECORDED",
-            title: `Score conflict: ${match.homeTeam?.name ?? "Home"} vs ${match.awayTeam?.name ?? "Away"}`,
-            message: "Captains disagree on the result — please review.",
+            title: `Score conflict: ${homeLabel} vs ${awayLabel}`,
+            message: isSingles
+              ? "The players disagree on the result — please review."
+              : "Captains disagree on the result — please review.",
             recipients: [match.matchday.competition.organizerId],
             entity: {
               type: "MATCH",
@@ -268,6 +320,10 @@ builder.mutationFields((t) => ({
         include: {
           homeTeam: { select: { name: true, captainId: true } },
           awayTeam: { select: { name: true, captainId: true } },
+          // Round-79 — Singles conflicts are resolved here too, so the
+          // notification needs the players' names and ids.
+          homePlayer: { select: { id: true, name: true } },
+          awayPlayer: { select: { id: true, name: true } },
           matchday: {
             select: {
               competition: {
@@ -329,11 +385,17 @@ builder.mutationFields((t) => ({
         await advanceBracketWinner(tx, match.id);
         await new NotificationService(tx).create({
           type: "MATCH_RESULT_RECORDED",
-          title: `Resolved: ${match.homeTeam?.name ?? "Home"} ${args.input.homeScore} – ${args.input.awayScore} ${match.awayTeam?.name ?? "Away"}`,
+          title: `Resolved: ${
+            match.homeTeam?.name ?? match.homePlayer?.name ?? "Home"
+          } ${args.input.homeScore} – ${args.input.awayScore} ${
+            match.awayTeam?.name ?? match.awayPlayer?.name ?? "Away"
+          }`,
           message: "Organizer set the final score.",
           recipients: [
             match.homeTeam?.captainId,
             match.awayTeam?.captainId,
+            match.homePlayerId,
+            match.awayPlayerId,
           ].filter((id): id is string => !!id),
           entity: {
             type: "MATCH",

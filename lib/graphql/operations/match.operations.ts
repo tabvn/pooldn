@@ -52,6 +52,8 @@ export const MatchDetailQuery = graphql(/* GraphQL */ `
         username
         avatarUrl
         nationality
+        # Round-88 — Singles matches can be played by placeholder profiles.
+        isShell
       }
       awayPlayer {
         id
@@ -59,6 +61,7 @@ export const MatchDetailQuery = graphql(/* GraphQL */ `
         username
         avatarUrl
         nationality
+        isShell
       }
       venue {
         id
@@ -79,12 +82,14 @@ export const MatchDetailQuery = graphql(/* GraphQL */ `
           name
           nationality
           avatarUrl
+          isShell
         }
         awayPlayerRef {
           id
           name
           nationality
           avatarUrl
+          isShell
         }
       }
       matchday {

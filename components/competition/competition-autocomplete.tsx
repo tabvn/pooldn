@@ -142,7 +142,7 @@ export function CompetitionAutocomplete({
                         shape="competition"
                       />
                       <span className="flex-1 truncate">{c.name}</span>
-                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
                         {competitionStatusLabel[c.status] ??
                           c.status.replace(/_/g, " ").toLowerCase()}
                       </span>

@@ -30,6 +30,7 @@ import { ApplyToCompetitionMutation } from "@/lib/graphql/operations/competition
 import { CompetitionHeaderQuery } from "@/lib/graphql/operations/competition.operations";
 import { VenuesListQuery } from "@/lib/graphql/operations/venue.operations";
 import { RosterConflictsQuery } from "@/lib/graphql/operations/roster.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 const schema = z.object({
   teamId: z.string().min(1, "Pick a team"),
@@ -256,7 +257,7 @@ export function ApplyForm({
     } catch (e) {
       toast.error(
         "Could not apply",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -477,7 +478,7 @@ export function ApplyForm({
                           @{m.user.username}
                         </span>
                         {conflict ? (
-                          <span className="mt-1 text-[11px] font-medium text-amber-400">
+                          <span className="mt-1 text-xs font-medium text-amber-400">
                             Already on {conflict.teamName} (
                             {conflict.status.toLowerCase()})
                           </span>
@@ -569,7 +570,7 @@ export function ApplyForm({
 
         {error ? (
           <p className="text-sm text-destructive" role="alert">
-            {error.message}
+            {errorText(error, "Something went wrong. Try again.")}
           </p>
         ) : null}
       </form>

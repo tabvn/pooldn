@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { TeamsListQuery } from "@/lib/graphql/operations/team.operations";
 import { InviteTeamsToCompetitionMutation } from "@/lib/graphql/operations/competition-mutations.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 /**
  * Round-49 — batch-invite teams to a competition.
@@ -104,7 +105,7 @@ export function InviteTeamsModal({
     } catch (e) {
       toast.error(
         "Couldn't send invites",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }

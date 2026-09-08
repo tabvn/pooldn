@@ -97,7 +97,7 @@ export function WinnerModal({
               selected={winner === "home"}
               onSelect={() => setWinner("home")}
             />
-            <span className="text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <span className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               vs
             </span>
             <WinnerChoice
@@ -175,7 +175,7 @@ function WinnerChoice({
         ))}
       </span>
       {selected ? (
-        <span className="shrink-0 rounded bg-[#005f5a] px-1.5 py-0.5 text-[10px] font-semibold uppercase text-[#96f7e4]">
+        <span className="shrink-0 rounded bg-[#005f5a] px-1.5 py-0.5 text-[11px] font-semibold uppercase text-[#96f7e4]">
           Winner
         </span>
       ) : null}

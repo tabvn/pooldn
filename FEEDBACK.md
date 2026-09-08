@@ -1,4 +1,4 @@
-# PoolDN — Feedback / Bug log
+# Play Pool — Feedback / Bug log
 
 Running log of bugs found during review, what caused them, the fix, and the test that now guards against regression.
 
@@ -112,7 +112,7 @@ Last updated: 2026-06-08
 ### B-018 · Logout test was UI-only and didn't verify cookie removal
 - **Symptom**: prior tests asserted the URL was `/sign-in` after sign-out, but the server-side session cookie could in principle still be present.
 - **Root cause**: tests didn't inspect cookies or re-query the API after logout.
-- **Fix**: new `tests/e2e/logout.spec.ts` — two tests: (1) inspects the browser context's `pooldn_session` cookie before/after sign-out and confirms it's cleared, (2) issues a `viewer { username }` GraphQL query via `page.request.post` (shared cookies) before/after sign-out and confirms it flips from the username to `null`.
+- **Fix**: new `tests/e2e/logout.spec.ts` — two tests: (1) inspects the browser context's `playpool_session` cookie before/after sign-out and confirms it's cleared, (2) issues a `viewer { username }` GraphQL query via `page.request.post` (shared cookies) before/after sign-out and confirms it flips from the username to `null`.
 - **Test**: `tests/e2e/logout.spec.ts`.
 
 ### B-019 · Match flow page used generic "Frame"/"Score" labels and a flat form (Figma drift)

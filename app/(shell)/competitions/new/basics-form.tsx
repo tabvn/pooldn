@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { CreateCompetitionMutation } from "@/lib/graphql/operations/competition-mutations.operations";
+import { errorText } from "@/lib/apollo/error-message";
 import type {
   CompetitionFormat,
   CompetitionType,
@@ -47,10 +48,10 @@ const GAME_OPTIONS: GameOption[] = [
   { value: "TEN_BALL", label: "10-Ball" },
 ];
 
-// Round-53/55 — CompetitionType has three values total, but only TEAMS is
-// fully wired for MVP. Singles + Doubles stay visible behind a Coming-Soon
-// badge so organisers know the shape we're heading toward; the segmented
-// toggle won't let them pick those yet.
+// Round-76 — TEAMS and INDIVIDUAL (Singles) are both fully wired: Singles
+// gets its own apply flow, player-vs-player matches and a Race-to structure.
+// DOUBLES is still behind a Coming-Soon badge, which the segmented toggle
+// won't let organisers pick.
 const FORMAT_OPTIONS: FormatOption[] = [
   { value: "TEAMS", label: "Teams" },
   { value: "INDIVIDUAL", label: "Singles" },
@@ -71,6 +72,10 @@ const TOURNAMENT_OPTIONS: TournamentOption[] = [
   {
     value: "SINGLE_ELIMINATION",
     label: "Single Elimination (Knockout)",
+    // Round-84 — parked behind Coming Soon while the bracket flow is
+    // finished. Only NEW competitions are blocked: existing knockouts keep
+    // running, and every SINGLE_ELIMINATION branch downstream stays in place.
+    soon: true,
     bullets: [
       "Lose once = out",
       "Random draw into a knockout bracket",
@@ -102,7 +107,6 @@ const schema = z.object({
   ]),
   startDate: z.string().min(1, "Pick a start date"),
   prizePool: z.string().optional(),
-  currency: z.string(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -117,7 +121,15 @@ function slugify(name: string): string {
     .slice(0, 80);
 }
 
-export function BasicsForm() {
+export function BasicsForm({
+  cityId,
+  cityName,
+}: {
+  /** Header-selected city id, or null when the viewer is unscoped. */
+  cityId: string | null;
+  /** Display name for `cityId`; null in the unscoped "All cities" state. */
+  cityName: string | null;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [create, { loading }] = useMutation(CreateCompetitionMutation);
@@ -138,7 +150,6 @@ export function BasicsForm() {
       format: "ROUND_ROBIN",
       startDate: "",
       prizePool: "",
-      currency: "VND",
     },
   });
 
@@ -166,13 +177,13 @@ export function BasicsForm() {
           input: {
             name: values.name.trim(),
             slug: `${slug}-${Math.random().toString(36).slice(2, 6)}`,
+            cityId,
             description: values.description?.trim() || null,
             gameType: values.gameType,
             type: values.type,
             format: values.format,
             startDate,
             prizePool: values.prizePool?.trim() || null,
-            currency: values.currency,
           },
         },
       });
@@ -186,7 +197,7 @@ export function BasicsForm() {
     } catch (e) {
       toast.error(
         "Could not create",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   });
@@ -231,6 +242,27 @@ export function BasicsForm() {
             className="block w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
             data-testid="basics-description"
           />
+        </Field>
+
+        {/* City — read-only. Set from the header city selector rather than
+            chosen here: the whole app is scoped to one city at a time, so
+            offering a second, conflicting picker at create time is how a
+            competition ends up filed somewhere the organizer isn't looking. */}
+        <Field label="City">
+          <input
+            value={cityName ?? "All cities"}
+            readOnly
+            aria-readonly="true"
+            aria-describedby="basics-city-hint"
+            tabIndex={-1}
+            className="block w-full cursor-not-allowed rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground outline-none"
+            data-testid="basics-city"
+          />
+          <p id="basics-city-hint" className="text-xs text-muted-foreground">
+            {cityName
+              ? `Taken from the city selector in the header. Your competition will be listed in ${cityName}.`
+              : "Pick a city in the header before creating, or this competition won't show up in any city's listings."}
+          </p>
         </Field>
 
         {/* Game Type — segmented */}
@@ -323,28 +355,18 @@ export function BasicsForm() {
           />
         </Field>
 
-        {/* Prize + currency — same control as the Edit competition Details tab. */}
+        {/* Prize — same control as the Edit competition Details tab.
+            Round-83 — no currency picker: free text, so the organizer writes
+            the unit they mean ("10,000,000 VND", "$500", "5M + trophy"). */}
         <Field label="Prize (Optional)">
-          <div className="flex items-stretch gap-2">
-            <div className="flex flex-1 items-center gap-2 rounded-md border border-border bg-background px-3">
-              <Trophy className="size-4 text-muted-foreground" />
-              <input
-                {...register("prizePool")}
-                inputMode="numeric"
-                placeholder="e.g. 10,000,000"
-                className="block w-full bg-transparent py-2 text-sm outline-none"
-                data-testid="basics-prize"
-              />
-            </div>
-            <select
-              {...register("currency")}
-              className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-              data-testid="basics-currency"
-            >
-              <option value="VND">VND</option>
-              <option value="USD">USD</option>
-              <option value="EUR">EUR</option>
-            </select>
+          <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3">
+            <Trophy className="size-4 text-muted-foreground" />
+            <input
+              {...register("prizePool")}
+              placeholder="e.g. 10,000,000 VND or 5M + trophy"
+              className="block w-full bg-transparent py-2 text-sm outline-none"
+              data-testid="basics-prize"
+            />
           </div>
         </Field>
 
@@ -450,7 +472,7 @@ function SegmentedToggle({
 
 function ComingSoon() {
   return (
-    <span className="inline-flex items-center rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
+    <span className="inline-flex items-center rounded-md bg-primary/15 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-primary">
       Coming Soon
     </span>
   );

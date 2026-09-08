@@ -99,11 +99,9 @@ builder.prismaObject("Competition", {
     startDate: t.expose("startDate", { type: "DateTime", nullable: true }),
     endDate: t.expose("endDate", { type: "DateTime", nullable: true }),
     schedulingType: t.expose("schedulingType", { type: SchedulingTypeEnum }),
-    prizePool: t.string({
-      nullable: true,
-      resolve: (c) => (c.prizePool ? c.prizePool.toString() : null),
-    }),
-    currency: t.exposeString("currency"),
+    // Round-76 — free text on the model now (was Decimal), so it's exposed
+    // as-is. Formatting for display lives in formatPrize (lib/utils.ts).
+    prizePool: t.exposeString("prizePool", { nullable: true }),
     pointsWin: t.exposeInt("pointsWin"),
     pointsDraw: t.exposeInt("pointsDraw"),
     pointsLoss: t.exposeInt("pointsLoss"),
@@ -451,6 +449,41 @@ builder.prismaObject("CompetitionRoster", {
   }),
 });
 
+/**
+ * Round-77 — is the viewer a party to this application's conversation? That's
+ * the solo applicant, the team's captain, the per-competition roster captain,
+ * the competition organizer, or a SUPER_ADMIN.
+ */
+async function viewerOwnsApplicationThread(
+  ctx: import("../context").GraphQLContext,
+  app: {
+    id: string;
+    competitionId: string;
+    teamId: string | null;
+    applicantUserId: string | null;
+    rosterCaptainUserId: string | null;
+  },
+): Promise<boolean> {
+  const viewer = ctx.viewer;
+  if (!viewer) return false;
+  if (viewer.role === "SUPER_ADMIN") return true;
+  if (app.applicantUserId === viewer.id) return true;
+  if (app.rosterCaptainUserId === viewer.id) return true;
+  const comp = await ctx.prisma.competition.findUnique({
+    where: { id: app.competitionId },
+    select: { organizerId: true },
+  });
+  if (comp?.organizerId === viewer.id) return true;
+  if (app.teamId) {
+    const team = await ctx.prisma.team.findUnique({
+      where: { id: app.teamId },
+      select: { captainId: true },
+    });
+    if (team?.captainId === viewer.id) return true;
+  }
+  return false;
+}
+
 builder.prismaObject("CompetitionApplication", {
   fields: (t) => ({
     id: t.exposeID("id"),
@@ -473,6 +506,76 @@ builder.prismaObject("CompetitionApplication", {
     rosterChangeRequests: t.relation("rosterChangeRequests", {
       query: () => ({ orderBy: { submittedAt: "desc" } }),
     }),
+    // Round-77 — the applicant ↔ organizer thread. Oldest first so it reads
+    // top-to-bottom like a conversation; the applicant's cover note from the
+    // apply form is the first entry.
+    //
+    // PRIVATE. The parent `competitionApplication` query only gates on whether
+    // the COMPETITION is readable, so without an explicit check here any
+    // signed-in viewer could read a rival's conversation with the organizer.
+    // Both sides + SUPER_ADMIN only; everyone else gets an empty list.
+    messages: t.prismaField({
+      type: ["ApplicationMessage"],
+      resolve: async (query, parent, _args, ctx) => {
+        if (!(await viewerOwnsApplicationThread(ctx, parent))) return [];
+        return ctx.prisma.applicationMessage.findMany({
+          ...query,
+          where: { applicationId: parent.id },
+          orderBy: { createdAt: "asc" },
+        });
+      },
+    }),
+    messageCount: t.int({
+      description:
+        "Total messages on the thread, or 0 when the viewer isn't a party to it.",
+      resolve: async (parent, _args, ctx) => {
+        if (!(await viewerOwnsApplicationThread(ctx, parent))) return 0;
+        return ctx.prisma.applicationMessage.count({
+          where: { applicationId: parent.id },
+        });
+      },
+    }),
+    // Round-77 — what the Messages badge counts. Messages the viewer wrote
+    // are never unread to them, and everything up to their read cursor is
+    // already seen; with no cursor the whole thread counts as unread.
+    unreadMessageCount: t.int({
+      description:
+        "Messages on the thread the viewer hasn't read yet (0 when they aren't a party to it).",
+      resolve: async (parent, _args, ctx) => {
+        const viewer = ctx.viewer;
+        if (!viewer) return 0;
+        if (!(await viewerOwnsApplicationThread(ctx, parent))) return 0;
+        const read = await ctx.prisma.applicationThreadRead.findUnique({
+          where: {
+            applicationId_userId: {
+              applicationId: parent.id,
+              userId: viewer.id,
+            },
+          },
+          select: { lastReadAt: true },
+        });
+        return ctx.prisma.applicationMessage.count({
+          where: {
+            applicationId: parent.id,
+            authorId: { not: viewer.id },
+            ...(read ? { createdAt: { gt: read.lastReadAt } } : {}),
+          },
+        });
+      },
+    }),
+  }),
+});
+
+builder.prismaObject("ApplicationMessage", {
+  description:
+    "Round-77 — one message on a competition application thread. Written by " +
+    "the applicant (or their team captain / roster captain) or by the " +
+    "competition organizer.",
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    body: t.exposeString("body"),
+    author: t.relation("author"),
+    createdAt: t.expose("createdAt", { type: "DateTime" }),
   }),
 });
 
@@ -544,7 +647,6 @@ export const CreateCompetitionInput = builder.inputType(
       startDate: t.field({ type: "DateTime" }),
       endDate: t.field({ type: "DateTime" }),
       prizePool: t.string(),
-      currency: t.string({ defaultValue: "VND" }),
       schedulingType: t.field({ type: SchedulingTypeEnum }),
       breakAndRunRule: t.boolean({ defaultValue: false }),
       requiresHomeVenue: t.boolean({ defaultValue: false }),

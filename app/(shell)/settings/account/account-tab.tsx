@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
+import { errorText } from "@/lib/apollo/error-message";
 import {
   ChangeEmailMutation,
   ChangePasswordMutation,
@@ -132,7 +133,7 @@ function UsernameSection({
     } catch (err) {
       toast.error(
         "Could not update username",
-        err instanceof Error ? err.message : undefined,
+        errorText(err),
       );
     }
   }
@@ -141,7 +142,7 @@ function UsernameSection({
     if (!value) {
       return (
         <span className="text-muted-foreground">
-          3–24 lowercase letters, digits, or . _ -
+          4–24 lowercase letters, digits, or . _ -
         </span>
       );
     }
@@ -280,7 +281,7 @@ function UsernameSection({
 // Round-50 — client mirror of the server's validator. Kept here verbatim
 // so the user sees the same message before round-tripping.
 const USERNAME_REGEX_CLIENT =
-  /^[a-z0-9](?!.*[._-]{2})[a-z0-9._-]{1,22}[a-z0-9]$/;
+  /^[a-z0-9](?!.*[._-]{2})[a-z0-9._-]{2,22}[a-z0-9]$/;
 const RESERVED_USERNAMES_CLIENT = new Set([
   "admin",
   "administrator",
@@ -300,6 +301,8 @@ const RESERVED_USERNAMES_CLIENT = new Set([
   "self",
   "null",
   "undefined",
+  "playpool",
+  // Kept reserved after the PoolDN rename so nobody can squat the old name.
   "pooldn",
   "anonymous",
   "guest",
@@ -307,7 +310,7 @@ const RESERVED_USERNAMES_CLIENT = new Set([
 function clientValidateUsername(raw: string): string | null {
   const v = raw.trim().toLowerCase();
   if (!v) return null;
-  if (v.length < 3) return "Use at least 3 characters";
+  if (v.length < 4) return "Use at least 4 characters";
   if (v.length > 24) return "Keep it to 24 characters or fewer";
   if (!USERNAME_REGEX_CLIENT.test(v)) {
     return "Use lowercase letters, digits, and . _ - (no leading/trailing or doubled separators)";
@@ -600,7 +603,7 @@ function PasswordSection({
     } catch (err) {
       toast.error(
         "Could not update password",
-        err instanceof Error ? err.message : undefined,
+        errorText(err),
       );
     }
   }

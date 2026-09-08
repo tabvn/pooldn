@@ -7,6 +7,7 @@ import { UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { RequestToJoinTeamMutation } from "@/lib/graphql/operations/team-collab.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 export function JoinTeamButton({
   teamId,
@@ -32,7 +33,7 @@ export function JoinTeamButton({
     } catch (e) {
       toast.error(
         "Could not request to join",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }

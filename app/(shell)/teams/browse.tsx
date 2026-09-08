@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { SearchInput } from "@/components/ui/search-input";
+import { ShellTeamBadge } from "@/components/shell/shell-badge";
 import { MyTeamsQuery } from "@/lib/graphql/operations/team.operations";
 
 type Team = {
@@ -17,6 +18,8 @@ type Team = {
   name: string;
   logoUrl: string | null;
   isActive: boolean;
+  /** Round-88 — a placeholder team an organizer created for a competition. */
+  isShell?: boolean;
   memberCount: number;
   captain: {
     id: string;
@@ -142,6 +145,7 @@ export function TeamsBrowse({
                           {t.memberCount}{" "}
                           {t.memberCount === 1 ? "member" : "members"}
                         </Badge>
+                        {t.isShell ? <ShellTeamBadge /> : null}
                         {!t.isActive ? (
                           <Badge variant="neutral" size="sm">
                             inactive
@@ -160,7 +164,7 @@ export function TeamsBrowse({
                     code={t.captain.nationality}
                     className="ml-1 leading-none"
                   />{" "}
-                  <span className="text-muted-foreground/70">
+                  <span className="text-muted-foreground">
                     @{t.captain.username}
                   </span>
                 </CardContent>

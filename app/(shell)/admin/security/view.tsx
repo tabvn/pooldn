@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SecurityEventsQuery } from "@/lib/graphql/operations/security.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 const PAGE = 50;
 
@@ -141,7 +142,7 @@ export function SecurityLog() {
                   <TableRow>
                     <TableCell colSpan={7}>
                       <p className="py-10 text-center text-sm text-destructive">
-                        Could not load: {error.message}
+                        Could not load: {errorText(error, "please retry")}
                       </p>
                     </TableCell>
                   </TableRow>

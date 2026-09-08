@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { errorText } from "@/lib/apollo/error-message";
 import {
   ApproveLineupEditMutation,
   RecordFrameMutation,
@@ -24,6 +25,8 @@ type PlayerRef = {
   name: string;
   nationality?: string | null;
   avatarUrl?: string | null;
+  /** Round-88 — an unclaimed placeholder profile; drawn with the ghost mark. */
+  isShell?: boolean;
 } | null;
 
 type Frame = {
@@ -278,7 +281,7 @@ export function MatchLineups({
       toast.success("Lineup submitted");
       await onChanged();
     } catch (e) {
-      toast.error("Could not submit lineup", e instanceof Error ? e.message : "Try again.");
+      toast.error("Could not submit lineup", errorText(e, "Try again."));
     }
   }
 
@@ -305,7 +308,7 @@ export function MatchLineups({
       });
       await onChanged();
     } catch (e) {
-      toast.error("Could not save result", e instanceof Error ? e.message : "Try again.");
+      toast.error("Could not save result", errorText(e, "Try again."));
     }
   }
 
@@ -315,7 +318,7 @@ export function MatchLineups({
       toast.success("Edit requested", "Waiting for the opponent to approve.");
       await onChanged();
     } catch (e) {
-      toast.error("Could not request edit", e instanceof Error ? e.message : "Try again.");
+      toast.error("Could not request edit", errorText(e, "Try again."));
     }
   }
   async function onApprove() {
@@ -323,7 +326,7 @@ export function MatchLineups({
       await approveEdit({ variables: { matchId: match.id } });
       await onChanged();
     } catch (e) {
-      toast.error("Could not approve", e instanceof Error ? e.message : "Try again.");
+      toast.error("Could not approve", errorText(e, "Try again."));
     }
   }
   async function onReject() {
@@ -331,7 +334,7 @@ export function MatchLineups({
       await rejectEdit({ variables: { matchId: match.id } });
       await onChanged();
     } catch (e) {
-      toast.error("Could not reject", e instanceof Error ? e.message : "Try again.");
+      toast.error("Could not reject", errorText(e, "Try again."));
     }
   }
 
@@ -753,7 +756,7 @@ function GameCard({
       ) : (
         <WaitingSide />
       )}
-      <div className="flex w-10 shrink-0 flex-col items-center justify-center gap-0.5 bg-secondary/30 text-[10px] font-semibold text-muted-foreground">
+      <div className="flex w-10 shrink-0 flex-col items-center justify-center gap-0.5 bg-secondary/30 text-[11px] font-semibold text-muted-foreground">
         <span>{frame.frameNumber}</span>
         <span>VS</span>
         {frame.breakAndRun ? (
@@ -809,6 +812,7 @@ function GameSide({
         size="sm"
         src={ref_?.avatarUrl ?? undefined}
         fallback={label ?? teamName}
+        ghost={ref_?.isShell ?? false}
         className="hidden size-7 shrink-0 sm:inline-flex"
       />
       <span
@@ -833,7 +837,7 @@ function GameSide({
           the "Winner" pill returns on ≥ sm where there's room. */}
       {won ? (
         <span
-          className={`pointer-events-none absolute top-1 hidden rounded bg-[#005f5a] px-1.5 py-0.5 text-[10px] font-semibold uppercase text-[#96f7e4] sm:block ${
+          className={`pointer-events-none absolute top-1 hidden rounded bg-[#005f5a] px-1.5 py-0.5 text-[11px] font-semibold uppercase text-[#96f7e4] sm:block ${
             align === "right" ? "left-1" : "right-1"
           }`}
         >

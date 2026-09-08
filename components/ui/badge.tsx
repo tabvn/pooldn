@@ -16,7 +16,7 @@ const badgeVariants = cva(
         outline: "border border-border text-foreground",
       },
       size: {
-        sm: "text-[10px] py-0 px-1.5",
+        sm: "text-[11px] py-0 px-1.5",
         md: "text-xs py-0.5 px-2",
       },
     },

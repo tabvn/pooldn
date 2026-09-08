@@ -24,6 +24,22 @@ export async function recomputeMvp(
   // player(s) on each side; rows without a userId reference can't move
   // PlayerCompStat — they only affect the team's frames-won count, not
   // the per-player MVP score.
+  // Round-82 — Singles (INDIVIDUAL) competitions have no MVP. Every match is
+  // 1v1 over the same race-to, so "most valuable player" collapses into "the
+  // player who won most" — which is exactly what the standings already say,
+  // and the winner is the top of that table. Bail out before any of the work,
+  // and clear any flags a previous run may have left on this competition.
+  const comp = await prisma.competition.findUniqueOrThrow({
+    where: { id: competitionId },
+    select: { type: true },
+  });
+  // Round-89 — Singles skips the MVP *pick*, not the stat aggregation. The
+  // early return used to bail out before the PlayerCompStat upsert below,
+  // which is the ONLY writer of that table — so a player could finish a whole
+  // Singles season and still read "hasn't played in any competitions yet" on
+  // their profile, and a Singles placeholder's claim page showed 0 matches /
+  // 0 frames. Everything is computed as normal; only isMvp is left off.
+  const isIndividual = comp.type === "INDIVIDUAL";
   // Round-65 — the MVP formula is now organizer-configurable (the "calculator").
   const cfg = await prisma.competition.findUniqueOrThrow({
     where: { id: competitionId },
@@ -206,6 +222,18 @@ export async function recomputeMvp(
     );
   }
   await Promise.all(writes);
+
+  // Round-82 — a Singles competition has no MVP: every match is 1v1 over the
+  // same race-to, so "most valuable" collapses into "won most", which is what
+  // the standings table already says. Clear any flag a previous run left and
+  // stop here — the per-player stats above are still written.
+  if (isIndividual) {
+    await prisma.playerCompStat.updateMany({
+      where: { competitionId, isMvp: true },
+      data: { isMvp: false },
+    });
+    return;
+  }
 
   // Pick MVP: highest mvpScore, tiebreak by framesWon then fewer framesPlayed.
   // Round-65 — a player must clear the appearance-% threshold to be eligible.

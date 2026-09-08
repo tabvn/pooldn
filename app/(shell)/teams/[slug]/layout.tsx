@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { TeamActionsMenu } from "@/components/team/team-actions-menu";
 import { DetailHero } from "@/components/layout/detail-hero";
+import { ShellTeamBadge } from "@/components/shell/shell-badge";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { TabNav } from "@/components/layout/tab-nav";
 import { InviteBanner } from "@/components/team/invite-banner";
@@ -72,7 +73,7 @@ export default async function TeamLayout({
         }
         meta={
           <>
-            <span className="inline-flex items-center rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
+            <span className="inline-flex items-center rounded bg-primary px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-primary-foreground">
               Team
             </span>
             <span>
@@ -89,6 +90,12 @@ export default async function TeamLayout({
             <span data-testid="team-created-at">
               Created <RelativeTime value={team.createdAt} />
             </span>
+            {team.isShell ? (
+              <ShellTeamBadge
+                size="md"
+                unclaimedCount={team.shellMemberCount}
+              />
+            ) : null}
             {!team.isActive ? (
               <Badge variant="neutral">inactive</Badge>
             ) : null}

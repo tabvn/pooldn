@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { HomeVenueCard } from "@/components/team/home-venue-card";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { errorText } from "@/lib/apollo/error-message";
 import {
   DeleteTeamMutation,
   UpdateTeamMutation,
@@ -56,7 +57,7 @@ export function EditTeamForm({
     } catch (e) {
       toast.error(
         "Could not save team",
-        e instanceof Error ? e.message : undefined,
+        errorText(e),
       );
     }
   }
@@ -78,7 +79,7 @@ export function EditTeamForm({
     } catch (e) {
       toast.error(
         "Could not delete",
-        e instanceof Error ? e.message : undefined,
+        errorText(e),
       );
     }
   }

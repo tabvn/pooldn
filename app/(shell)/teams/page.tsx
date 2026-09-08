@@ -54,6 +54,7 @@ export default async function TeamsPage() {
           name: t.name,
           logoUrl: t.logoUrl ?? null,
           isActive: t.isActive,
+          isShell: t.isShell,
           memberCount: t.members.length,
           captain: t.captain,
         }))}

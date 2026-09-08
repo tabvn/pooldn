@@ -1,14 +1,13 @@
 import { Calendar, Trophy, Users } from "lucide-react";
 import { LocalDateTime } from "@/components/ui/local-datetime";
-import { competitionStatusLabel } from "@/components/ui/status-chip";
+import { competitionStatusLabelFor } from "@/components/ui/status-chip";
+import { formatPrize } from "@/lib/utils";
 import type {
   CompetitionFormat,
   CompetitionStatus,
   CompetitionType,
   GameType,
 } from "@/lib/generated/prisma/enums";
-
-const NUM = new Intl.NumberFormat("en-US");
 
 const GAME_LABEL: Record<string, string> = {
   EIGHT_BALL: "8-ball",
@@ -32,11 +31,16 @@ const TYPE_LABEL: Record<string, string> = {
 
 // Status pill tone — pink for DRAFT (matches Figma), lime for the live
 // "accepting" state, muted for the rest.
-function StatusPill({ status }: { status: CompetitionStatus }) {
-  const label =
-    status === "OPEN_FOR_APPLICATIONS"
-      ? "Accepting Teams"
-      : (competitionStatusLabel[status] ?? status);
+function StatusPill({
+  status,
+  type,
+}: {
+  status: CompetitionStatus;
+  type: CompetitionType;
+}) {
+  // Round-76 — Singles reads "Accepting players"; the pill is uppercased by
+  // CSS, so the label only needs sentence case here.
+  const label = competitionStatusLabelFor(status, type);
   const cls =
     status === "DRAFT"
       ? "bg-pink-600 text-white"
@@ -47,7 +51,7 @@ function StatusPill({ status }: { status: CompetitionStatus }) {
           : "bg-secondary text-muted-foreground";
   return (
     <span
-      className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${cls}`}
+      className={`inline-flex items-center rounded px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider ${cls}`}
     >
       {label}
     </span>
@@ -74,13 +78,17 @@ export function CompetitionHero({
     gameType: GameType;
     startDate?: string | null;
     prizePool?: string | null;
-    currency?: string | null;
     approvedTeamCount?: number | null;
     maxTeams?: number | null;
   };
   actions?: React.ReactNode;
 }) {
   const teamWord = c.type === "INDIVIDUAL" ? "players" : "teams";
+  // Round-81 — the capacity ("8/24") only tells you something while entries
+  // can still arrive. Once sign-ups close the field is fixed, so the cap is
+  // noise next to the number that matters — show the count on its own.
+  const acceptingEntries =
+    c.status === "DRAFT" || c.status === "OPEN_FOR_APPLICATIONS";
   return (
     <header className="bg-primary/10">
       {/* Padding lives INSIDE the max-w-5xl wrapper so the hero content
@@ -92,8 +100,8 @@ export function CompetitionHero({
             {c.name}
           </h1>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            <StatusPill status={c.status} />
-            <span className="inline-flex items-center rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
+            <StatusPill status={c.status} type={c.type} />
+            <span className="inline-flex items-center rounded bg-primary px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-primary-foreground">
               {TYPE_LABEL[c.type] ?? c.type}
             </span>
             <span>{FORMAT_LABEL[c.format] ?? c.format}</span>
@@ -110,12 +118,13 @@ export function CompetitionHero({
             <span className="inline-flex items-center gap-1.5 text-muted-foreground">
               <Users className="size-4" />
               {c.approvedTeamCount ?? 0}
-              {c.maxTeams ? `/${c.maxTeams}` : ""} {teamWord}
+              {acceptingEntries && c.maxTeams ? `/${c.maxTeams}` : ""}{" "}
+              {teamWord}
             </span>
-            {c.prizePool ? (
+            {formatPrize(c.prizePool) ? (
               <span className="inline-flex items-center gap-1.5 text-muted-foreground">
                 <Trophy className="size-4" />
-                {NUM.format(Number(c.prizePool))} {c.currency ?? ""}
+                {formatPrize(c.prizePool)}
               </span>
             ) : null}
           </div>

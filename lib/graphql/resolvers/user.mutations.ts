@@ -2,7 +2,11 @@ import { GraphQLError } from "graphql";
 import bcrypt from "bcryptjs";
 import { builder } from "../builder";
 import { CreateUserInput, UpdateProfileInput } from "../types/user";
-import { createUser } from "@/lib/services/user.service";
+import {
+  createUser,
+  USERNAME_MAX_LENGTH,
+  USERNAME_MIN_LENGTH,
+} from "@/lib/services/user.service";
 import { requireUser } from "@/lib/casl/guard";
 
 const BCRYPT_ROUNDS = 10;
@@ -11,12 +15,15 @@ const BCRYPT_ROUNDS = 10;
 // live-availability check, and (eventually) the sign-up flow agree.
 //
 // Rules:
-//  - 3–24 characters
+//  - 4–24 characters (Round-78 — was 3; @xxx was too short to be a usable
+//    handle. Bounds live in user.service so every surface agrees.)
 //  - lowercase letters, digits, underscore, dash, dot
 //  - can't start or end with a separator
 //  - no two consecutive separators
 //  - reserved words rejected (admin paths, common system slugs)
-const USERNAME_REGEX = /^[a-z0-9](?!.*[._-]{2})[a-z0-9._-]{1,22}[a-z0-9]$/;
+// The {2,22} middle span is what enforces the 4-character floor in the regex:
+// one leading + two middle + one trailing.
+const USERNAME_REGEX = /^[a-z0-9](?!.*[._-]{2})[a-z0-9._-]{2,22}[a-z0-9]$/;
 const RESERVED_USERNAMES = new Set([
   "admin",
   "administrator",
@@ -36,6 +43,8 @@ const RESERVED_USERNAMES = new Set([
   "self",
   "null",
   "undefined",
+  "playpool",
+  // Kept reserved after the PoolDN rename so nobody can squat the old name.
   "pooldn",
   "anonymous",
   "guest",
@@ -43,8 +52,12 @@ const RESERVED_USERNAMES = new Set([
 
 function validateUsernameSyntax(value: string): string | null {
   if (!value) return "Username is required";
-  if (value.length < 3) return "Use at least 3 characters";
-  if (value.length > 24) return "Keep it to 24 characters or fewer";
+  if (value.length < USERNAME_MIN_LENGTH) {
+    return `Use at least ${USERNAME_MIN_LENGTH} characters`;
+  }
+  if (value.length > USERNAME_MAX_LENGTH) {
+    return `Keep it to ${USERNAME_MAX_LENGTH} characters or fewer`;
+  }
   if (!USERNAME_REGEX.test(value)) {
     return "Use lowercase letters, digits, and . _ - (no leading/trailing or doubled separators)";
   }
@@ -142,7 +155,7 @@ builder.mutationFields((t) => ({
   changeUsername: t.prismaField({
     type: "User",
     description:
-      "Change the viewer's own username. 3–24 chars, lowercase letters, " +
+      "Change the viewer's own username. 4–24 chars, lowercase letters, " +
       "digits, underscore, dash, dot; can't start/end with a separator, no " +
       "double separators, reserved words rejected. Case-insensitive uniqueness.",
     args: {

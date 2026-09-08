@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/toast";
 import { WelcomeHeading } from "@/components/auth/welcome-heading";
 import { OrDivider, SocialButtons } from "@/components/auth/social-buttons";
 import { RegisterMutation } from "@/lib/graphql/operations/auth.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 const schema = z
   .object({
@@ -65,7 +66,7 @@ export default function SignUpPage() {
     } catch (e) {
       toast.error(
         "Sign up failed",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   });
@@ -159,7 +160,7 @@ export default function SignUpPage() {
 
           {error ? (
             <p className="text-sm text-destructive" role="alert">
-              {error.message}
+              {errorText(error, "Something went wrong. Try again.")}
             </p>
           ) : null}
 

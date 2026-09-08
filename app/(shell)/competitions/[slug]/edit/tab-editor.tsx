@@ -30,7 +30,7 @@ import {
   Trophy,
   X,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatPrize } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -38,15 +38,21 @@ import {
   UpdateCompetitionMutation,
 } from "@/lib/graphql/operations/competition-mutations.operations";
 import { VenuesListQuery } from "@/lib/graphql/operations/venue.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 /**
  * Round-51 — Figma-faithful draft competition editor.
  *
- * After a captain creates a DRAFT on /competitions/new, they land here.
- * Four labeled tabs (Participants · Schedule · Structure · Review &
- * Publish) walk through the remaining setup. Each tab is its own card
- * with segmented toggles, a confirmation summary, and a Save button
+ * After an organizer creates a DRAFT on /competitions/new, they land here.
+ * Five labeled tabs (Details · Participants · Schedule · Structure ·
+ * Review & Publish) walk through the remaining setup. Each tab is its own
+ * card with segmented toggles, a confirmation summary, and a Save button
  * that posts only the fields it owns and advances to the next tab.
+ *
+ * Round-76 — every tab branches on `data.type === "INDIVIDUAL"`. A Singles
+ * league has no teams, no rosters, no home venues and no match layout, so
+ * those controls and their copy are swapped or dropped rather than shown
+ * with team vocabulary an organizer can't act on.
  */
 
 type Block = {
@@ -70,11 +76,13 @@ type CompetitionInitial = {
   description: string | null;
   startDate: string | null;
   prizePool: string | null;
-  currency: string | null;
   minTeams: number;
   maxTeams: number | null;
   minPlayersPerTeam: number;
   maxPlayersPerTeam: number | null;
+  // Round-76 — Singles has no match layout to build; its whole structure is
+  // "first to N frames wins", which is this column.
+  raceToFrames: number;
   applicationMode: "OPEN" | "INVITE_ONLY";
   matchVenueMode: "TEAM_VENUES" | "CENTRAL_VENUE";
   centralVenueId: string | null;
@@ -174,7 +182,6 @@ export function TabEditor({
               patch.startDate === undefined ? undefined : patch.startDate,
             prizePool:
               patch.prizePool === undefined ? undefined : patch.prizePool,
-            currency: patch.currency,
             applicationMode: patch.applicationMode,
             maxTeams: patch.maxTeams,
             minPlayersPerTeam: patch.minPlayersPerTeam,
@@ -182,6 +189,7 @@ export function TabEditor({
             matchVenueMode: patch.matchVenueMode,
             centralVenueId: patch.centralVenueId,
             gamesPerOpponent: patch.gamesPerOpponent,
+            raceToFrames: patch.raceToFrames,
             schedulingType: patch.schedulingType,
             // Strip Apollo's __typename — the slots come straight off the
             // CompetitionEditableQuery result, and WeekdaySlotInput only
@@ -206,7 +214,7 @@ export function TabEditor({
     } catch (e) {
       toast.error(
         "Could not save",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -220,7 +228,7 @@ export function TabEditor({
     } catch (e) {
       toast.error(
         "Could not publish",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -253,7 +261,7 @@ export function TabEditor({
                       : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
                   )}
                 >
-                  <span className="mr-1.5 inline-flex size-5 items-center justify-center rounded-full border border-current text-[10px]">
+                  <span className="mr-1.5 inline-flex size-5 items-center justify-center rounded-full border border-current text-[11px]">
                     {i + 1}
                   </span>
                   {t.label}
@@ -275,7 +283,6 @@ export function TabEditor({
                       description: data.description,
                       startDate: data.startDate,
                       prizePool: data.prizePool,
-                      currency: data.currency,
                     },
                     "Details saved",
                     "participants",
@@ -336,12 +343,14 @@ export function TabEditor({
                 onChange={set}
                 onSave={() =>
                   save(
-                    {
-                      blocks: data.blocks.map((b, idx) => ({
-                        ...b,
-                        id: `b-${idx}`,
-                      })) as unknown as Block[],
-                    },
+                    data.type === "INDIVIDUAL"
+                      ? { raceToFrames: data.raceToFrames }
+                      : {
+                          blocks: data.blocks.map((b, idx) => ({
+                            ...b,
+                            id: `b-${idx}`,
+                          })) as unknown as Block[],
+                        },
                     "Structure saved",
                     "review",
                   )
@@ -386,6 +395,7 @@ function DetailsTab({
   // the calendar day, so slice on read and re-stamp midnight on write.
   const startDay = data.startDate ? data.startDate.slice(0, 10) : "";
   const nameInvalid = data.name.trim().length === 0;
+  const isIndividual = data.type === "INDIVIDUAL";
   // Round-74 — elimination formats collect start date + time on the Schedule
   // tab instead (that datetime IS the single matchday), so hide it here.
   const isElimination =
@@ -420,7 +430,11 @@ function DetailsTab({
             onChange("description", e.target.value ? e.target.value : null)
           }
           rows={4}
-          placeholder="Tell teams what this competition is about…"
+          placeholder={
+            isIndividual
+              ? "Tell players what this competition is about…"
+              : "Tell teams what this competition is about…"
+          }
           className="block w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
           data-testid="details-description"
         />
@@ -449,31 +463,23 @@ function DetailsTab({
       )}
 
       <Field label="Prize Pool">
-        <div className="flex items-stretch gap-2">
-          <div className="flex flex-1 items-center gap-2 rounded-md border border-border bg-background px-3">
-            <Trophy className="size-4 text-muted-foreground" />
-            <input
-              type="text"
-              inputMode="numeric"
-              value={data.prizePool ?? ""}
-              onChange={(e) =>
-                onChange("prizePool", e.target.value ? e.target.value : null)
-              }
-              placeholder="e.g. 10,000,000"
-              className="block w-full bg-transparent py-2 text-sm outline-none"
-              data-testid="details-prize"
-            />
-          </div>
-          <select
-            value={data.currency ?? "VND"}
-            onChange={(e) => onChange("currency", e.target.value)}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-            data-testid="details-currency"
-          >
-            <option value="VND">VND</option>
-            <option value="USD">USD</option>
-            <option value="EUR">EUR</option>
-          </select>
+        {/* Round-76 — free text. Commas, "5M + trophy", "Cash + table time"
+            all save as typed; no numeric keyboard hint, because a number
+            isn't what's being asked for.
+            Round-83 — and no currency picker: the organizer writes the unit
+            they mean, so there's nothing to keep in sync. */}
+        <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3">
+          <Trophy className="size-4 text-muted-foreground" />
+          <input
+            type="text"
+            value={data.prizePool ?? ""}
+            onChange={(e) =>
+              onChange("prizePool", e.target.value ? e.target.value : null)
+            }
+            placeholder="e.g. 10,000,000 VND or 5M + trophy"
+            className="block w-full bg-transparent py-2 text-sm outline-none"
+            data-testid="details-prize"
+          />
         </div>
       </Field>
 
@@ -514,11 +520,25 @@ function ParticipantsTab({
   const maxPlayers = data.maxPlayersPerTeam ?? 8;
   const maxTeams = data.maxTeams ?? 24;
   const rosterInvalid = maxPlayers < minPlayers;
+  // A Singles (INDIVIDUAL) competition has no teams: players register
+  // themselves, so maxTeams caps PLAYERS and there's no roster to size.
+  // Keep the stored roster numbers as-is — nothing reads them for this type,
+  // and the Review tab's publish gate still wants maxPlayersPerTeam set.
+  const isIndividual = data.type === "INDIVIDUAL";
+  const participantWord = isIndividual ? "players" : "teams";
 
   const summary =
-    `${data.applicationMode === "OPEN" ? "Any team can apply" : "Invite-only"}. ` +
-    `Max ${maxTeams} participants. ` +
-    `Team roster size ${minPlayers} to ${maxPlayers} players.`;
+    `${
+      data.applicationMode === "OPEN"
+        ? isIndividual
+          ? "Any player can apply"
+          : "Any team can apply"
+        : "Invite-only"
+    }. ` +
+    `Max ${maxTeams} ${participantWord}.` +
+    (isIndividual
+      ? ""
+      : ` Team roster size ${minPlayers} to ${maxPlayers} players.`);
 
   return (
     <div className="space-y-5">
@@ -536,7 +556,11 @@ function ParticipantsTab({
         />
       </Field>
 
-      <Field label="Max Amount of Participants (Teams)">
+      <Field
+        label={`Max Amount of Participants (${
+          isIndividual ? "Players" : "Teams"
+        })`}
+      >
         <input
           type="number"
           min={2}
@@ -552,38 +576,40 @@ function ParticipantsTab({
         />
       </Field>
 
-      <Field label="Min and Max Amount of Players per Team (Roster)">
-        <div className="flex items-stretch gap-2">
-          <LabeledNumber
-            label="Min"
-            value={minPlayers}
-            onChange={(n) => onChange("minPlayersPerTeam", Math.max(1, n))}
-            testId="participants-min-players"
-          />
-          <span className="self-center text-muted-foreground">—</span>
-          <LabeledNumber
-            label="Max"
-            value={maxPlayers}
-            onChange={(n) => onChange("maxPlayersPerTeam", Math.max(1, n))}
-            testId="participants-max-players"
-          />
-        </div>
-        {rosterInvalid ? (
-          <p
-            className="mt-2 text-xs font-medium text-destructive"
-            role="alert"
-            data-testid="participants-roster-error"
-          >
-            Max players must be greater than or equal to Min ({minPlayers}).
-          </p>
-        ) : null}
-      </Field>
+      {isIndividual ? null : (
+        <Field label="Min and Max Amount of Players per Team (Roster)">
+          <div className="flex items-stretch gap-2">
+            <LabeledNumber
+              label="Min"
+              value={minPlayers}
+              onChange={(n) => onChange("minPlayersPerTeam", Math.max(1, n))}
+              testId="participants-min-players"
+            />
+            <span className="self-center text-muted-foreground">—</span>
+            <LabeledNumber
+              label="Max"
+              value={maxPlayers}
+              onChange={(n) => onChange("maxPlayersPerTeam", Math.max(1, n))}
+              testId="participants-max-players"
+            />
+          </div>
+          {rosterInvalid ? (
+            <p
+              className="mt-2 text-xs font-medium text-destructive"
+              role="alert"
+              data-testid="participants-roster-error"
+            >
+              Max players must be greater than or equal to Min ({minPlayers}).
+            </p>
+          ) : null}
+        </Field>
+      )}
 
       <SummaryBox text={summary} />
 
       <SaveButton
         loading={saving}
-        disabled={rosterInvalid}
+        disabled={!isIndividual && rosterInvalid}
         onClick={() =>
           onSave({
             minPlayersPerTeam: minPlayers,
@@ -619,6 +645,10 @@ function ScheduleTab({
   const schedulingType = data.schedulingType ?? "WEEKLY_ROUNDS";
   const isWeekly = schedulingType === "WEEKLY_ROUNDS";
   const isCentral = data.matchVenueMode === "CENTRAL_VENUE";
+  // Round-76 — Singles has no teams, so no "home venue" to default to. The
+  // same TEAM_VENUES value means "not pinned to one venue", which for a
+  // Singles league is the two players agreeing where to meet.
+  const isIndividual = data.type === "INDIVIDUAL";
   // Round-74 — elimination brackets play out at a single venue: playoff
   // games are short and happen in one place. So we drop the Team/Central
   // venue tabs (single "Select Venue" list), "Games per Opponent" (a knockout
@@ -712,12 +742,21 @@ function ScheduleTab({
 
   const venueSentence =
     data.matchVenueMode === "TEAM_VENUES"
-      ? "Teams will have games in their home venues"
+      ? isIndividual
+        ? "Players choose where they play — each pair agrees on a venue for their match"
+        : "Teams will have games in their home venues"
       : centralVenue
-        ? `All matches will be played at ${centralVenue.name}`
-        : "Pick the central venue all matches will be played at";
-  const oppSentence =
-    data.gamesPerOpponent >= 2
+        ? isIndividual
+          ? `Every player's matches are played at ${centralVenue.name}`
+          : `All matches will be played at ${centralVenue.name}`
+        : isIndividual
+          ? "Pick the venue every player comes to for their matches"
+          : "Pick the central venue all matches will be played at";
+  const oppSentence = isIndividual
+    ? data.gamesPerOpponent >= 2
+      ? "Each player meets every other player twice"
+      : "Each player meets every other player once"
+    : data.gamesPerOpponent >= 2
       ? "Each team plays twice (home & away) against every other team"
       : "Each team plays each opponent once";
   const scheduleSentence = isWeekly
@@ -770,7 +809,10 @@ function ScheduleTab({
           <Segmented
             value={data.matchVenueMode}
             options={[
-              { value: "TEAM_VENUES", label: "Team Venues" },
+              {
+                value: "TEAM_VENUES",
+                label: isIndividual ? "Free Location" : "Team Venues",
+              },
               { value: "CENTRAL_VENUE", label: "Central Venue" },
             ]}
             onChange={(v) =>
@@ -829,7 +871,8 @@ function ScheduleTab({
         <Segmented
           value={data.gamesPerOpponent >= 2 ? "2" : "1"}
           options={[
-            { value: "2", label: "Home & Away" },
+            // "Home & Away" only means something when sides have a home.
+            { value: "2", label: isIndividual ? "Twice" : "Home & Away" },
             { value: "1", label: "Only Once" },
           ]}
           onChange={(v) =>
@@ -968,13 +1011,17 @@ function ScheduleTab({
                   ? `All bracket matches will be played at ${centralVenue.name}`
                   : "Pick the venue all bracket matches will be played at",
                 "Knockout — each match is played once; the winner advances",
-                "Bracket will be generated from the start date after teams confirmed",
+                `Bracket will be generated from the start date after ${
+                  isIndividual ? "players" : "teams"
+                } confirmed`,
               ]
             : [
                 venueSentence,
                 oppSentence,
                 scheduleSentence,
-                "Season Calendar will be generated after teams confirmed",
+                `Season Calendar will be generated after ${
+                  isIndividual ? "players" : "teams"
+                } confirmed`,
               ]
         }
       />
@@ -1120,7 +1167,112 @@ function SortableLayoutRow({
   );
 }
 
+/**
+ * Round-76 — Structure tab for a Singles (INDIVIDUAL) competition: one
+ * "Race to" number instead of the team match-layout builder. First player to
+ * this many frames takes the match.
+ */
+function SinglesStructure({
+  raceToFrames,
+  onChange,
+  onSave,
+  saving,
+}: {
+  raceToFrames: number;
+  onChange: (n: number) => void;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  const raceTo = raceToFrames > 0 ? raceToFrames : 5;
+  return (
+    <div className="space-y-5">
+      <div className="text-center">
+        <div className="text-sm font-semibold">
+          Set how long a match runs
+        </div>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Two players meet head-to-head — the first to reach the frame count
+          wins the match.
+        </p>
+      </div>
+
+      <Field label="Race To" align="center">
+        {/* The "frames" suffix lives inside the control so the number and its
+            unit read as one centered box, rather than the box sitting
+            off-centre next to a floating word. */}
+        <div className="mx-auto flex w-full max-w-[13rem] items-center justify-center gap-2 rounded-md border border-border bg-background px-3 py-2 focus-within:border-primary">
+          <input
+            type="number"
+            min={1}
+            value={raceTo}
+            onChange={(e) => onChange(Math.max(1, Number(e.target.value || 1)))}
+            className="w-16 bg-transparent text-center text-sm outline-none"
+            data-testid="structure-race-to"
+          />
+          <span className="shrink-0 text-sm text-muted-foreground">
+            frame{raceTo === 1 ? "" : "s"}
+          </span>
+        </div>
+        <InlineNote center>
+          First player to win {raceTo} frame{raceTo === 1 ? "" : "s"} wins the
+          match.
+        </InlineNote>
+      </Field>
+
+      <SummaryBox
+        items={[
+          `Each match is a race to ${raceTo} — up to ${raceTo * 2 - 1} frame${
+            raceTo * 2 - 1 === 1 ? "" : "s"
+          } played`,
+          "Either player records frame winners as they go; the match closes itself when someone gets there",
+        ]}
+      />
+
+      <SaveButton loading={saving} onClick={onSave}>
+        Save Structure
+      </SaveButton>
+    </div>
+  );
+}
+
+/**
+ * Round-76 — a Singles league has no match layout to build: no doubles, no
+ * per-block lineups, no break slots — just two players racing to a frame
+ * count. So it gets the Race-to editor instead of the builder. This wrapper
+ * calls no hooks of its own, so the two branches can each own theirs.
+ */
 function StructureTab({
+  data,
+  onChange,
+  onSave,
+  saving,
+}: {
+  data: CompetitionInitial;
+  onChange: <K extends keyof CompetitionInitial>(
+    k: K,
+    v: CompetitionInitial[K],
+  ) => void;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  return data.type === "INDIVIDUAL" ? (
+    <SinglesStructure
+      raceToFrames={data.raceToFrames}
+      onChange={(n) => onChange("raceToFrames", n)}
+      onSave={onSave}
+      saving={saving}
+    />
+  ) : (
+    <TeamStructureTab
+      data={data}
+      onChange={onChange}
+      onSave={onSave}
+      saving={saving}
+    />
+  );
+}
+
+function TeamStructureTab({
   data,
   onChange,
   onSave,
@@ -1283,6 +1435,7 @@ function ReviewTab({
   const breaks = data.blocks.filter((b) => b.breakAfterMin).length;
 
   const isWeekly = (data.schedulingType ?? "WEEKLY_ROUNDS") === "WEEKLY_ROUNDS";
+  const isIndividual = data.type === "INDIVIDUAL";
   // Round-74 — elimination has no weekday/fixed-date scheduling; its single
   // matchday is the start date+time, so that's what publish requires instead.
   const isElimination =
@@ -1309,8 +1462,11 @@ function ReviewTab({
     : "—";
   const ready =
     !!data.maxTeams &&
-    !!data.maxPlayersPerTeam &&
-    (singles + doubles) > 0 &&
+    // Round-76 — Singles is gated on its Race to value, not on a block list
+    // (it has none) or a per-team roster size (it has no teams).
+    (isIndividual
+      ? data.raceToFrames > 0
+      : !!data.maxPlayersPerTeam && singles + doubles > 0) &&
     (isElimination
       ? !!data.startDate
       : isWeekly
@@ -1341,12 +1497,7 @@ function ReviewTab({
                     : "—",
                 ],
               ] as [string, string][])),
-          [
-            "Prize pool",
-            data.prizePool
-              ? `${data.prizePool} ${data.currency ?? ""}`.trim()
-              : "—",
-          ],
+          ["Prize pool", formatPrize(data.prizePool) ?? "—"],
         ]}
       />
       <ReviewRow
@@ -1357,11 +1508,21 @@ function ReviewTab({
             "How Participants Apply",
             data.applicationMode === "OPEN" ? "Anyone Can Apply" : "Invite Only",
           ],
-          ["Max Amount of Participants", String(data.maxTeams ?? "—")],
           [
-            "Roster size",
-            `${data.minPlayersPerTeam} – ${data.maxPlayersPerTeam ?? "—"}`,
+            "Max Amount of Participants",
+            data.maxTeams
+              ? `${data.maxTeams} ${isIndividual ? "players" : "teams"}`
+              : "—",
           ],
+          // Singles has no teams, so no roster to review.
+          ...(isIndividual
+            ? []
+            : ([
+                [
+                  "Roster size",
+                  `${data.minPlayersPerTeam} – ${data.maxPlayersPerTeam ?? "—"}`,
+                ],
+              ] as [string, string][])),
         ]}
       />
       <ReviewRow
@@ -1377,12 +1538,18 @@ function ReviewTab({
                 [
                   "Where Matches Are Played",
                   data.matchVenueMode === "TEAM_VENUES"
-                    ? "Team Venues"
+                    ? isIndividual
+                      ? "Free Location"
+                      : "Team Venues"
                     : "Central Venue",
                 ],
                 [
                   "Games per Opponent",
-                  data.gamesPerOpponent >= 2 ? "2 (Home & Away)" : "1 (Only Once)",
+                  data.gamesPerOpponent >= 2
+                    ? isIndividual
+                      ? "2 (Twice)"
+                      : "2 (Home & Away)"
+                    : "1 (Only Once)",
                 ],
                 [
                   "Scheduling Type",
@@ -1408,13 +1575,24 @@ function ReviewTab({
       <ReviewRow
         label="Structure"
         onEdit={() => onEdit("structure")}
-        rows={[
-          [
-            "Match Layout",
-            `${singles + doubles} games (${singles} singles, ${doubles} doubles)` +
-              (breaks ? `, ${breaks} break${breaks === 1 ? "" : "s"}` : ""),
-          ],
-        ]}
+        rows={
+          isIndividual
+            ? [
+                [
+                  "Race To",
+                  `${data.raceToFrames} frame${
+                    data.raceToFrames === 1 ? "" : "s"
+                  }`,
+                ],
+              ]
+            : [
+                [
+                  "Match Layout",
+                  `${singles + doubles} games (${singles} singles, ${doubles} doubles)` +
+                    (breaks ? `, ${breaks} break${breaks === 1 ? "" : "s"}` : ""),
+                ],
+              ]
+        }
       />
 
       {!ready ? (
@@ -1453,13 +1631,21 @@ function ReviewTab({
 function Field({
   label,
   children,
+  align = "left",
 }: {
   label: string;
   children: React.ReactNode;
+  /** "center" stacks the label over a centered control (Singles "Race To"). */
+  align?: "left" | "center";
 }) {
   return (
     <div className="space-y-2">
-      <label className="text-sm font-semibold text-muted-foreground">
+      <label
+        className={cn(
+          "block text-sm font-semibold text-muted-foreground",
+          align === "center" && "text-center",
+        )}
+      >
         {label}
       </label>
       {children}
@@ -1554,9 +1740,20 @@ function SummaryBox({
   );
 }
 
-function InlineNote({ children }: { children: React.ReactNode }) {
+function InlineNote({
+  children,
+  center = false,
+}: {
+  children: React.ReactNode;
+  center?: boolean;
+}) {
   return (
-    <p className="mt-2 rounded-md bg-primary/10 px-3 py-2 text-xs text-primary">
+    <p
+      className={cn(
+        "mt-2 rounded-md bg-primary/10 px-3 py-2 text-xs text-primary",
+        center && "text-center",
+      )}
+    >
       {children}
     </p>
   );

@@ -13,6 +13,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { UpdateTeamMutation } from "@/lib/graphql/operations/team-mutations.operations";
 import { VenuesListQuery } from "@/lib/graphql/operations/venue.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 /**
  * Round-48 — captain-facing editor for Team.homeVenueId. Lives on the team
@@ -56,7 +57,7 @@ export function HomeVenueCard({
     } catch (e) {
       toast.error(
         "Could not update",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }

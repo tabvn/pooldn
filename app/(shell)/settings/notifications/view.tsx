@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@apollo/client/react";
 import {
   Bell,
   ClipboardCheck,
+  Ghost,
   MessagesSquare,
   Sparkles,
   Trophy,
@@ -53,10 +54,12 @@ const CATEGORIES: Category[] = [
     label: "Competitions",
     description:
       "Application status (submitted, approved, rejected, waitlisted), " +
-      "competition start / completion, organizer invites.",
+      "messages between applicants and organizers, competition start / " +
+      "completion, organizer invites.",
     icon: <ClipboardCheck className="size-4" />,
     types: [
       "APPLICATION_SUBMITTED",
+      "APPLICATION_MESSAGE",
       "APPLICATION_APPROVED",
       "APPLICATION_REJECTED",
       "APPLICATION_WAITLISTED",
@@ -85,6 +88,19 @@ const CATEGORIES: Category[] = [
       "COMMUNITY_REPLY",
       "COMMUNITY_MENTION",
       "COMMUNITY_QUOTE",
+    ],
+  },
+  {
+    key: "claims",
+    label: "Profile claims",
+    description:
+      "Someone asking to take over a placeholder profile you organize, and " +
+      "the decision on a claim you filed.",
+    icon: <Ghost className="size-4" />,
+    types: [
+      "SHELL_CLAIM_REQUESTED",
+      "SHELL_CLAIM_APPROVED",
+      "SHELL_CLAIM_REJECTED",
     ],
   },
   {

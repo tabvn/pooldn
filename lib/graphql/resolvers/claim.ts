@@ -8,6 +8,13 @@ import {
   issueEmailToken,
 } from "@/lib/services/email-token.service";
 import { signSessionToken, signRefreshToken, sessionCookie, refreshCookie } from "@/lib/auth/jwt";
+import {
+  findOtherPendingClaims,
+  refreshShellTeamFlags,
+  rejectClaims,
+  teamIdsForUser,
+} from "@/lib/services/shell-claim.service";
+import { NotificationService } from "@/lib/services/notification.service";
 
 /**
  * Round-75 — claim a "shell" (imported placeholder) profile.
@@ -161,6 +168,27 @@ builder.mutationFields((t) => ({
       });
       // Single-use: burn the claim token so the link can't be replayed.
       await consumeEmailToken(ctx.prisma, args.input.token, "CLAIM_PROFILE");
+
+      // Round-88 — the row is a real account now, so anyone who had filed a
+      // self-service claim on it is out of luck, and any team it was the last
+      // placeholder on stops being a placeholder team.
+      const teamIds = await teamIdsForUser(ctx.prisma, user.id);
+      await refreshShellTeamFlags(ctx.prisma, teamIds);
+      const losers = await rejectClaims(
+        ctx.prisma,
+        await findOtherPendingClaims(ctx.prisma, user.id),
+        { note: "The profile was claimed through an organizer's claim link." },
+      );
+      if (losers.length > 0) {
+        const svc = new NotificationService(ctx.prisma);
+        await svc.create({
+          type: "SHELL_CLAIM_REJECTED",
+          title: `${user.name} has been claimed`,
+          message: `Someone claimed ${user.name} with an organizer's claim link, so your request was closed. If that profile is you, talk to the competition organizer.`,
+          recipients: losers.map((l) => l.requesterId),
+          entity: { type: "USER", id: user.id, slug: user.username },
+        });
+      }
 
       // Fire a verification email (best-effort — don't fail the claim on it).
       try {

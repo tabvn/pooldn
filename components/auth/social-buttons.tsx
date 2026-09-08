@@ -1,3 +1,14 @@
+/**
+ * Round-78 — Facebook sign-in is hidden while the integration is unfinished.
+ *
+ * Only the BUTTON is hidden: /api/auth/facebook/start + /callback and the
+ * sign-in page's facebook_* error copy all stay in place, so re-enabling is
+ * this one flag. The Data Deletion callback
+ * (/api/auth/facebook/data-deletion) is registered with Facebook and must
+ * keep responding regardless — don't gate that on this flag.
+ */
+const FACEBOOK_LOGIN_ENABLED = false;
+
 export function SocialButtons({ next }: { next?: string } = {}) {
   const googleHref =
     next && next !== "/"
@@ -17,14 +28,16 @@ export function SocialButtons({ next }: { next?: string } = {}) {
         <GoogleIcon />
         Continue with Google
       </a>
-      <a
-        href={facebookHref}
-        aria-label="Continue with Facebook"
-        className="flex h-11 w-full items-center justify-center gap-3 rounded-lg bg-[#1877F2] text-sm font-semibold text-white transition hover:opacity-90"
-      >
-        <FacebookIcon />
-        Continue with Facebook
-      </a>
+      {FACEBOOK_LOGIN_ENABLED ? (
+        <a
+          href={facebookHref}
+          aria-label="Continue with Facebook"
+          className="flex h-11 w-full items-center justify-center gap-3 rounded-lg bg-[#1877F2] text-sm font-semibold text-white transition hover:opacity-90"
+        >
+          <FacebookIcon />
+          Continue with Facebook
+        </a>
+      ) : null}
     </div>
   );
 }

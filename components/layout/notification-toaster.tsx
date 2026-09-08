@@ -6,8 +6,10 @@ import { useSubscription } from "@apollo/client/react";
 import { toast as sonner } from "sonner";
 import {
   CheckCircle2,
+  Ghost,
   Heart,
   MessageCircle,
+  MessageSquare,
   Quote,
   Reply,
   Trophy,
@@ -35,6 +37,7 @@ import { NotificationReceivedSubscription } from "@/lib/graphql/operations/subsc
 const ICONS: Record<string, React.ReactNode> = {
   WELCOME: <Bell className="size-4" />,
   APPLICATION_SUBMITTED: <CheckCircle2 className="size-4" />,
+  APPLICATION_MESSAGE: <MessageSquare className="size-4" />,
   APPLICATION_APPROVED: <CheckCircle2 className="size-4" />,
   APPLICATION_REJECTED: <XCircle className="size-4" />,
   APPLICATION_WAITLISTED: <Bell className="size-4" />,
@@ -48,6 +51,9 @@ const ICONS: Record<string, React.ReactNode> = {
   COMMUNITY_REPLY: <Reply className="size-4" />,
   COMMUNITY_MENTION: <AtSign className="size-4" />,
   COMMUNITY_QUOTE: <Quote className="size-4" />,
+  SHELL_CLAIM_REQUESTED: <Ghost className="size-4" />,
+  SHELL_CLAIM_APPROVED: <CheckCircle2 className="size-4" />,
+  SHELL_CLAIM_REJECTED: <XCircle className="size-4" />,
 };
 
 export function NotificationToaster({ enabled }: { enabled: boolean }) {

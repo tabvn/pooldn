@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { UpdateMvpConfigMutation } from "@/lib/graphql/operations/competition.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 export type MvpConfig = {
   ptAppearance: number;
@@ -110,7 +111,7 @@ export function MvpCalculator({
     } catch (e) {
       toast.error(
         "Could not update rating",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -161,7 +162,7 @@ export function MvpCalculator({
             </div>
             <div className="max-w-[240px]">
               {num("minAppearancePct", "Min % required to be in the rating", 100)}
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground">
                 Appearance % = matchdays the player showed up ÷ matchdays their
                 team played. Players below this stay in the table but aren&apos;t
                 ranked.

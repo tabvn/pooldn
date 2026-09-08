@@ -1,6 +1,7 @@
 import { Badge, type BadgeProps } from "./badge";
 import type {
   CompetitionStatus,
+  CompetitionType,
   ApplicationStatus,
   MatchStatus,
 } from "@/lib/generated/prisma/enums";
@@ -47,6 +48,22 @@ export const competitionStatusLabel: Record<CompetitionStatus, string> = {
   CANCELLED: "Cancelled",
 };
 
+/**
+ * Round-76 — "Accepting teams" is wrong for a Singles (INDIVIDUAL)
+ * competition: players register themselves, there is no team. Pass the
+ * competition type wherever it's on hand; without it the label falls back to
+ * the team wording above.
+ */
+export function competitionStatusLabelFor(
+  status: CompetitionStatus,
+  type?: CompetitionType | null,
+): string {
+  if (status === "OPEN_FOR_APPLICATIONS" && type === "INDIVIDUAL") {
+    return "Accepting players";
+  }
+  return competitionStatusLabel[status] ?? format(status);
+}
+
 const applicationLabel: Record<ApplicationStatus, string> = {
   PENDING: "Awaiting review",
   APPROVED: "Confirmed",
@@ -64,10 +81,16 @@ const matchLabel: Record<MatchStatus, string> = {
   POSTPONED: "Postponed",
 };
 
-export function CompetitionStatusChip({ status }: { status: CompetitionStatus }) {
+export function CompetitionStatusChip({
+  status,
+  type,
+}: {
+  status: CompetitionStatus;
+  type?: CompetitionType | null;
+}) {
   return (
     <Badge variant={competitionVariant[status]}>
-      {competitionStatusLabel[status] ?? format(status)}
+      {competitionStatusLabelFor(status, type)}
     </Badge>
   );
 }

@@ -24,6 +24,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import type { CompetitionStatus } from "@/lib/generated/prisma/enums";
+import { errorText } from "@/lib/apollo/error-message";
 import {
   CancelCompetitionMutation,
   CloseApplicationsMutation,
@@ -207,7 +208,7 @@ export function LifecycleActions({
                       } catch (e) {
                         toast.error(
                           `${item.label} failed`,
-                          e instanceof Error ? e.message : "Try again.",
+                          errorText(e, "Try again."),
                         );
                       }
                     }

@@ -8,6 +8,11 @@ import { LocalDateTime } from "@/components/ui/local-datetime";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { ProfileActionsMenu } from "@/components/profile/profile-actions-menu";
 import { DetailHero } from "@/components/layout/detail-hero";
+import { ShellBadge, ShellTeamBadge } from "@/components/shell/shell-badge";
+import {
+  ClaimProfilePanel,
+  ClaimReviewNudge,
+} from "@/components/shell/claim-profile-panel";
 import { getClient } from "@/lib/apollo/client";
 import { getViewer } from "@/lib/auth/server";
 import {
@@ -48,6 +53,9 @@ export default async function ProfilePage({
             size="lg"
             src={user.avatarUrl ?? undefined}
             fallback={user.name}
+            // Round-88 — a placeholder gets the ghost mark instead of a face,
+            // here and on every roster it appears on.
+            ghost={user.isShell}
           />
         }
         actions={
@@ -63,6 +71,7 @@ export default async function ProfilePage({
         meta={
           <>
             <span>@{user.username}</span>
+            {user.isShell ? <ShellBadge /> : null}
             {user.bannedAt ? (
               <Badge variant="danger" data-testid="profile-banned-badge">
                 Banned
@@ -81,6 +90,24 @@ export default async function ProfilePage({
         }
       />
       <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-4 md:space-y-8 md:px-10 md:py-6">
+        {/* Round-88 — an unclaimed placeholder leads with "is this you?".
+            Everything below (bio, teams, history) belongs to whoever claims
+            it, so the claim panel comes first. */}
+        {user.isShell ? (
+          <>
+            <ClaimProfilePanel
+              shellUserId={user.id}
+              shellName={user.name}
+              username={user.username}
+              isSignedIn={!!viewer}
+              canClaim={user.viewerCanClaim}
+              blockedReason={user.claimBlockedReason ?? null}
+              myClaim={user.myShellClaim ?? null}
+            />
+            <ClaimReviewNudge count={user.pendingClaimCount} href="/claims" />
+          </>
+        ) : null}
+
         {/* About card — full width. The hero above carries the avatar, name,
             @username, meta and actions, so this card is just the bio (+ the
             viewer's own email + join date). */}
@@ -95,7 +122,9 @@ export default async function ProfilePage({
               <p className="italic text-muted-foreground">
                 {isSelf
                   ? "Your bio is empty — tell people who you are."
-                  : "This player hasn't written a bio yet."}
+                  : user.isShell
+                    ? "Nobody has claimed this profile yet, so there's no bio — just the results an organizer recorded."
+                    : "This player hasn't written a bio yet."}
               </p>
             )}
             {isSelf ? (
@@ -158,6 +187,7 @@ export default async function ProfilePage({
                               Captain
                             </Badge>
                           ) : null}
+                          {t.isShell ? <ShellTeamBadge /> : null}
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {t.members.length} member

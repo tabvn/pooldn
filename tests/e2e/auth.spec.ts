@@ -9,11 +9,11 @@ test.describe("Sign In", () => {
       page.getByRole("heading", { name: "Welcome to PoolDN" }),
     ).toBeVisible();
     await expect(page.getByText("Join the Community")).toBeVisible();
+    // Both social options are anchors (role=link), not buttons. Facebook is
+    // behind FACEBOOK_LOGIN_ENABLED in components/auth/social-buttons.tsx and
+    // is deliberately hidden while that integration is unfinished.
     await expect(
-      page.getByRole("button", { name: /Continue with Google/i }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: /Continue with Facebook/i }),
+      page.getByRole("link", { name: /Continue with Google/i }),
     ).toBeVisible();
     await expect(page.getByText("OR", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Email or username")).toBeVisible();
@@ -67,7 +67,7 @@ test.describe("Sign In", () => {
 
     await expect(
       page.locator("form").getByRole("alert"),
-    ).toContainText(/Invalid credentials/i);
+    ).toContainText(/does not match/i);
   });
 
   test("Sign In honors ?next= redirect", async ({ page }) => {

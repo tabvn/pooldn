@@ -172,6 +172,80 @@ export const InviteTeamsToCompetitionMutation = graphql(/* GraphQL */ `
   }
 `);
 
+// Round-77 — applicant ↔ organizer conversation on an application.
+export const ApplicationThreadQuery = graphql(/* GraphQL */ `
+  query ApplicationThread($id: ID!) {
+    competitionApplication(id: $id) {
+      id
+      status
+      messageCount
+      unreadMessageCount
+      messages {
+        id
+        body
+        createdAt
+        author {
+          id
+          name
+          username
+          avatarUrl
+        }
+      }
+    }
+  }
+`);
+
+export const PostApplicationMessageMutation = graphql(/* GraphQL */ `
+  mutation PostApplicationMessage($applicationId: ID!, $body: String!) {
+    postApplicationMessage(applicationId: $applicationId, body: $body) {
+      id
+      body
+      createdAt
+      author {
+        id
+        name
+        username
+        avatarUrl
+      }
+    }
+  }
+`);
+
+// Round-77 — clears the viewer's Messages badge. Returns the application so
+// Apollo normalises the new counts straight into whatever list is on screen.
+export const MarkApplicationThreadReadMutation = graphql(/* GraphQL */ `
+  mutation MarkApplicationThreadRead($applicationId: ID!) {
+    markApplicationThreadRead(applicationId: $applicationId) {
+      id
+      messageCount
+      unreadMessageCount
+    }
+  }
+`);
+
+// Round-76 — Singles (INDIVIDUAL) comps invite players, not teams.
+export const InvitePlayersToCompetitionMutation = graphql(/* GraphQL */ `
+  mutation InvitePlayersToCompetition(
+    $competitionId: ID!
+    $userIds: [ID!]!
+    $personalNote: String
+  ) {
+    invitePlayersToCompetition(
+      competitionId: $competitionId
+      userIds: $userIds
+      personalNote: $personalNote
+    ) {
+      id
+      status
+      applicant {
+        id
+        name
+        username
+      }
+    }
+  }
+`);
+
 // Round-50 — organizer/admin lock toggles + captain-initiated roster change
 // requests that require organizer review.
 export const SetCompetitionLocksMutation = graphql(/* GraphQL */ `

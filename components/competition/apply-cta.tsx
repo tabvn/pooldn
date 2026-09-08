@@ -18,22 +18,26 @@ import { Button } from "@/components/ui/button";
  */
 export function ApplyCta({
   competitionSlug,
+  competitionType,
   myApplication,
 }: {
   competitionSlug: string;
+  /** Round-76 — Singles entrants join as themselves, not with a team. */
+  competitionType?: string | null;
   myApplication: {
     id: string;
     status: string;
   } | null;
 }) {
   const s = myApplication?.status;
+  const isIndividual = competitionType === "INDIVIDUAL";
 
   // No live application (never applied, or a previously withdrawn/rejected
   // one) → the plain entry CTA. Submitting resurrects a CANCELLED/REJECTED row.
   if (!myApplication || s === "CANCELLED" || s === "REJECTED") {
     return (
       <Link href={`/competitions/${competitionSlug}/apply`}>
-        <Button>Apply with my team</Button>
+        <Button>{isIndividual ? "Enter competition" : "Apply with my team"}</Button>
       </Link>
     );
   }

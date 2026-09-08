@@ -63,7 +63,7 @@ export function TabNav({
                     : undefined
                 }
                 className={cn(
-                  "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold leading-none",
+                  "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold leading-none",
                   isActive
                     ? "bg-accent-foreground/15 text-accent-foreground"
                     : "bg-primary text-primary-foreground",

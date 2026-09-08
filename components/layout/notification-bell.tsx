@@ -87,7 +87,7 @@ export function NotificationBell({ signedIn }: { signedIn: boolean }) {
         <Bell className="size-4" />
         {count > 0 && (
           <span
-            className="absolute -top-0.5 -right-0.5 inline-flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground"
+            className="absolute -top-0.5 -right-0.5 inline-flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[11px] font-bold text-destructive-foreground"
             data-testid="notification-badge"
           >
             {count > 9 ? "9+" : count}
@@ -158,7 +158,7 @@ export function NotificationBell({ signedIn }: { signedIn: boolean }) {
                             {n.message}
                           </span>
                         ) : null}
-                        <span className="mt-1 block text-[11px] uppercase tracking-wider text-muted-foreground">
+                        <span className="mt-1 block text-xs uppercase tracking-wider text-muted-foreground">
                           {new Date(n.createdAt).toLocaleString()}
                         </span>
                       </span>

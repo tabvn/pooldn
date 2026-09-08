@@ -36,11 +36,15 @@ export default async function MatchdaysPage({
   const preStart =
     header.status === "OPEN_FOR_APPLICATIONS" ||
     header.status === "APPLICATIONS_CLOSED";
+  // Round-76 — a knockout has no season: its schedule is a bracket drawn at
+  // random, one matchday per round. Same empty state, bracket vocabulary —
+  // matches the wording SeasonCalendarCta already uses for this format.
+  const isBracket = header.format === "SINGLE_ELIMINATION";
 
   if (c.matchdays.length === 0) {
     // Round-61 — Figma "Season Calendar" empty state (node 299:9670). Before
-    // the season is generated the Matchdays tab leads with the brand mark, an
-    // explainer, and the close-and-generate CTA (organizer only).
+    // the schedule is generated the Matchdays tab leads with the brand mark,
+    // an explainer, and the close-and-generate CTA (organizer only).
     if (preStart) {
       return (
         <div className="flex flex-col items-center gap-5 rounded-[10px] border border-border bg-card px-5 py-10">
@@ -49,21 +53,33 @@ export default async function MatchdaysPage({
           </div>
           <div className="flex w-full flex-col items-center gap-5">
             <h2 className="text-center text-xl font-semibold text-foreground">
-              Season Calendar
+              {isBracket ? "Knockout Bracket" : "Season Calendar"}
             </h2>
             <div className="w-full rounded-lg border border-[#00598a] bg-[#052f4a] p-3 text-center text-sm leading-5 text-[#dff2fe]">
               {canManage ? (
                 <>
-                  <p>To generate season calendar you need to close applications.</p>
+                  <p>
+                    {isBracket
+                      ? "To draw the bracket you need to close applications."
+                      : "To generate season calendar you need to close applications."}
+                  </p>
                   <p>
                     Unaccepted invites and applications will be automatically
                     rejected.
                   </p>
                   <p>
-                    Matchdays will be generated based on confirmed teams. You
-                    won&rsquo;t be able to invite or accept new participants.
+                    {isBracket
+                      ? "Confirmed teams will be drawn into the bracket at random, one matchday per round."
+                      : "Matchdays will be generated based on confirmed teams."}{" "}
+                    You won&rsquo;t be able to invite or accept new
+                    participants.
                   </p>
                 </>
+              ) : isBracket ? (
+                <p>
+                  The bracket hasn&rsquo;t been drawn yet. Rounds will appear
+                  here once the organizer draws it.
+                </p>
               ) : (
                 <p>
                   The season schedule hasn&rsquo;t been published yet. Matchdays
@@ -77,6 +93,7 @@ export default async function MatchdaysPage({
               competitionId={header.id}
               status={header.status}
               format={header.format}
+              type={header.type}
               approvedTeamCount={header.approvedTeamCount}
             />
           ) : null}

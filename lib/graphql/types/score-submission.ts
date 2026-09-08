@@ -11,7 +11,10 @@ builder.prismaObject("MatchScoreSubmission", {
     id: t.exposeID("id"),
     match: t.relation("match"),
     submittedBy: t.relation("submittedBy"),
-    forTeam: t.relation("forTeam"),
+    // Round-79 — the side this submission speaks for: a team on TEAMS/DOUBLES,
+    // the player themselves on a Singles match. Exactly one is set.
+    forTeam: t.relation("forTeam", { nullable: true }),
+    forUser: t.relation("forUser", { nullable: true }),
     homeScore: t.exposeInt("homeScore"),
     awayScore: t.exposeInt("awayScore"),
     status: t.expose("status", { type: ScoreSubmissionStatusEnum }),

@@ -147,6 +147,15 @@ model Feedback {
   @@map("feedback")
 }
 
+// Round-88 — lifecycle of a self-service shell claim. CANCELLED is the
+// requester withdrawing before anyone reviewed it.
+enum ShellClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 enum NotificationType {
   WELCOME
   APPLICATION_SUBMITTED
@@ -164,11 +173,20 @@ enum NotificationType {
   // Round-49 — fired when an organizer batch-invites a team to a
   // competition. Recipient is the team captain + every team member.
   COMPETITION_INVITE
+  // Round-77 — a message posted on a competition application thread.
+  // Recipient is whichever side didn't write it (organizer ↔ applicant).
+  APPLICATION_MESSAGE
   COMMUNITY_LIKE
   COMMUNITY_COMMENT
   COMMUNITY_REPLY
   COMMUNITY_MENTION
   COMMUNITY_QUOTE
+  // Round-88 — self-service shell claims. REQUESTED goes to the reviewers
+  // (organizers of the competitions the shell plays in, plus admins);
+  // APPROVED / REJECTED go back to the player who asked.
+  SHELL_CLAIM_REQUESTED
+  SHELL_CLAIM_APPROVED
+  SHELL_CLAIM_REJECTED
 }
 
 enum NotificationEntityType {
@@ -238,6 +256,9 @@ model User {
   // applicant directly (no team). Back-relation for the new
   // CompetitionApplication.applicantUserId column.
   competitionApplications CompetitionApplication[] @relation("CompetitionApplicant")
+  applicationMessages     ApplicationMessage[]     @relation("ApplicationMessageAuthor")
+  applicationThreadReads  ApplicationThreadRead[]  @relation("ApplicationThreadReader")
+  scoreSubmissionsFor     MatchScoreSubmission[]   @relation("ScoreForPlayer")
   rosterChangeRequested RosterChangeRequest[]    @relation("RosterChangeRequestedBy")
   rosterChangeReviewed  RosterChangeRequest[]    @relation("RosterChangeReviewedBy")
   rosterChangePlayerOf  RosterChangePlayer[]
@@ -267,6 +288,12 @@ model User {
   securityEvents          SecurityEvent[]
   rescheduleRequests      MatchRescheduleRequest[] @relation("RescheduleRequestedBy")
   rescheduleReviews       MatchRescheduleRequest[] @relation("RescheduleReviewedBy")
+  // Round-88 — self-service shell claims. `claimsOnMe` are the requests
+  // pointing AT this row while it is still a shell; `claimsRequested` are the
+  // ones this (real) account has filed on shells.
+  claimsOnMe              ShellClaimRequest[]      @relation("ShellClaimTarget")
+  claimsRequested         ShellClaimRequest[]      @relation("ShellClaimRequester")
+  claimsReviewed          ShellClaimRequest[]      @relation("ShellClaimReviewer")
 
   @@index([cityId])
   @@index([role])
@@ -372,6 +399,11 @@ model Team {
   homeVenueId String?
   homeVenue   Venue?   @relation("VenueHomeTeams", fields: [homeVenueId], references: [id], onDelete: SetNull)
   isActive    Boolean  @default(true)
+  // Round-88 — a placeholder team, created so an organizer can run a
+  // competition that includes a side which isn't on PoolDN yet. Set at
+  // import/creation time; cleared automatically once every member has been
+  // claimed by a real account (see lib/services/shell-claim.service.ts).
+  isShell     Boolean   @default(false)
   // Round-46 — admin can ban a team (members keep their data but the team is
   // locked: no roster edits, no new applications, no matches scheduled).
   bannedAt    DateTime?
@@ -395,6 +427,7 @@ model Team {
 
   @@index([captainId])
   @@index([isActive])
+  @@index([isShell])
   @@map("teams")
 }
 
@@ -499,8 +532,12 @@ model Competition {
   startDate           DateTime?
   endDate             DateTime?
   schedulingType      SchedulingType    @default(FLEXIBLE)
-  prizePool           Decimal?          @db.Decimal(18, 2)
-  currency            String            @default("VND")
+  // Round-76 — free text, not a number. Organizers write prizes the way they
+  // say them ("10,000,000", "5M + trophy", "Cash + table time"), and a Decimal
+  // column rejected every one of those with a validation error. Display code
+  // formats it with thousands separators only when it IS a bare number
+  // (see formatPrize in lib/utils.ts).
+  prizePool                   String?
   prizeDistribution   Json?
   pointsWin           Int               @default(3)
   pointsDraw          Int               @default(1)
@@ -644,6 +681,8 @@ model CompetitionApplication {
 
   applicationPlayers ApplicationPlayer[]
   rosterChangeRequests RosterChangeRequest[]
+  messages             ApplicationMessage[]
+  threadReads          ApplicationThreadRead[]
 
   @@unique([competitionId, teamId])
   @@unique([competitionId, applicantUserId])
@@ -652,6 +691,45 @@ model CompetitionApplication {
   @@index([status])
   @@index([rosterCaptainUserId])
   @@map("competition_applications")
+}
+
+// Round-77 — the conversation attached to a competition application.
+// The apply form's "Message to organizer" used to write only to
+// CompetitionApplication.message, which nothing ever rendered — organizers
+// saw an in-app "X applied" ping and no way to read or answer. This is the
+// thread behind that: the applicant's cover note is row 1, the organizer can
+// reply, and both sides get a notification + email per message.
+model ApplicationMessage {
+  id            String                 @id @default(cuid())
+  applicationId String
+  application   CompetitionApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  authorId      String
+  author        User                   @relation("ApplicationMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body          String
+  createdAt     DateTime               @default(now())
+
+  @@index([applicationId, createdAt])
+  @@index([authorId])
+  @@map("application_messages")
+}
+
+// Round-77 — per-viewer read cursor on an application thread. A thread has
+// exactly two sides, so a single readAt on the message row can't work: the
+// same message is read by the organizer and unread by the applicant. One row
+// per (application, user); "unread" is anything newer than lastReadAt that
+// the viewer didn't write themselves.
+model ApplicationThreadRead {
+  id            String                 @id @default(cuid())
+  applicationId String
+  application   CompetitionApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User                   @relation("ApplicationThreadReader", fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt    DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  @@unique([applicationId, userId])
+  @@index([userId])
+  @@map("application_thread_reads")
 }
 
 model ApplicationPlayer {
@@ -953,8 +1031,13 @@ model MatchScoreSubmission {
   match          Match                 @relation(fields: [matchId], references: [id], onDelete: Cascade)
   submittedById  String
   submittedBy    User                  @relation("ScoreSubmittedBy", fields: [submittedById], references: [id])
-  forTeamId      String
-  forTeam        Team                  @relation("ScoreForTeam", fields: [forTeamId], references: [id])
+  // Round-79 — a submission is made FOR a side. On TEAMS/DOUBLES that side is
+  // a team; on a Singles (1v1) match it's the player themselves, so exactly
+  // one of these is set (enforced in the resolver).
+  forTeamId      String?
+  forTeam        Team?                 @relation("ScoreForTeam", fields: [forTeamId], references: [id])
+  forUserId      String?
+  forUser        User?                 @relation("ScoreForPlayer", fields: [forUserId], references: [id])
   homeScore      Int
   awayScore      Int
   framesJson     Json?
@@ -974,6 +1057,7 @@ model MatchScoreSubmission {
   @@unique([matchId, submittedById])
   @@index([matchId])
   @@index([status])
+  @@index([forUserId])
   @@map("match_score_submissions")
 }
 
@@ -1140,7 +1224,6 @@ model DigestRun {
 
 /**
  * Round-47 — opaque single-use tokens for email-driven flows.
- *
  * `purpose` distinguishes verify-email from password-reset etc., so a leaked
  * verify token can't be replayed against the reset endpoint. Tokens are
  * stored as `tokenHash` (sha256) — the plaintext value only exists in the
@@ -1161,6 +1244,46 @@ model EmailToken {
 
   @@index([userId, purpose])
   @@map("email_tokens")
+}
+
+// Round-88 — a real person asking to take over a shell (placeholder) profile.
+//
+// The token link (/claim/<token>) is still the fast path an organizer can hand
+// out directly. This is the self-service path: anyone signed in who finds their
+// placeholder on a roster asks for it, and an organizer of a competition that
+// shell plays in — or an admin — approves. Approval MERGES the shell into the
+// requester's account (see lib/services/shell-claim.service.ts), which is what
+// lets one person claim several placeholders across different competitions.
+model ShellClaimRequest {
+  id            String  @id @default(cuid())
+  // Nullable + SetNull on purpose: approving DELETES the shell row (its rows
+  // move to the requester), and the decision history has to outlive it. The
+  // denormalised name/username below are what the reviewed list renders after
+  // that point.
+  shellUserId   String?
+  shellUser     User?   @relation("ShellClaimTarget", fields: [shellUserId], references: [id], onDelete: SetNull)
+  shellName     String
+  shellUsername String
+
+  requesterId String
+  requester   User   @relation("ShellClaimRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+
+  status  ShellClaimStatus @default(PENDING)
+  /// The claimant's note to the organizer — how they can be recognised.
+  message String?
+
+  reviewNote   String?
+  reviewedById String?
+  reviewedBy   User?     @relation("ShellClaimReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shellUserId, status])
+  @@index([requesterId, status])
+  @@index([status, createdAt])
+  @@map("shell_claim_requests")
 }
 
 /**

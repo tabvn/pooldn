@@ -13,9 +13,11 @@ import { CountryFlag } from "@/components/ui/country-flag";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { InvitePicker } from "@/components/team/invite-picker";
+import { ShellBadge } from "@/components/shell/shell-badge";
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
 import { TeamDetailQuery } from "@/lib/graphql/operations/team.operations";
 import { RemoveTeamMemberMutation } from "@/lib/graphql/operations/team-mutations.operations";
+import { errorText } from "@/lib/apollo/error-message";
 import {
   CancelTeamInvitationMutation,
   InviteToTeamMutation,
@@ -162,7 +164,7 @@ export function TeamPlayers({ slug }: { slug: string }) {
     } catch (e) {
       toast.error(
         "Could not transfer captaincy",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -196,6 +198,7 @@ export function TeamPlayers({ slug }: { slug: string }) {
                       size="md"
                       src={m.user.avatarUrl ?? undefined}
                       fallback={m.user.name}
+                      ghost={m.user.isShell}
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 font-semibold">
@@ -204,6 +207,7 @@ export function TeamPlayers({ slug }: { slug: string }) {
                           code={m.user.nationality}
                           className="text-base leading-none"
                         />
+                        {m.user.isShell ? <ShellBadge /> : null}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         @{m.user.username}
@@ -227,6 +231,7 @@ export function TeamPlayers({ slug }: { slug: string }) {
                       size="md"
                       src={m.user.avatarUrl ?? undefined}
                       fallback={m.user.name}
+                      ghost={m.user.isShell}
                     />
                   </Link>
                   <div className="min-w-0 flex-1">
@@ -240,6 +245,9 @@ export function TeamPlayers({ slug }: { slug: string }) {
                         className="ml-1.5 leading-none"
                       />
                     </Link>
+                    {m.user.isShell ? (
+                      <ShellBadge className="ml-1.5 align-middle" />
+                    ) : null}
                     <div className="text-xs text-muted-foreground">
                       @{m.user.username}
                     </div>

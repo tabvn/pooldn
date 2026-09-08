@@ -53,11 +53,11 @@ export default async function EditCompetitionPage({
           description: c.description ?? null,
           startDate: c.startDate ?? null,
           prizePool: c.prizePool ?? null,
-          currency: c.currency ?? "VND",
           minTeams: c.minTeams ?? 2,
           maxTeams: c.maxTeams ?? null,
           minPlayersPerTeam: c.minPlayersPerTeam ?? 1,
           maxPlayersPerTeam: c.maxPlayersPerTeam ?? null,
+          raceToFrames: c.raceToFrames ?? 5,
           applicationMode: (c.applicationMode ?? "OPEN") as
             | "OPEN"
             | "INVITE_ONLY",

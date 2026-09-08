@@ -13,6 +13,7 @@ import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { CitiesQuery } from "@/lib/graphql/operations/competition.operations";
+import { errorText } from "@/lib/apollo/error-message";
 import {
   CreateVenueMutation,
   DeleteVenueMutation,
@@ -138,7 +139,7 @@ export function VenueForm({ mode }: { mode: Mode }) {
     } catch (e) {
       toast.error(
         "Could not save venue",
-        e instanceof Error ? e.message : undefined,
+        errorText(e),
       );
     }
   });

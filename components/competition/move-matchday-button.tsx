@@ -8,6 +8,7 @@ import { CalendarClock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { ShiftMatchdayMutation } from "@/lib/graphql/operations/matchday.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 function toDateInput(iso: string): string {
   const d = new Date(iso);
@@ -72,7 +73,7 @@ export function MoveMatchdayButton({
     } catch (e) {
       toast.error(
         "Could not move matchday",
-        e instanceof Error ? e.message : undefined,
+        errorText(e),
       );
     }
   }

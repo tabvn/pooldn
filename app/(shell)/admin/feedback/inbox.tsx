@@ -13,6 +13,7 @@ import { LocalDateTime } from "@/components/ui/local-datetime";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { PageTitle } from "@/components/layout/page-title";
+import { errorText } from "@/lib/apollo/error-message";
 import {
   Table,
   TableBody,
@@ -181,7 +182,7 @@ export function FeedbackInbox() {
                   <TableRow>
                     <TableCell colSpan={6}>
                       <p className="py-10 text-center text-sm text-destructive">
-                        Could not load feedback: {error.message}
+                        Could not load feedback: {errorText(error, "please retry")}
                       </p>
                     </TableCell>
                   </TableRow>

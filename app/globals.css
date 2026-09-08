@@ -53,6 +53,29 @@
     sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
+  /* Round-89 — readability pass. Test users found the app hard to read, and
+   * the cause was size, not colour: the interface leans on text-xs (12px) and
+   * text-sm (14px) for content people actually read — rosters, standings,
+   * match cards — not just labels. Every step below moves up ~1px (xs 12→13,
+   * sm 14→15, base 16→17, lg 18→19, xl 20→21, 2xl 24→25) with line-height
+   * following, which lifts the whole app without touching spacing tokens (rem
+   * padding/sizing is unchanged, so no layout is re-flowed).
+   *
+   * 3xl and up are page titles — already large, and bumping them pushes the
+   * hero bands taller — so they keep Tailwind's defaults. */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.375rem;
+  --text-base: 1.0625rem;
+  --text-base--line-height: 1.625rem;
+  --text-lg: 1.1875rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.3125rem;
+  --text-xl--line-height: 1.875rem;
+  --text-2xl: 1.5625rem;
+  --text-2xl--line-height: 2.125rem;
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -78,7 +101,11 @@
   --secondary-foreground: #ffffff;
 
   --muted: #22292b;
-  --muted-foreground: #9ca8ab; /* Mist-400 */
+  /* Round-89 — lifted from Mist-400 (#9ca8ab) so secondary text clears AAA on
+   * every surface it lands on, including the lighter Mist-800 panels where it
+   * used to sit at 6.1:1. Mist-400 itself is unchanged — it's a Figma brand
+   * ramp step, not a text role. */
+  --muted-foreground: #b3bdc0;
 
   --accent: #00786f; /* Teal-700 */
   --accent-foreground: #ffffff;

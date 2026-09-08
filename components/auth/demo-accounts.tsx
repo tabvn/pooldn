@@ -56,9 +56,9 @@ export function DemoAccounts() {
         <p className="text-xs font-semibold uppercase tracking-wider text-white/70">
           Demo accounts
         </p>
-        <span className="text-[10px] text-white/50">pw: {DEMO_PASSWORD}</span>
+        <span className="text-[11px] text-white/70">pw: {DEMO_PASSWORD}</span>
       </div>
-      <p className="text-xs text-white/50">
+      <p className="text-xs text-white/70">
         One-click login for each role (dev fixtures).
       </p>
       <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
@@ -75,10 +75,10 @@ export function DemoAccounts() {
                 <span className="text-sm font-medium text-white">
                   {a.name}
                 </span>
-                <span className="text-[11px] text-white/50">@{a.username}</span>
+                <span className="text-xs text-white/70">@{a.username}</span>
               </div>
               <span
-                className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${roleColor[a.role]}`}
+                className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider ${roleColor[a.role]}`}
               >
                 {a.role.replace(/_/g, " ")}
               </span>

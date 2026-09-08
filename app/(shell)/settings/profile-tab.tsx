@@ -19,6 +19,7 @@ import {
   ViewerSettingsQuery,
 } from "@/lib/graphql/operations/profile.operations";
 import { ViewerQuery } from "@/lib/graphql/operations/competition.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 const schema = z.object({
   name: z.string().min(1, "Required"),
@@ -77,7 +78,7 @@ export function ProfileTab() {
     } catch (e) {
       toast.error(
         "Could not save",
-        e instanceof Error ? e.message : undefined,
+        errorText(e),
       );
     }
   });

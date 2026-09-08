@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { LeaveTeamMutation } from "@/lib/graphql/operations/team-collab.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 export function LeaveTeamButton({
   teamId,
@@ -35,7 +36,7 @@ export function LeaveTeamButton({
     } catch (e) {
       toast.error(
         "Could not leave team",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }

@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { ApplicationStatusChip } from "@/components/ui/status-chip";
 import { useToast } from "@/components/ui/toast";
 import { CompetitionApplicationDetailQuery } from "@/lib/graphql/operations/competition.operations";
+import { errorText } from "@/lib/apollo/error-message";
 import {
   CancelRosterChangeRequestMutation,
   DecideRosterChangeRequestMutation,
@@ -153,7 +154,7 @@ export function ApplicationDetailView({
     } catch (e) {
       toast.error(
         "Could not approve",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -168,7 +169,7 @@ export function ApplicationDetailView({
     } catch (e) {
       toast.error(
         "Could not reject",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -187,7 +188,7 @@ export function ApplicationDetailView({
     } catch (e) {
       toast.error(
         "Could not finalize",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -202,7 +203,7 @@ export function ApplicationDetailView({
     } catch (e) {
       toast.error(
         "Could not withdraw",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -510,7 +511,7 @@ export function ApplicationDetailView({
             } catch (e) {
               toast.error(
                 "Could not save",
-                e instanceof Error ? e.message : "Try again.",
+                errorText(e, "Try again."),
               );
             }
           }}
@@ -676,10 +677,10 @@ function RosterDiffPanel({
           <details className="group rounded-md border border-border bg-background">
             <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-xs font-semibold text-muted-foreground">
               <span>Kept ({kept.length})</span>
-              <span className="text-[10px] uppercase tracking-wider group-open:hidden">
+              <span className="text-[11px] uppercase tracking-wider group-open:hidden">
                 Show
               </span>
-              <span className="hidden text-[10px] uppercase tracking-wider group-open:inline">
+              <span className="hidden text-[11px] uppercase tracking-wider group-open:inline">
                 Hide
               </span>
             </summary>
@@ -771,7 +772,7 @@ function DiffColumn({
                     className="ml-1 leading-none"
                   />
                 </div>
-                <div className="truncate text-[11px] text-muted-foreground">
+                <div className="truncate text-xs text-muted-foreground">
                   @{p.username}
                 </div>
               </div>

@@ -413,7 +413,6 @@ async function main() {
       startDate: new Date("2026-06-20"),
       endDate: new Date("2026-10-16"),
       prizePool: "5000000",
-      currency: "VND",
     },
   });
 
@@ -437,7 +436,6 @@ async function main() {
       startDate: new Date("2026-09-01"),
       endDate: new Date("2026-11-30"),
       prizePool: "3000000",
-      currency: "VND",
     },
   });
 
@@ -498,7 +496,6 @@ async function main() {
       endDate: new Date("2027-06-30"),
       applicationDeadline: new Date("2027-02-15"),
       prizePool: "8000000",
-      currency: "VND",
     },
   });
 
@@ -546,7 +543,6 @@ async function main() {
       endDate: new Date("2027-02-28"),
       applicationDeadline: new Date("2026-11-15"),
       prizePool: "4000000",
-      currency: "VND",
     },
   });
 

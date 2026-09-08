@@ -19,36 +19,53 @@ import {
 import { useToast } from "@/components/ui/toast";
 import type { CompetitionStatus } from "@/lib/generated/prisma/enums";
 import { CloseApplicationsMutation } from "@/lib/graphql/operations/competition-mutations.operations";
+import { errorText } from "@/lib/apollo/error-message";
 import {
   GenerateMatchdaysMutation,
   PreviewMatchdaysQuery,
 } from "@/lib/graphql/operations/matchday.operations";
 
 /**
- * Round-63 — pre-start "Season Calendar" flow.
+ * Round-63 — pre-start schedule-generation flow.
  *
- * Opens a preview sheet: the organizer sets the games-per-venue cap, reviews
- * the dry-run matchday list (with venues), then Confirms — which closes
- * applications (excluding pending invites) and generates + starts the season.
- * Cancel backs out without touching applications.
+ * Round-robin: opens a preview sheet where the organizer sets the
+ * games-per-venue cap, reviews the dry-run matchday list (with venues), then
+ * Confirms — which closes applications (excluding pending invites) and
+ * generates + starts the season. Cancel backs out without touching
+ * applications.
+ *
+ * Single elimination: there is no season to preview — the sheet summarises
+ * the draw (rounds, byes) and Confirm draws the bracket instead. Copy stays
+ * in bracket vocabulary throughout; a knockout has no season.
  */
 export function SeasonCalendarCta({
   competitionId,
   status,
   format,
+  type,
   approvedTeamCount,
 }: {
   competitionId: string;
   status: CompetitionStatus;
   format?: string | null;
+  /** Round-78 — INDIVIDUAL hides the venue cap; see below. */
+  type?: string | null;
   approvedTeamCount?: number;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [capInput, setCapInput] = useState("1");
-  const cap =
-    capInput.trim() === ""
+  // Round-78 — the venue cap exists to stop two teams that share a home venue
+  // from both hosting on the same matchday. A Singles competition has no home
+  // venues (every match is at the central venue, or wherever the two players
+  // agree), and generateMatchdays' INDIVIDUAL branch never reads the cap at
+  // all — so asking for it was a question with no effect.
+  const isIndividual = type === "INDIVIDUAL";
+  const entrantWord = isIndividual ? "players" : "teams";
+  const cap = isIndividual
+    ? null
+    : capInput.trim() === ""
       ? null
       : Math.max(1, Math.floor(Number(capInput) || 1));
 
@@ -92,14 +109,16 @@ export function SeasonCalendarCta({
       });
       toast.success(
         "Competition is live",
-        "Season calendar generated — the competition is now active.",
+        isBracket
+          ? "Bracket drawn — the competition is now active."
+          : "Season calendar generated — the competition is now active.",
       );
       setOpen(false);
       router.refresh();
     } catch (e) {
       toast.error(
-        "Could not generate the calendar",
-        e instanceof Error ? e.message : undefined,
+        isBracket ? "Could not draw the bracket" : "Could not generate the calendar",
+        errorText(e),
       );
     }
   }
@@ -126,7 +145,7 @@ export function SeasonCalendarCta({
             <div className="rounded-lg border border-border bg-background p-4 text-sm">
               {teams < 2 ? (
                 <p className="text-muted-foreground">
-                  Need at least 2 confirmed teams to draw a bracket.
+                  Need at least 2 confirmed {entrantWord} to draw a bracket.
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -169,7 +188,8 @@ export function SeasonCalendarCta({
         ) : (
         <>
         <SheetBody className="space-y-5">
-          {/* Max games per venue */}
+          {/* Max games per venue — team formats only. */}
+          {isIndividual ? null : (
           <div className="space-y-1.5">
             <label htmlFor="venue-cap" className="text-sm font-semibold">
               Max games per venue (per matchday)
@@ -191,6 +211,7 @@ export function SeasonCalendarCta({
               to place. Leave blank for no limit.
             </p>
           </div>
+          )}
 
           {/* Dry-run matchday list */}
           <div className="space-y-3" data-testid="season-preview-list">
@@ -200,7 +221,7 @@ export function SeasonCalendarCta({
               </p>
             ) : days.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Need at least 2 confirmed teams to build a schedule.
+                Need at least 2 confirmed {entrantWord} to build a schedule.
               </p>
             ) : (
               <>

@@ -19,6 +19,48 @@ import {
 } from "@/lib/services/email-queue.service";
 import { after } from "next/server";
 
+/**
+ * Round-77 — email the organizer that someone applied, carrying whatever the
+ * applicant wrote. Until now the apply flow only created an in-app row, so an
+ * organizer who wasn't in the app heard nothing until the weekly digest.
+ * Best-effort: queued durably, drained after the response like every other
+ * transactional send.
+ */
+async function notifyOrganizerOfApplication(
+  ctx: GraphQLContext,
+  opts: {
+    competition: { id: string; name: string; slug: string; organizerId: string };
+    applicationId: string;
+    subjectName: string;
+    note: string | null;
+  },
+): Promise<void> {
+  const organizer = await ctx.prisma.user.findUnique({
+    where: { id: opts.competition.organizerId },
+    select: { name: true, email: true, isShell: true },
+  });
+  if (!organizer?.email || organizer.isShell) return;
+  await enqueueEmail(ctx.prisma, {
+    template: "application_submitted",
+    to: organizer.email,
+    payload: {
+      organizerName: organizer.name,
+      subjectName: opts.subjectName,
+      competitionName: opts.competition.name,
+      competitionSlug: opts.competition.slug,
+      applicationId: opts.applicationId,
+      note: opts.note,
+    },
+  });
+  after(async () => {
+    try {
+      await drainEmailQueue(ctx.prisma);
+    } catch (e) {
+      console.warn("[notifyOrganizerOfApplication] drain failed:", e);
+    }
+  });
+}
+
 // Round-53 — looks up a display name for a solo applicant; returns a
 // generic fallback when the row is missing or the user has been deleted.
 async function getApplicantName(
@@ -78,7 +120,6 @@ const UpdateCompetitionInput = builder.inputType("UpdateCompetitionInput", {
     startDate: t.field({ type: "DateTime" }),
     endDate: t.field({ type: "DateTime" }),
     prizePool: t.string(),
-    currency: t.string(),
     bannerUrl: t.string(),
     schedulingType: t.string(),
     breakAndRunRule: t.boolean(),
@@ -139,7 +180,6 @@ builder.mutationFields((t) => ({
             startDate: i.startDate ?? null,
             endDate: i.endDate ?? null,
             prizePool: i.prizePool ?? null,
-            currency: i.currency ?? "VND",
             schedulingType: i.schedulingType ?? undefined,
             breakAndRunRule: i.breakAndRunRule ?? false,
             requiresHomeVenue: i.requiresHomeVenue ?? false,
@@ -227,7 +267,6 @@ builder.mutationFields((t) => ({
           startDate: i.startDate ?? undefined,
           endDate: i.endDate ?? undefined,
           prizePool: i.prizePool === null ? null : i.prizePool ?? undefined,
-          currency: i.currency ?? undefined,
           schedulingType: i.schedulingType ?? undefined,
           breakAndRunRule: i.breakAndRunRule ?? undefined,
           requiresHomeVenue: i.requiresHomeVenue ?? undefined,
@@ -318,7 +357,7 @@ builder.mutationFields((t) => ({
   publishCompetition: t.prismaField({
     type: "Competition",
     description:
-      "DRAFT → OPEN_FOR_APPLICATIONS. Validates structure (>=1 block, min teams >=2, dates valid).",
+      "DRAFT → OPEN_FOR_APPLICATIONS. Validates structure (team formats need >=1 match format block, INDIVIDUAL needs a race-to target), >=2 participants, and valid dates.",
     args: { id: t.arg.id({ required: true }) },
     resolve: async (query, _root, args, ctx) => {
       requireUser(ctx.viewer);
@@ -330,16 +369,30 @@ builder.mutationFields((t) => ({
         ...c,
         __caslSubjectType__: "Competition",
       });
-      // Structure validation
-      if (c.blocks.length < 1) {
+      // Structure validation. Round-76 — a Singles (INDIVIDUAL) competition
+      // has no match format blocks: two players just race to a frame count,
+      // so raceToFrames is its structure. Requiring a block here made every
+      // Singles league unpublishable.
+      const isIndividual = c.type === "INDIVIDUAL";
+      if (isIndividual) {
+        if (c.raceToFrames < 1) {
+          throw new GraphQLError(
+            "Set how many frames a player must win (Race To) before publishing.",
+            { extensions: { code: "INVALID_STRUCTURE" } },
+          );
+        }
+      } else if (c.blocks.length < 1) {
         throw new GraphQLError(
           "Add at least one match format block before publishing.",
           { extensions: { code: "INVALID_STRUCTURE" } },
         );
       }
       if (c.minTeams < 2) {
-        throw new GraphQLError("Minimum 2 teams required to publish.", {
-          extensions: { code: "INVALID_STRUCTURE" } },
+        throw new GraphQLError(
+          isIndividual
+            ? "Minimum 2 players required to publish."
+            : "Minimum 2 teams required to publish.",
+          { extensions: { code: "INVALID_STRUCTURE" } },
         );
       }
       if (c.startDate && c.endDate && c.startDate >= c.endDate) {
@@ -674,17 +727,37 @@ builder.mutationFields((t) => ({
                 message: args.input.message ?? null,
               },
             });
+        // Round-77 — the apply form's "Message to organizer" opens the
+        // thread. Without this the note was stored on the row and never shown
+        // anywhere, which is exactly why the flow felt like a dead end.
+        const soloNote = args.input.message?.trim();
+        if (soloNote) {
+          await ctx.prisma.applicationMessage.create({
+            data: { applicationId: app.id, authorId: userId, body: soloNote },
+          });
+        }
         await new NotificationService(ctx.prisma).create({
           type: "APPLICATION_SUBMITTED",
           title: `${ctx.viewer.name ?? "A player"} applied to ${competition.name}`,
-          message: "Review the application and decide.",
+          // Lead with what they actually wrote when there is one.
+          message: soloNote
+            ? soloNote.length > 240
+              ? `${soloNote.slice(0, 237)}…`
+              : soloNote
+            : "Review the application and decide.",
           recipients: [competition.organizerId],
           entity: {
             type: "APPLICATION",
-            id: competition.id,
+            id: app.id,
             slug: competition.slug,
           },
           groupKey: `app-${competition.id}`,
+        });
+        await notifyOrganizerOfApplication(ctx, {
+          competition,
+          applicationId: app.id,
+          subjectName: ctx.viewer.name ?? "A player",
+          note: soloNote ?? null,
         });
         return app;
       }
@@ -889,6 +962,14 @@ builder.mutationFields((t) => ({
           },
         });
       });
+      // Round-77 — the team apply form's message opens the thread too, so
+      // both formats behave the same way.
+      const teamNote = args.input.message?.trim();
+      if (teamNote) {
+        await ctx.prisma.applicationMessage.create({
+          data: { applicationId: app.id, authorId: ctx.viewer.id, body: teamNote },
+        });
+      }
       const svc = new NotificationService(ctx.prisma);
       // Round-50 — auto-accepted invite skips the organizer review step, so
       // the notification fan-out matches decideApplication's approve path
@@ -931,14 +1012,24 @@ builder.mutationFields((t) => ({
         await svc.create({
           type: "APPLICATION_SUBMITTED",
           title: `${team.name} applied to ${competition.name}`,
-          message: "Review the application and decide.",
+          message: teamNote
+            ? teamNote.length > 240
+              ? `${teamNote.slice(0, 237)}…`
+              : teamNote
+            : "Review the application and decide.",
           recipients: [competition.organizerId],
           entity: {
             type: "APPLICATION",
-            id: competition.id,
+            id: app.id,
             slug: competition.slug,
           },
           groupKey: `app-${competition.id}`,
+        });
+        await notifyOrganizerOfApplication(ctx, {
+          competition,
+          applicationId: app.id,
+          subjectName: team.name,
+          note: teamNote ?? null,
         });
       }
       // Round-48 — tell the chosen Roster Captain they've been nominated.
@@ -2336,6 +2427,351 @@ builder.mutationFields((t) => ({
       }
       // Re-fetch with the prismaField selection set so downstream resolvers
       // (team, competition, etc.) get whatever the client asked for.
+      return ctx.prisma.competitionApplication.findMany({
+        ...query,
+        where: { id: { in: results.map((r) => r.id) } },
+      });
+    },
+  }),
+
+  markApplicationThreadRead: t.prismaField({
+    type: "CompetitionApplication",
+    description:
+      "Round-77 — move the viewer's read cursor on an application thread to " +
+      "now, clearing their Messages badge. Returns the application so the " +
+      "client cache picks up the new unreadMessageCount.",
+    args: { applicationId: t.arg.id({ required: true }) },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const app = await ctx.prisma.competitionApplication.findUniqueOrThrow({
+        where: { id: String(args.applicationId) },
+        select: {
+          id: true,
+          teamId: true,
+          applicantUserId: true,
+          rosterCaptainUserId: true,
+          competition: { select: { organizerId: true } },
+          team: { select: { captainId: true } },
+        },
+      });
+      const viewerId = ctx.viewer.id;
+      const isParty =
+        ctx.viewer.role === "SUPER_ADMIN" ||
+        app.applicantUserId === viewerId ||
+        app.rosterCaptainUserId === viewerId ||
+        app.team?.captainId === viewerId ||
+        app.competition.organizerId === viewerId;
+      if (!isParty) {
+        throw new GraphQLError(
+          "Only the applicant or the competition organizer may read this thread.",
+          { extensions: { code: "FORBIDDEN" } },
+        );
+      }
+      await ctx.prisma.applicationThreadRead.upsert({
+        where: {
+          applicationId_userId: { applicationId: app.id, userId: viewerId },
+        },
+        create: { applicationId: app.id, userId: viewerId },
+        update: { lastReadAt: new Date() },
+      });
+      return ctx.prisma.competitionApplication.findUniqueOrThrow({
+        ...query,
+        where: { id: app.id },
+      });
+    },
+  }),
+
+  postApplicationMessage: t.prismaField({
+    type: "ApplicationMessage",
+    description:
+      "Round-77 — post a message on a competition application thread. Either " +
+      "side may write: the solo applicant, the team captain / per-competition " +
+      "roster captain, the competition organizer, or a SUPER_ADMIN. The other " +
+      "side gets an in-app notification and an email.",
+    args: {
+      applicationId: t.arg.id({ required: true }),
+      body: t.arg.string({ required: true }),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const body = String(args.body).trim();
+      if (!body) {
+        throw new GraphQLError("Write a message first.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      if (body.length > 2000) {
+        throw new GraphQLError("Messages are limited to 2000 characters.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const app = await ctx.prisma.competitionApplication.findUniqueOrThrow({
+        where: { id: String(args.applicationId) },
+        include: {
+          team: { select: { id: true, name: true, captainId: true } },
+          applicant: { select: { id: true, name: true, email: true, isShell: true } },
+          competition: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              organizerId: true,
+              organizer: {
+                select: { id: true, name: true, email: true, isShell: true },
+              },
+            },
+          },
+        },
+      });
+      const viewerId = ctx.viewer.id;
+      const isOrganizer = app.competition.organizerId === viewerId;
+      const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
+      const isApplicant = app.applicantUserId === viewerId;
+      const isCaptain = app.team?.captainId === viewerId;
+      const isRosterCaptain = app.rosterCaptainUserId === viewerId;
+      if (!isOrganizer && !isAdmin && !isApplicant && !isCaptain && !isRosterCaptain) {
+        throw new GraphQLError(
+          "Only the applicant or the competition organizer may post here.",
+          { extensions: { code: "FORBIDDEN" } },
+        );
+      }
+      const message = await ctx.prisma.applicationMessage.create({
+        ...query,
+        data: { applicationId: app.id, authorId: viewerId, body },
+      });
+      // Writing a reply means you've read everything above it, so move the
+      // author's cursor forward — otherwise their own badge would keep
+      // showing the messages they were replying to.
+      await ctx.prisma.applicationThreadRead.upsert({
+        where: {
+          applicationId_userId: { applicationId: app.id, userId: viewerId },
+        },
+        create: { applicationId: app.id, userId: viewerId },
+        update: { lastReadAt: new Date() },
+      });
+      // Notify the OTHER side. An organizer writing reaches the applicant
+      // (solo) or the captain + roster captain (team); anyone on the entrant
+      // side reaches the organizer. An admin posting counts as the organizer
+      // unless they're the applicant themselves.
+      const entrantSide = Array.from(
+        new Set(
+          [
+            app.applicantUserId,
+            app.team?.captainId,
+            app.rosterCaptainUserId,
+          ].filter((id): id is string => Boolean(id)),
+        ),
+      );
+      const writingAsEntrant = isApplicant || isCaptain || isRosterCaptain;
+      const recipients = (
+        writingAsEntrant ? [app.competition.organizerId] : entrantSide
+      ).filter((id) => id !== viewerId);
+      const subjectName = app.team?.name ?? app.applicant?.name ?? "An applicant";
+      const authorName = ctx.viewer.name ?? "Someone";
+      if (recipients.length > 0) {
+        await new NotificationService(ctx.prisma).create({
+          type: "APPLICATION_MESSAGE",
+          title: writingAsEntrant
+            ? `${subjectName} messaged you about ${app.competition.name}`
+            : `${app.competition.name}: ${authorName} replied`,
+          // The body IS the point of the notification — a generic "you have a
+          // message" is what made the old apply flow feel like a dead end.
+          message: body.length > 240 ? `${body.slice(0, 237)}…` : body,
+          recipients,
+          entity: {
+            type: "APPLICATION",
+            id: app.id,
+            slug: app.competition.slug,
+          },
+          groupKey: `app-thread-${app.id}`,
+        });
+        // Email the same recipients. Shells can't be reached (synthetic
+        // credentials), so they get the in-app row only.
+        const targets = await ctx.prisma.user.findMany({
+          where: { id: { in: recipients }, isShell: false },
+          select: { name: true, email: true },
+        });
+        for (const t of targets) {
+          if (!t.email) continue;
+          await enqueueEmail(ctx.prisma, {
+            template: "application_message",
+            to: t.email,
+            payload: {
+              recipientName: t.name,
+              authorName,
+              subjectName,
+              competitionName: app.competition.name,
+              competitionSlug: app.competition.slug,
+              applicationId: app.id,
+              body,
+            },
+          });
+        }
+      }
+      after(async () => {
+        try {
+          await drainEmailQueue(ctx.prisma);
+        } catch (e) {
+          console.warn("[postApplicationMessage] drain failed:", e);
+        }
+      });
+      return message;
+    },
+  }),
+
+  invitePlayersToCompetition: t.prismaField({
+    type: ["CompetitionApplication"],
+    description:
+      "Round-76 — organizer batch-invites PLAYERS to a Singles (INDIVIDUAL) " +
+      "competition. The solo mirror of inviteTeamsToCompetition: rows carry " +
+      "applicantUserId instead of teamId. Idempotent — an existing INVITED " +
+      "row re-sends the notification + email; PENDING/APPROVED/WAITLISTED " +
+      "rows are skipped untouched.",
+    args: {
+      competitionId: t.arg.id({ required: true }),
+      userIds: t.arg.idList({ required: true }),
+      personalNote: t.arg.string(),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const competition = await ctx.prisma.competition.findUniqueOrThrow({
+        where: { id: String(args.competitionId) },
+      });
+      if (competition.type !== "INDIVIDUAL") {
+        throw new GraphQLError(
+          "Only Singles competitions invite players directly — use inviteTeamsToCompetition.",
+          { extensions: { code: "INVALID_INPUT" } },
+        );
+      }
+      const isOwner = competition.organizerId === ctx.viewer.id;
+      const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
+      if (!isOwner && !isAdmin) {
+        throw new GraphQLError(
+          "Only the competition organizer may invite players",
+          { extensions: { code: "FORBIDDEN" } },
+        );
+      }
+      if (
+        competition.status !== "OPEN_FOR_APPLICATIONS" &&
+        competition.status !== "DRAFT" &&
+        competition.status !== "APPLICATIONS_CLOSED"
+      ) {
+        throw new GraphQLError(
+          "Invites can only be sent while the competition is DRAFT, OPEN_FOR_APPLICATIONS, or APPLICATIONS_CLOSED.",
+          { extensions: { code: "INVALID_TRANSITION" } },
+        );
+      }
+      if (competition.registrationLocked && !isAdmin) {
+        throw new GraphQLError("Registration is locked for this competition.", {
+          extensions: { code: "REGISTRATION_LOCKED" },
+        });
+      }
+      const ids = Array.from(
+        new Set((args.userIds ?? []).map((x) => String(x))),
+      ).filter(Boolean);
+      if (!ids.length) {
+        throw new GraphQLError("Pick at least one player to invite.", {
+          extensions: { code: "EMPTY_INVITE_LIST" },
+        });
+      }
+      const players = await ctx.prisma.user.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, name: true, email: true, isShell: true },
+      });
+      if (players.length !== ids.length) {
+        const found = new Set(players.map((p) => p.id));
+        const missing = ids.filter((id) => !found.has(id));
+        throw new GraphQLError(
+          `Unknown player id${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}`,
+          { extensions: { code: "USER_NOT_FOUND" } },
+        );
+      }
+      const organizer = await ctx.prisma.user.findUniqueOrThrow({
+        where: { id: competition.organizerId },
+        select: { name: true },
+      });
+      // Same shape as the team path: no single $transaction, so one bad SMTP
+      // hop can't roll back the whole batch. Emails are best-effort.
+      const note = args.personalNote?.trim() || null;
+      const results: { id: string }[] = [];
+      const svc = new NotificationService(ctx.prisma);
+      for (const player of players) {
+        const existing = await ctx.prisma.competitionApplication.findUnique({
+          where: {
+            competitionId_applicantUserId: {
+              competitionId: competition.id,
+              applicantUserId: player.id,
+            },
+          },
+        });
+        if (
+          existing &&
+          (existing.status === "PENDING" ||
+            existing.status === "APPROVED" ||
+            existing.status === "WAITLISTED")
+        ) {
+          continue;
+        }
+        const app = existing
+          ? await ctx.prisma.competitionApplication.update({
+              where: { id: existing.id },
+              data: {
+                status: "INVITED",
+                message: note,
+                reviewNote: null,
+                reviewedAt: null,
+              },
+            })
+          : await ctx.prisma.competitionApplication.create({
+              data: {
+                competitionId: competition.id,
+                applicantUserId: player.id,
+                status: "INVITED",
+                message: note,
+              },
+            });
+        results.push(app);
+        await svc.create({
+          type: "COMPETITION_INVITE",
+          title: `${competition.name} invited you`,
+          message:
+            note ??
+            `${organizer.name} invited you to ${competition.name}. Open the competition page to accept or decline.`,
+          recipients: [player.id],
+          entity: {
+            type: "COMPETITION",
+            id: competition.id,
+            slug: competition.slug,
+          },
+          groupKey: `comp-invite-${competition.id}-${player.id}`,
+        });
+        // Round-75 — an unclaimed shell has synthetic credentials and can't
+        // be reached; the in-app row above is still created so the invite
+        // shows up the moment a real person claims the profile.
+        if (player.email && !player.isShell) {
+          await enqueueEmail(ctx.prisma, {
+            template: "competition_invite",
+            to: player.email,
+            payload: {
+              captainName: player.name,
+              competitionName: competition.name,
+              competitionSlug: competition.slug,
+              organizerName: organizer.name,
+              personalNote: note,
+            },
+          });
+        }
+      }
+      after(async () => {
+        try {
+          await drainEmailQueue(ctx.prisma);
+        } catch (e) {
+          console.warn("[invitePlayersToCompetition] drain failed:", e);
+        }
+      });
+      // No `invitedTeamIds` sync here — that list is team-shaped, and
+      // viewerCanApply already treats every INDIVIDUAL comp as open to any
+      // signed-in player (see lib/graphql/types/competition.ts).
       return ctx.prisma.competitionApplication.findMany({
         ...query,
         where: { id: { in: results.map((r) => r.id) } },

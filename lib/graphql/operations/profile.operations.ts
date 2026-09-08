@@ -14,6 +14,20 @@ export const ProfileByUsernameQuery = graphql(/* GraphQL */ `
       createdAt
       bannedAt
       banReason
+      # Round-88 — shell (placeholder) state + the viewer's claim on it. The
+      # profile page renders the whole claim panel from these four fields.
+      isShell
+      claimedAt
+      viewerCanClaim
+      claimBlockedReason
+      pendingClaimCount
+      myShellClaim {
+        id
+        status
+        reviewNote
+        reviewedAt
+        createdAt
+      }
       playerCompStats {
         id
         matchesPlayed
@@ -49,6 +63,7 @@ export const ProfileByUsernameQuery = graphql(/* GraphQL */ `
         slug
         name
         logoUrl
+        isShell
         captain {
           id
         }

@@ -117,7 +117,7 @@ export function Select({
                     {opt.label}
                   </SelectPrimitive.ItemText>
                   {opt.description ? (
-                    <span className="ml-2 text-[11px] text-muted-foreground">
+                    <span className="ml-2 text-xs text-muted-foreground">
                       {opt.description}
                     </span>
                   ) : null}

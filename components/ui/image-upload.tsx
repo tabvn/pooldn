@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { AvatarCropModal } from "@/components/ui/avatar-crop-modal";
 import { useToast } from "@/components/ui/toast";
+import { errorText } from "@/lib/apollo/error-message";
 
 const ACCEPT = "image/png,image/jpeg,image/jpg,image/webp";
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -106,7 +107,7 @@ export function ImageUpload({
         onChange?.(url);
       } catch (e) {
         setPreviewUrl(value ?? null);
-        toast.error("Upload failed", e instanceof Error ? e.message : "Try again.");
+        toast.error("Upload failed", errorText(e, "Try again."));
       } finally {
         setProgress(null);
       }
@@ -194,7 +195,7 @@ export function ImageUpload({
         ) : (
           <div className="flex h-full w-full flex-col items-center justify-center text-center text-muted-foreground">
             <ImagePlus className="size-6 mb-1" />
-            <span className="text-[10px] uppercase tracking-wider">
+            <span className="text-[11px] uppercase tracking-wider">
               Drop or browse
             </span>
           </div>
@@ -229,7 +230,7 @@ export function ImageUpload({
             </button>
           ) : null}
         </div>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           PNG, JPG or WebP. Up to 5 MB.
         </p>
       </div>

@@ -49,7 +49,7 @@ const STATUS_BADGE: Record<MatchStatus, { label: string; className: string }> = 
 const MD_LABEL_TONE: Record<MatchdayView["state"], string> = {
   current: "text-[#00bba7]",
   scheduled: "text-[#00a6f4]",
-  past: "text-white/50",
+  past: "text-white/70",
 };
 
 const MD_BADGE: Record<MatchdayView["state"], { label: string; className: string }> = {
@@ -77,7 +77,7 @@ function ScoreBox({
         ? "bg-[#861043] text-[#fccee8]"
         : tone === "draw"
           ? "bg-white/10 text-white/90"
-          : "bg-white/5 text-white/50";
+          : "bg-white/5 text-white/70";
   return (
     <div
       className={`flex size-8 items-center justify-center rounded text-base font-semibold tabular-nums ${cls}`}
@@ -181,15 +181,15 @@ function MatchCard({ m }: { m: MatchView }) {
           </span>
           <div className="flex items-center gap-1">
             <ScoreBox value={hs} tone={homeTone} />
-            <span className="w-5 text-center text-sm text-white/50">:</span>
+            <span className="w-5 text-center text-sm text-white/70">:</span>
             <ScoreBox value={as} tone={awayTone} />
           </div>
         </div>
         <Participant team={m.away} />
       </div>
       <div className="flex items-center justify-center gap-2 border-t border-dashed border-border px-4 py-3">
-        <MapPin className="size-3 text-white/50" />
-        <span className="text-xs text-white/50">{m.venueName ?? "Venue TBD"}</span>
+        <MapPin className="size-3 text-white/70" />
+        <span className="text-xs text-white/70">{m.venueName ?? "Venue TBD"}</span>
       </div>
     </Link>
   );
@@ -274,7 +274,7 @@ function MatchdaySection({
         {open ? (
           <div className="flex flex-col gap-2 pt-2">
             {md.matches.length === 0 && md.byes.length === 0 ? (
-              <p className="py-4 text-center text-sm text-white/50">
+              <p className="py-4 text-center text-sm text-white/70">
                 No matches scheduled.
               </p>
             ) : (

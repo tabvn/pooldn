@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { useToast } from "@/components/ui/toast";
 import { CompleteCompetitionMutation } from "@/lib/graphql/operations/competition-mutations.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 export type FinalizeChampion = {
   name: string;
@@ -32,10 +33,13 @@ export function FinalizeWinnersCard({
   competitionId,
   champion,
   mvp,
+  showMvp = true,
 }: {
   competitionId: string;
   champion: FinalizeChampion | null;
   mvp: FinalizeMvp | null;
+  /** Round-82 — Singles competitions have no MVP; the winner stands alone. */
+  showMvp?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -49,7 +53,7 @@ export function FinalizeWinnersCard({
     } catch (e) {
       toast.error(
         "Could not finish the competition",
-        e instanceof Error ? e.message : "Try again.",
+        errorText(e, "Try again."),
       );
     }
   }
@@ -64,14 +68,15 @@ export function FinalizeWinnersCard({
           All matches are played
         </p>
         <p className="text-xs text-muted-foreground">
-          Review the winner and MVP below. You can still fix results or the MVP
-          formula — nothing is final until you publish.
+          {showMvp
+            ? "Review the winner and MVP below. You can still fix results or the MVP formula — nothing is final until you publish."
+            : "Review the winner below. You can still fix results — nothing is final until you publish."}
         </p>
       </div>
 
       {/* Winner + MVP preview (mirrors the completed overview banner). */}
       <div
-        className="grid grid-cols-2 gap-3 p-6"
+        className={`grid gap-3 p-6 ${showMvp ? "grid-cols-2" : "grid-cols-1"}`}
         style={{
           backgroundImage: "linear-gradient(90deg, #3c0366 0%, #052f4a 100%)",
         }}
@@ -93,21 +98,23 @@ export function FinalizeWinnersCard({
           </Link>
           <span className="text-base font-semibold text-primary">Winner</span>
         </div>
-        <div className="flex min-w-0 flex-col items-center gap-3">
-          <Link
-            href={mvp ? `/players/${mvp.username}` : "#"}
-            className="flex flex-col items-center gap-2 hover:opacity-90"
-          >
-            <Avatar size="xl" src={mvp?.avatarUrl ?? undefined} fallback={mvp?.name ?? "—"} />
-            <div className="flex items-center gap-2 text-center text-xl font-semibold text-white/90 hover:underline">
-              <span>{mvp?.name ?? "—"}</span>
-              {mvp?.nationality ? (
-                <CountryFlag code={mvp.nationality} className="text-2xl leading-none" />
-              ) : null}
-            </div>
-          </Link>
-          <span className="text-base font-semibold text-primary">MVP</span>
-        </div>
+        {showMvp ? (
+          <div className="flex min-w-0 flex-col items-center gap-3">
+            <Link
+              href={mvp ? `/players/${mvp.username}` : "#"}
+              className="flex flex-col items-center gap-2 hover:opacity-90"
+            >
+              <Avatar size="xl" src={mvp?.avatarUrl ?? undefined} fallback={mvp?.name ?? "—"} />
+              <div className="flex items-center gap-2 text-center text-xl font-semibold text-white/90 hover:underline">
+                <span>{mvp?.name ?? "—"}</span>
+                {mvp?.nationality ? (
+                  <CountryFlag code={mvp.nationality} className="text-2xl leading-none" />
+                ) : null}
+              </div>
+            </Link>
+            <span className="text-base font-semibold text-primary">MVP</span>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-4">

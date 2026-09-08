@@ -51,6 +51,18 @@ export default async function CompetitionLayout({
     ...(c.type === "INDIVIDUAL"
       ? []
       : [{ href: `/competitions/${slug}/players`, label: "Players" }]),
+    // Round-88 — placeholder profiles are a managers-only concern: the tab
+    // only appears once this competition actually has one (or a claim on one),
+    // so a competition of real players never sees it.
+    ...(canManage && (c.shellPlayerCount > 0 || c.pendingClaimCount > 0)
+      ? [
+          {
+            href: `/competitions/${slug}/claims`,
+            label: "Claims",
+            badge: c.pendingClaimCount > 0 ? c.pendingClaimCount : null,
+          },
+        ]
+      : []),
     { href: `/competitions/${slug}/about`, label: "About" },
   ];
   const tabs: Array<{ href: string; label: string; badge?: number | null }> =
@@ -105,6 +117,7 @@ export default async function CompetitionLayout({
             ) : canApply ? (
               <ApplyCta
                 competitionSlug={c.slug}
+                competitionType={c.type}
                 myApplication={c.myTeamApplication ?? null}
               />
             ) : !viewer && isOpen ? (

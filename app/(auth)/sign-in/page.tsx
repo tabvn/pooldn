@@ -15,6 +15,7 @@ import { WelcomeHeading } from "@/components/auth/welcome-heading";
 import { OrDivider, SocialButtons } from "@/components/auth/social-buttons";
 import { DemoAccounts } from "@/components/auth/demo-accounts";
 import { LoginMutation } from "@/lib/graphql/operations/auth.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 const schema = z.object({
   usernameOrEmail: z.string().min(1, "Required"),
@@ -119,7 +120,7 @@ function SignInForm() {
       }
       toast.error(
         "Sign in failed",
-        e instanceof Error ? e.message : "Check your credentials and try again.",
+        errorText(e, "Check your credentials and try again."),
       );
     }
   });
@@ -191,7 +192,7 @@ function SignInForm() {
             </p>
           ) : error ? (
             <p className="text-sm text-destructive" role="alert">
-              {error.message}
+              {errorText(error, "Something went wrong. Try again.")}
             </p>
           ) : null}
 

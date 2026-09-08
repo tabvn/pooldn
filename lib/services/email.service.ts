@@ -210,10 +210,16 @@ export async function sendPasswordReset(opts: {
   });
 }
 
+/**
+ * Competition invite. Round-76 — `teamName` is optional: a Singles
+ * (INDIVIDUAL) competition invites the player directly, so there's no team to
+ * name and the sentence reads "has invited you to compete in …".
+ */
 export async function sendCompetitionInvite(opts: {
   to: string;
+  /** Team captain for team formats; the invited player for Singles. */
   captainName: string;
-  teamName: string;
+  teamName?: string | null;
   competitionName: string;
   competitionSlug: string;
   organizerName: string;
@@ -228,8 +234,62 @@ export async function sendCompetitionInvite(opts: {
     subject: `You're invited: ${opts.competitionName}`,
     html: shell(
       `Hi ${escapeHtml(opts.captainName)},`,
-      `<strong>${escapeHtml(opts.organizerName)}</strong> has invited <strong>${escapeHtml(opts.teamName)}</strong> to compete in <strong>${escapeHtml(opts.competitionName)}</strong>. Open the competition page to review the format, dates and prize pool — then accept or decline.${note}`,
+      `<strong>${escapeHtml(opts.organizerName)}</strong> has invited ${
+        opts.teamName ? `<strong>${escapeHtml(opts.teamName)}</strong>` : "you"
+      } to compete in <strong>${escapeHtml(opts.competitionName)}</strong>. Open the competition page to review the format, dates and prize pool — then accept or decline.${note}`,
       { href, label: "View competition" },
+    ),
+  });
+}
+
+/**
+ * Round-77 — an organizer's "someone applied" email, carrying the applicant's
+ * message so the note they wrote in the apply form actually reaches a human.
+ */
+export async function sendApplicationSubmitted(opts: {
+  to: string;
+  organizerName: string;
+  subjectName: string;
+  competitionName: string;
+  competitionSlug: string;
+  note?: string | null;
+}) {
+  const href = `${APP_URL}/competitions/${encodeURIComponent(opts.competitionSlug)}/applications`;
+  const note = opts.note?.trim()
+    ? `<p style="margin:12px 0 0;padding:12px;border-left:3px solid #84cc16;background:#f7fee7;color:#1a2e05;font-style:italic">${escapeHtml(opts.note)}</p>`
+    : "";
+  return send({
+    to: opts.to,
+    subject: `New application: ${opts.competitionName}`,
+    html: shell(
+      `Hi ${escapeHtml(opts.organizerName)},`,
+      `<strong>${escapeHtml(opts.subjectName)}</strong> applied to <strong>${escapeHtml(opts.competitionName)}</strong>. Open the Applications tab to accept, reject, or reply.${note}`,
+      { href, label: "Review application" },
+    ),
+  });
+}
+
+/**
+ * Round-77 — a reply on an application thread, to whichever side didn't
+ * write it.
+ */
+export async function sendApplicationMessage(opts: {
+  to: string;
+  recipientName: string;
+  authorName: string;
+  competitionName: string;
+  competitionSlug: string;
+  body: string;
+}) {
+  const href = `${APP_URL}/competitions/${encodeURIComponent(opts.competitionSlug)}/applications`;
+  const quoted = `<p style="margin:12px 0 0;padding:12px;border-left:3px solid #84cc16;background:#f7fee7;color:#1a2e05;font-style:italic">${escapeHtml(opts.body)}</p>`;
+  return send({
+    to: opts.to,
+    subject: `${opts.competitionName}: new message from ${opts.authorName}`,
+    html: shell(
+      `Hi ${escapeHtml(opts.recipientName)},`,
+      `<strong>${escapeHtml(opts.authorName)}</strong> wrote about the application for <strong>${escapeHtml(opts.competitionName)}</strong>.${quoted}`,
+      { href, label: "Open the conversation" },
     ),
   });
 }

@@ -2,20 +2,23 @@ import { Calendar, MapPin, Trophy, Users } from "lucide-react";
 import { IconChip } from "@/components/ui/icon-chip";
 import { LocalDateTime } from "@/components/ui/local-datetime";
 import { CompetitionStatusChip } from "@/components/ui/status-chip";
+import { formatPrize } from "@/lib/utils";
 import type {
   CompetitionFormat,
   CompetitionStatus,
+  CompetitionType,
   GameType,
 } from "@/lib/generated/prisma/enums";
 
 export type MetaChipsCompetition = {
   status: CompetitionStatus;
+  /** Optional — drives "Accepting players" vs "Accepting teams". */
+  type?: CompetitionType | null;
   format: CompetitionFormat;
   gameType: GameType;
   startDate?: string | null;
   endDate?: string | null;
   prizePool?: string | null;
-  currency?: string;
   minTeams?: number;
   maxTeams?: number | null;
   city?: { name: string } | null;
@@ -24,8 +27,6 @@ export type MetaChipsCompetition = {
 // Numbers use an explicit "en-US" locale so the SSR / hydration output
 // matches no matter what locale the browser advertises. Dates render in the
 // viewer's local TZ via LocalDateTime (client component).
-const NUM = new Intl.NumberFormat("en-US");
-
 export function MetaChips({
   c,
   showStatus = true,
@@ -37,7 +38,9 @@ export function MetaChips({
 }) {
   return (
     <>
-      {showStatus ? <CompetitionStatusChip status={c.status} /> : null}
+      {showStatus ? (
+        <CompetitionStatusChip status={c.status} type={c.type} />
+      ) : null}
       <IconChip
         tone="primary"
         icon={<Trophy />}
@@ -70,12 +73,8 @@ export function MetaChips({
           label={`${c.minTeams}${c.maxTeams ? `–${c.maxTeams}` : "+"} teams`}
         />
       ) : null}
-      {c.prizePool ? (
-        <IconChip
-          tone="success"
-          icon={<Trophy />}
-          label={`${NUM.format(Number(c.prizePool))} ${c.currency ?? ""}`.trim()}
-        />
+      {formatPrize(c.prizePool) ? (
+        <IconChip tone="success" icon={<Trophy />} label={formatPrize(c.prizePool)!} />
       ) : null}
     </>
   );

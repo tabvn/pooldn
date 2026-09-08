@@ -16,6 +16,7 @@ import {
   MapPin,
   ShieldCheck,
   Trophy,
+  Ghost,
   Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -122,7 +123,7 @@ export function Sidebar() {
         collapsed ? "w-[68px] px-2" : "w-[260px] px-4",
       )}
     >
-      {/* Logo lockup — 8-ball mark + "POOLDN" wordmark from Figma. */}
+      {/* Logo lockup — 8-ball mark (Figma) + "PoolDN" text wordmark. */}
       <CollapsedTooltip label="PoolDN" enabled={collapsed}>
         <Link
           href="/"
@@ -134,8 +135,8 @@ export function Sidebar() {
           <BallMark className="size-[30px] shrink-0 text-primary" />
           {!collapsed ? (
             <>
-              <Wordmark className="h-[12px] w-auto text-primary" />
-              <span className="ml-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
+              <Wordmark className="text-[15px] text-primary" />
+              <span className="ml-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-primary">
                 Beta
               </span>
             </>
@@ -304,6 +305,11 @@ const ADMIN_ITEMS: AdminItem[] = [
     href: "/admin/league-import",
     label: "League import",
     icon: <Upload className="size-5" />,
+  },
+  {
+    href: "/admin/shells",
+    label: "Shells",
+    icon: <Ghost className="size-5" />,
   },
   {
     href: "/admin/locations",

@@ -33,6 +33,11 @@ export const UserType = builder.prismaObject("User", {
     city: t.relation("city", { nullable: true }),
     isActive: t.exposeBoolean("isActive"),
     bannedAt: t.expose("bannedAt", { type: "DateTime", nullable: true }),
+    // Round-85 — import-shell state, for the admin shells screen. isShell is
+    // true while the placeholder is unclaimed; claimedAt survives the claim,
+    // so the pair distinguishes an ex-shell from an ordinary signup.
+    isShell: t.exposeBoolean("isShell"),
+    claimedAt: t.expose("claimedAt", { type: "DateTime", nullable: true }),
     banReason: t.exposeString("banReason", { nullable: true }),
     // Round-54 — rating / level / ratingHistory / rank deleted with the
     // rating system. Bring back a points field here when the new model

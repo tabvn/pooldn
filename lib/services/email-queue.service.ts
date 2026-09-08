@@ -12,9 +12,18 @@
  */
 
 import type { PrismaClient } from "@/lib/generated/prisma/client";
-import { sendCompetitionInvite } from "./email.service";
+import {
+  sendApplicationMessage,
+  sendApplicationSubmitted,
+  sendCompetitionInvite,
+} from "./email.service";
 
-type TemplateName = "competition_invite";
+type TemplateName =
+  | "competition_invite"
+  // Round-77 — the application conversation: "someone applied" to the
+  // organizer, and each reply to whichever side didn't write it.
+  | "application_submitted"
+  | "application_message";
 
 export type EnqueueArgs = {
   template: TemplateName;
@@ -118,13 +127,34 @@ async function dispatch(
       await sendCompetitionInvite({
         to,
         captainName: String(payload.captainName ?? ""),
-        teamName: String(payload.teamName ?? ""),
+        // Round-76 — absent for Singles invites (no team to name).
+        teamName: payload.teamName ? String(payload.teamName) : null,
         competitionName: String(payload.competitionName ?? ""),
         competitionSlug: String(payload.competitionSlug ?? ""),
         organizerName: String(payload.organizerName ?? ""),
         personalNote: payload.personalNote
           ? String(payload.personalNote)
           : null,
+      });
+      return;
+    case "application_submitted":
+      await sendApplicationSubmitted({
+        to,
+        organizerName: String(payload.organizerName ?? ""),
+        subjectName: String(payload.subjectName ?? ""),
+        competitionName: String(payload.competitionName ?? ""),
+        competitionSlug: String(payload.competitionSlug ?? ""),
+        note: payload.note ? String(payload.note) : null,
+      });
+      return;
+    case "application_message":
+      await sendApplicationMessage({
+        to,
+        recipientName: String(payload.recipientName ?? ""),
+        authorName: String(payload.authorName ?? ""),
+        competitionName: String(payload.competitionName ?? ""),
+        competitionSlug: String(payload.competitionSlug ?? ""),
+        body: String(payload.body ?? ""),
       });
       return;
     default:

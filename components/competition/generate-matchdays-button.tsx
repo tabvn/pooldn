@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { GenerateMatchdaysMutation } from "@/lib/graphql/operations/matchday.operations";
+import { errorText } from "@/lib/apollo/error-message";
 
 export function GenerateMatchdaysButton({
   competitionId,
@@ -37,7 +38,7 @@ export function GenerateMatchdaysButton({
           } catch (e) {
             toast.error(
               "Could not generate matchdays",
-              e instanceof Error ? e.message : undefined,
+              errorText(e),
             );
           }
         }}

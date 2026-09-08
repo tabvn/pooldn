@@ -7,13 +7,13 @@ export const CompetitionsListQuery = graphql(/* GraphQL */ `
       slug
       name
       status
+      type
       format
       gameType
       bannerUrl
       startDate
       endDate
       prizePool
-      currency
       city {
         id
         name
@@ -39,7 +39,6 @@ export const CompetitionEditableQuery = graphql(/* GraphQL */ `
       startDate
       endDate
       prizePool
-      currency
       raceToFrames
       minTeams
       maxTeams
@@ -105,7 +104,6 @@ export const CompetitionHeaderQuery = graphql(/* GraphQL */ `
       startDate
       endDate
       prizePool
-      currency
       raceToFrames
       minTeams
       maxTeams
@@ -118,6 +116,10 @@ export const CompetitionHeaderQuery = graphql(/* GraphQL */ `
       viewerCanApply
       pendingReviewCount
       approvedTeamCount
+      # Round-88 — placeholder players in this competition, and the claims on
+      # them waiting for the organizer. Both drive the manager-only Claims tab.
+      shellPlayerCount
+      pendingClaimCount
       myTeamApplication {
         id
         status
@@ -149,7 +151,6 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
       status
       allMatchesPlayed
       prizePool
-      currency
       minTeams
       maxTeams
       # Round-48 — overview "About this competition" card needs the apply-
@@ -189,6 +190,10 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
           slug
           name
           logoUrl
+          # Round-88 — a placeholder team, entered by the organizer so the
+          # competition can run alongside its real teams.
+          isShell
+          shellMemberCount
           captain {
             id
             name
@@ -198,6 +203,15 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
           members {
             id
           }
+        }
+        # Round-76 — Singles entrants have no team; the invite banner matches
+        # on the applicant instead.
+        applicant {
+          id
+          isShell
+          name
+          username
+          avatarUrl
         }
       }
       standings {
@@ -217,6 +231,7 @@ export const CompetitionOverviewQuery = graphql(/* GraphQL */ `
           name
           slug
           logoUrl
+          isShell
         }
       }
       bracketMatches {
@@ -392,12 +407,16 @@ export const CompetitionPlayersQuery = graphql(/* GraphQL */ `
           username
           nationality
           avatarUrl
+          # Round-88 — placeholder players sit in the same table as real ones,
+          # so the row has to say which it is.
+          isShell
         }
         team {
           id
           name
           slug
           logoUrl
+          isShell
         }
         stat {
           id
@@ -440,10 +459,18 @@ export const CompetitionApplicationsQuery = graphql(/* GraphQL */ `
       type
       maxTeams
       applicationMode
+      organizer {
+        id
+        name
+      }
       applications {
         id
         status
         message
+        # Round-77 — badge the Messages button without opening every thread.
+        # The badge counts UNREAD; messageCount is the total.
+        messageCount
+        unreadMessageCount
         submittedAt
         reviewedAt
         team {
@@ -451,6 +478,8 @@ export const CompetitionApplicationsQuery = graphql(/* GraphQL */ `
           name
           slug
           logoUrl
+          isShell
+          shellMemberCount
           captain {
             id
             name
@@ -476,6 +505,7 @@ export const CompetitionApplicationsQuery = graphql(/* GraphQL */ `
         }
         applicant {
           id
+          isShell
           name
           username
           avatarUrl
@@ -493,6 +523,7 @@ export const MyCompetitionsQuery = graphql(/* GraphQL */ `
       slug
       name
       status
+      type
       bannerUrl
       startDate
       endDate

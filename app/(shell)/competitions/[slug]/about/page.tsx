@@ -4,8 +4,7 @@ import { CountryFlag } from "@/components/ui/country-flag";
 import { LocalDateTime } from "@/components/ui/local-datetime";
 import { getClient } from "@/lib/apollo/client";
 import { CompetitionEditableQuery } from "@/lib/graphql/operations/competition.operations";
-
-const NUM = new Intl.NumberFormat("en-US");
+import { formatPrize } from "@/lib/utils";
 
 const GAME_LABEL: Record<string, string> = {
   EIGHT_BALL: "8-Ball",
@@ -139,11 +138,7 @@ export default async function AboutPage({
         />
         <Row
           label="Prize"
-          value={
-            c.prizePool
-              ? `${NUM.format(Number(c.prizePool))} ${c.currency}`
-              : "—"
-          }
+          value={formatPrize(c.prizePool) ?? "—"}
         />
       </Section>
 
@@ -167,13 +162,19 @@ export default async function AboutPage({
           value={
             c.matchVenueMode === "CENTRAL_VENUE" && c.centralVenue
               ? c.centralVenue.name
-              : VENUE_MODE_LABEL[c.matchVenueMode] ?? c.matchVenueMode
+              : isIndividual && c.matchVenueMode === "TEAM_VENUES"
+                ? "Free Location"
+                : VENUE_MODE_LABEL[c.matchVenueMode] ?? c.matchVenueMode
           }
         />
         <Row
           label="Games per Opponent"
           value={`${gamesPerOpponent} (${
-            gamesPerOpponent >= 2 ? "Home & Away" : "Only Once"
+            gamesPerOpponent >= 2
+              ? isIndividual
+                ? "Twice"
+                : "Home & Away"
+              : "Only Once"
           })`}
         />
         <Row
@@ -199,7 +200,14 @@ export default async function AboutPage({
       </Section>
 
       <Section title="Structure">
-        <Row label="Match Layout" value={matchLayout} />
+        {isIndividual ? (
+          <Row
+            label="Race To"
+            value={`${c.raceToFrames} frame${c.raceToFrames === 1 ? "" : "s"}`}
+          />
+        ) : (
+          <Row label="Match Layout" value={matchLayout} />
+        )}
         <Row
           label="Max Amount of Participants"
           value={

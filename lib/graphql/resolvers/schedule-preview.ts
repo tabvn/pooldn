@@ -93,7 +93,7 @@ builder.queryFields((t) => ({
   previewMatchdays: t.field({
     type: [SchedulePreviewMatchday],
     description:
-      "Dry-run the round-robin season schedule from APPROVED teams WITHOUT persisting it. Powers the pre-generate preview; pass maxGamesPerVenuePerMatchday to see the effect of the venue cap. Empty when there are fewer than 2 approved teams.",
+      "Dry-run the round-robin season schedule WITHOUT persisting it. Powers the pre-generate preview. Entrants are APPROVED teams, or APPROVED players on an INDIVIDUAL (Singles) competition. Pass maxGamesPerVenuePerMatchday to see the effect of the venue cap (team formats only). Empty when there are fewer than 2 approved entrants.",
     args: {
       id: t.arg.id({ required: true }),
       maxGamesPerVenuePerMatchday: t.arg.int(),
@@ -108,35 +108,60 @@ builder.queryFields((t) => ({
         ...competition,
         __caslSubjectType__: "Competition",
       });
-      const teamIds = competition.applications
-        .map((a) => a.teamId)
+      // Round-78 — entrants are teams, or PLAYERS on a Singles competition.
+      // This used to read `a.teamId` unconditionally, so every Singles
+      // application (teamId null, applicantUserId set) was filtered out, the
+      // preview returned [], and the panel's Confirm button — gated on
+      // `days.length === 0` — stayed permanently disabled. A Singles
+      // round-robin league could not be started at all.
+      const isIndividual = competition.type === "INDIVIDUAL";
+      const entrantIds = competition.applications
+        .map((a) => (isIndividual ? a.applicantUserId : a.teamId))
         .filter((id): id is string => Boolean(id));
-      if (teamIds.length < 2) return [];
+      if (entrantIds.length < 2) return [];
 
       const { computeSeasonSchedule, parseWeekdaySchedule } = await import(
         "@/lib/services/season-schedule.service"
       );
-      const teams = await ctx.prisma.team.findMany({
-        where: { id: { in: teamIds } },
-        select: { id: true, name: true, logoUrl: true, homeVenueId: true },
-      });
-      const teamById = new Map(teams.map((t) => [t.id, t]));
       const useCentral = competition.matchVenueMode === "CENTRAL_VENUE";
+      // One shape for both: id → display name + avatar/logo. Singles players
+      // have no home venue, so every match sits at the central venue (or
+      // nowhere, for Free Location) exactly like generateMatchdays does.
+      const entrants = isIndividual
+        ? (
+            await ctx.prisma.user.findMany({
+              where: { id: { in: entrantIds } },
+              select: { id: true, name: true, avatarUrl: true },
+            })
+          ).map((u) => ({
+            id: u.id,
+            name: u.name,
+            logoUrl: u.avatarUrl,
+            homeVenueId: null as string | null,
+          }))
+        : await ctx.prisma.team.findMany({
+            where: { id: { in: entrantIds } },
+            select: { id: true, name: true, logoUrl: true, homeVenueId: true },
+          });
+      const teamById = new Map(entrants.map((t) => [t.id, t]));
       const homeVenueByTeam = new Map<string, string | null>(
-        teams.map((t) => [
+        entrants.map((t) => [
           t.id,
           useCentral
             ? competition.centralVenueId ?? null
             : t.homeVenueId ?? null,
         ]),
       );
-      const cap =
-        args.maxGamesPerVenuePerMatchday ??
-        competition.maxGamesPerVenuePerMatchday ??
-        null;
+      // The venue cap only means anything when entrants have their own home
+      // venues to collide over — Singles has none, so it's always unlimited.
+      const cap = isIndividual
+        ? null
+        : args.maxGamesPerVenuePerMatchday ??
+          competition.maxGamesPerVenuePerMatchday ??
+          null;
 
       const schedule = computeSeasonSchedule({
-        teamIds,
+        teamIds: entrantIds,
         gamesPerOpponent: competition.gamesPerOpponent ?? 1,
         startDate: competition.startDate,
         endDate: competition.endDate,
