@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { signInAs } from "./helpers";
 
 test.describe("Shell navigation", () => {
   test("sidebar links navigate to each section", async ({ page }) => {
@@ -36,9 +37,7 @@ test.describe("Shell navigation", () => {
   }) => {
     // Round-11 — the bell is now a popover trigger with a "View all"
     // footer link, not a plain anchor. Verify the new flow.
-    await page.goto("/sign-in");
-    await page.getByTestId("demo-login-toan").click();
-    await page.waitForURL("/");
+    await signInAs(page, "toan");
     await page.getByTestId("notification-bell").click();
     await expect(page.getByTestId("notification-popover")).toBeVisible();
     await page

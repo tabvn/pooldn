@@ -17,10 +17,24 @@ export type DemoRole =
   | "player2"
   | "viewer";
 
-export async function signInAs(page: Page, username: DemoRole) {
-  await page.goto("/sign-in");
-  await page.getByTestId(`demo-login-${username}`).click();
-  await page.waitForURL("/");
+/** Every seeded account uses this password (prisma/seed.ts). */
+export const SEED_PASSWORD = "password123";
+
+/**
+ * Round-89 — the quick-login demo panel was removed from the sign-in screen
+ * before launch, so tests sign in the way a real user does: the form takes a
+ * username or an email.
+ */
+export async function signInAs(
+  page: Page,
+  username: DemoRole,
+  opts: { next?: string } = {},
+) {
+  await page.goto(opts.next ? `/sign-in?next=${opts.next}` : "/sign-in");
+  await page.getByLabel("Email or username").fill(username);
+  await page.getByLabel("Password").fill(SEED_PASSWORD);
+  await page.getByRole("button", { name: "Sign In", exact: true }).click();
+  await page.waitForURL(opts.next ? new RegExp(opts.next) : "/");
 }
 
 export async function signOut(page: Page) {

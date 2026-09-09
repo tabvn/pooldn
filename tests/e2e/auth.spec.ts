@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { signInAs } from "./helpers";
 
 test.describe("Sign In", () => {
   test("matches the design (Welcome heading + social buttons + form)", async ({
@@ -24,7 +25,9 @@ test.describe("Sign In", () => {
     await expect(
       page.getByRole("button", { name: "Continue as Guest" }),
     ).toBeVisible();
-    await expect(page.getByText("Demo accounts")).toBeVisible();
+    // Round-89 — the demo quick-login panel was removed for launch; the page
+    // must not leak seeded credentials any more.
+    await expect(page.getByText(/demo account/i)).toHaveCount(0);
   });
 
   test("can sign in via the form, see identity, and sign out", async ({
@@ -53,9 +56,7 @@ test.describe("Sign In", () => {
   test("demo-account quick login signs in as the chosen role", async ({
     page,
   }) => {
-    await page.goto("/sign-in");
-    await page.getByTestId("demo-login-michael").click();
-    await page.waitForURL("/");
+    await signInAs(page, "michael");
     await expect(page.getByText("Michael D.")).toBeVisible();
   });
 
@@ -71,9 +72,7 @@ test.describe("Sign In", () => {
   });
 
   test("Sign In honors ?next= redirect", async ({ page }) => {
-    await page.goto("/sign-in?next=/notifications");
-    await page.getByTestId("demo-login-toan").click();
-    await page.waitForURL(/\/notifications/);
+    await signInAs(page, "toan", { next: "/notifications" });
     await expect(
       page.getByRole("heading", { name: "Notifications" }),
     ).toBeVisible();

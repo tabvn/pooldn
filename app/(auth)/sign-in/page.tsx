@@ -13,7 +13,6 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { WelcomeHeading } from "@/components/auth/welcome-heading";
 import { OrDivider, SocialButtons } from "@/components/auth/social-buttons";
-import { DemoAccounts } from "@/components/auth/demo-accounts";
 import { LoginMutation } from "@/lib/graphql/operations/auth.operations";
 import { errorText } from "@/lib/apollo/error-message";
 
@@ -219,7 +218,6 @@ function SignInForm() {
         </p>
       </div>
 
-      <DemoAccounts />
     </>
   );
 }
