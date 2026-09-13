@@ -10,10 +10,14 @@ import { BasicsForm } from "./basics-form";
  * · Schedule · Review & Publish).
  */
 export default async function NewCompetitionPage() {
-  // Anyone signed in can organize a competition. The viewer is the
-  // organizerId on the new row, and per-entity CASL grants them manage
-  // rights on it (same pattern as captaincy being per-team, not a global role).
-  await requireViewer({ next: "/competitions/new" });
+  // Anyone signed in can organize a competition EXCEPT the read-only VIEWER
+  // persona. The viewer is the organizerId on the new row, and per-entity CASL
+  // grants them manage rights on it (same pattern as captaincy being per-team,
+  // not a global role). Guests are redirected to sign-in by requireViewer.
+  await requireViewer({
+    next: "/competitions/new",
+    roles: ["SUPER_ADMIN", "ORGANIZER", "TEAM_CAPTAIN", "PLAYER"],
+  });
   // Round-76 — stamp the new competition with the header-selected city.
   // City is the app's top-level content filter and the competitions resolver
   // matches it exactly, so a city-less competition is invisible on every

@@ -49,9 +49,12 @@ test.describe("Role acceptance · Player", () => {
     page,
   }) => {
     await signInAs(page, "player1");
+    // Round-90 — a PLAYER is a registered user and MAY run a competition
+    // (Round-47); only the read-only VIEWER persona and guests are blocked.
+    // "No manager controls" below is about someone else's competition.
     await expect(
       page.getByRole("link", { name: /create competition/i }),
-    ).toHaveCount(0);
+    ).toBeVisible();
     await page.goto("/competitions/da-nang-autumn-invitational-2026");
     // Captain-only Apply CTA not shown for plain player.
     await expect(

@@ -129,8 +129,10 @@ const matrix: Record<
   },
   viewer: {
     name: "Viewer Demo",
-    canSeeCreateCTA: true,
-    canVisitNewCompetition: true,
+    // Round-90 — VIEWER is the read-only persona: no create CTA, and
+    // /competitions/new redirects.
+    canSeeCreateCTA: false,
+    canVisitNewCompetition: false,
     canVisitApplications: true,
     canVisitApply: true,
   },

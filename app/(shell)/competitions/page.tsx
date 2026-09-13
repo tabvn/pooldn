@@ -75,7 +75,8 @@ export default async function CompetitionsBrowsePage({
   const competitions = data?.competitions ?? [];
   const viewer = viewerResult.data?.viewer;
   const myComps = myCompsResult.data?.myCompetitions ?? [];
-  const canCreate = !!viewer;
+  // Round-90 — VIEWER is read-only; same rule as the Teams browse page.
+  const canCreate = !!viewer && viewer.role !== "VIEWER";
   const hasActiveFilters =
     !!filters.status || !!filters.gameType || !!filters.search;
 

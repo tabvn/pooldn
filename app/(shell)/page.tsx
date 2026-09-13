@@ -107,12 +107,15 @@ export default async function PoolhubDashboard() {
             </h1>
             <p className="text-sm text-muted-foreground">Ready to compete?</p>
           </div>
-          <Link href="/competitions/new" data-testid="dashboard-create-comp">
-            <Button variant="primary">
-              <Plus className="size-4" />
-              Create competition
-            </Button>
-          </Link>
+          {/* Round-90 — VIEWER is the read-only persona: no create affordance. */}
+          {viewer.role !== "VIEWER" ? (
+            <Link href="/competitions/new" data-testid="dashboard-create-comp">
+              <Button variant="primary">
+                <Plus className="size-4" />
+                Create competition
+              </Button>
+            </Link>
+          ) : null}
         </header>
       ) : (
         // Round-76 — signed-out counterpart to the "Welcome back" header.

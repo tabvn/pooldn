@@ -151,10 +151,21 @@ builder.mutationFields((t) => ({
   createCompetition: t.prismaField({
     type: "Competition",
     description:
-      "Create a competition (DRAFT). Any signed-in user can run their own tournament — they become its organizer and get full manage rights on it via per-entity CASL (mirrors per-team captaincy).",
+      "Create a competition (DRAFT). Any signed-in user EXCEPT the read-only VIEWER persona can run their own tournament — they become its organizer and get full manage rights on it via per-entity CASL (mirrors per-team captaincy).",
     args: { input: t.arg({ type: CreateCompetitionInput, required: true }) },
     resolve: (query, _root, args, ctx) => {
       requireUser(ctx.viewer);
+      // Round-90 — VIEWER is the read-only persona and must not create
+      // competitions (guests can't either — requireUser above covers them).
+      // This mirrors createTeam's Round-30 gate; CASL already withholds
+      // `create Competition` from VIEWER, but this resolver never consulted it,
+      // so the API was open even though the UI hid the button.
+      if (ctx.viewer.role === "VIEWER") {
+        throw new GraphQLError(
+          "Sign up for a player account to create a competition",
+          { extensions: { code: "FORBIDDEN" } },
+        );
+      }
       const viewerId = ctx.viewer.id;
       const i = args.input;
       return ctx.prisma.$transaction(async (tx) => {
