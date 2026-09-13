@@ -1,0 +1,98 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PoolDN — production stack.
+#
+#   docker compose --env-file .env.docker up -d --build
+#
+# Host ports are all in the 9xxx range so this never collides with the
+# bare-metal prod run on :8084, the e2e server on :3000, or CargoDesk on :8085.
+#
+#   9084 → app        (put the pooldn.com tunnel / reverse proxy here)
+#   9432 → postgres   127.0.0.1 only
+#   9379 → redis      127.0.0.1 only
+#
+# Secrets come from .env.docker (see .env.docker.example). The Postgres
+# credentials below are internal to this stack's private network.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: pooldn
+
+services:
+  db:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pooldn
+      POSTGRES_PASSWORD: pooldn
+      POSTGRES_DB: pooldn
+    ports:
+      # Bound to loopback: psql from the host, unreachable from the network.
+      - "127.0.0.1:9432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pooldn -d pooldn"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:9379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* is inlined at build time — changing the public origin
+        # means rebuilding the image, not just restarting it.
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://pooldn.com}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      # Secrets + tunables. `environment:` below overrides anything here.
+      - .env.docker
+    environment:
+      NODE_ENV: production
+      PORT: "8084"
+      # Service names on the compose network — never the host's Postgres.
+      DATABASE_URL: postgresql://pooldn:pooldn@db:5432/pooldn?schema=public
+      REDIS_URL: redis://redis:6379
+      # Reads .env.docker by default; a shell variable wins over the env file,
+      # so `RESET_DB=true ./deploy.sh` works without editing the file.
+      RESET_DB: ${RESET_DB:-false}
+    ports:
+      - "9084:8084"
+    volumes:
+      # User uploads (avatars, team logos, banners) are written to
+      # process.cwd()/uploads — keep them out of the container layer.
+      - uploads:/app/uploads
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8084/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:

@@ -105,3 +105,9 @@ Desktop.ini
 
 # user uploads (served via app/uploads/[...path]/route.ts)
 /uploads/
+
+# docker compose production secrets — but keep the template committable
+# (.env.* above would otherwise swallow it, the same way .env.example needs
+# its own un-ignore).
+.env.docker
+!.env.docker.example

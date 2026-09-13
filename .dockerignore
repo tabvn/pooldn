@@ -1,0 +1,30 @@
+# ── Build context trim ────────────────────────────────────────────────────
+# Everything the image builds from scratch, or must never leak into a layer.
+node_modules
+.next
+out
+.git
+.idea
+.claude
+test-results
+playwright-report
+tests
+feedbacks
+docs
+uploads
+tsconfig.tsbuildinfo
+
+# Generated in-image by `prisma generate` — the committed copy carries a
+# darwin-arm64 query engine that is useless in a linux container.
+lib/generated
+
+# Secrets: the runner gets its config from compose env_file at RUN time.
+.env
+.env.local
+.env.production.local
+.env.docker
+
+# Docker's own files
+docker-compose*.yml
+Dockerfile
+.dockerignore

@@ -35,7 +35,7 @@ CREATE TABLE "roster_change_requests" (
     ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT "roster_change_requests_requestedById_fkey"
     FOREIGN KEY ("requestedById") REFERENCES "users"("id")
-    ON DELETE NO ACTION ON UPDATE CASCADE,
+    ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "roster_change_requests_reviewedById_fkey"
     FOREIGN KEY ("reviewedById") REFERENCES "users"("id")
     ON DELETE SET NULL ON UPDATE CASCADE
@@ -58,7 +58,7 @@ CREATE TABLE "roster_change_players" (
     ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT "roster_change_players_userId_fkey"
     FOREIGN KEY ("userId") REFERENCES "users"("id")
-    ON DELETE NO ACTION ON UPDATE CASCADE
+    ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 CREATE UNIQUE INDEX "roster_change_players_requestId_userId_key"
