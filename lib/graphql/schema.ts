@@ -26,6 +26,7 @@ import "./resolvers/competition.mutations";
 import "./resolvers/league-import";
 import "./resolvers/claim";
 import "./resolvers/shell-claim";
+import "./resolvers/match-history";
 import "./resolvers/schedule-preview";
 import "./resolvers/team.queries";
 import "./resolvers/team.mutations";

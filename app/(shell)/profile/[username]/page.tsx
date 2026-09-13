@@ -7,6 +7,7 @@ import { flagEmoji } from "@/components/ui/country-flag";
 import { LocalDateTime } from "@/components/ui/local-datetime";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { ProfileActionsMenu } from "@/components/profile/profile-actions-menu";
+import { MatchHistory } from "@/components/profile/match-history";
 import { DetailHero } from "@/components/layout/detail-hero";
 import { ShellBadge, ShellTeamBadge } from "@/components/shell/shell-badge";
 import {
@@ -209,6 +210,18 @@ export default async function ProfilePage({
             </div>
           </section>
         ) : null}
+
+        {/* Round-90 — matches, scheduled and played. Rendered for placeholders
+            too: they're rostered and named in frames, and the list follows the
+            profile into the claimant's account after a merge. */}
+        <MatchHistory
+          upcoming={user.upcomingMatches}
+          past={user.pastMatches}
+          playedCount={user.playedMatchCount}
+          isShell={user.isShell}
+          isSelf={isSelf}
+          name={user.name}
+        />
 
         {/* Competition history */}
         <Card data-testid="player-competition-history">

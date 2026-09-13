@@ -28,6 +28,50 @@ export const ProfileByUsernameQuery = graphql(/* GraphQL */ `
         reviewedAt
         createdAt
       }
+      # Round-90 — match history, past + scheduled. Placeholders have these
+      # too; after a claim they follow the merged account.
+      playedMatchCount
+      upcomingMatches(first: 5) {
+        side
+        played
+        match {
+          id
+          status
+          scheduledAt
+          homeScore
+          awayScore
+          matchday {
+            number
+            competition { id slug name type }
+          }
+          venue { id name }
+          homeTeam { id name slug logoUrl }
+          awayTeam { id name slug logoUrl }
+          homePlayer { id name username avatarUrl isShell }
+          awayPlayer { id name username avatarUrl isShell }
+        }
+      }
+      pastMatches(first: 10) {
+        side
+        played
+        framesPlayed
+        framesWon
+        match {
+          id
+          status
+          scheduledAt
+          homeScore
+          awayScore
+          matchday {
+            number
+            competition { id slug name type }
+          }
+          homeTeam { id name slug logoUrl }
+          awayTeam { id name slug logoUrl }
+          homePlayer { id name username avatarUrl isShell }
+          awayPlayer { id name username avatarUrl isShell }
+        }
+      }
       playerCompStats {
         id
         matchesPlayed
