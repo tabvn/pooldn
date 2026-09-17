@@ -6,9 +6,11 @@ import {
 } from "@/components/competition/matchday-list";
 import { PoolhubIcon } from "@/components/layout/sidebar-icons";
 import { getClient } from "@/lib/apollo/client";
+import { CompetitionMatchesList } from "@/components/competition/competition-matches-list";
 import {
   CompetitionHeaderQuery,
   CompetitionMatchdaysQuery,
+  CompetitionMatchesQuery,
   ViewerQuery,
 } from "@/lib/graphql/operations/competition.operations";
 
@@ -40,6 +42,24 @@ export default async function MatchdaysPage({
   // random, one matchday per round. Same empty state, bracket vocabulary —
   // matches the wording SeasonCalendarCta already uses for this format.
   const isBracket = header.format === "SINGLE_ELIMINATION";
+  // Round-92 — Free Schedule has fixtures but no calendar, so the matchday
+  // grouping below is meaningless for it: render one flat list instead.
+  const isFree = header.schedulingType === "FREE_SCHEDULE";
+  const isIndividual = header.type === "INDIVIDUAL";
+
+  if (isFree && c.matchdays.length > 0) {
+    const { data } = await getClient().query({
+      query: CompetitionMatchesQuery,
+      variables: { slug },
+    });
+    return (
+      <CompetitionMatchesList
+        matches={data?.competition?.matches ?? []}
+        canManage={canManage}
+        isIndividual={isIndividual}
+      />
+    );
+  }
 
   if (c.matchdays.length === 0) {
     // Round-61 — Figma "Season Calendar" empty state (node 299:9670). Before
@@ -53,7 +73,11 @@ export default async function MatchdaysPage({
           </div>
           <div className="flex w-full flex-col items-center gap-5">
             <h2 className="text-center text-xl font-semibold text-foreground">
-              {isBracket ? "Knockout Bracket" : "Season Calendar"}
+              {isBracket
+                ? "Knockout Bracket"
+                : isFree
+                  ? "Fixture List"
+                  : "Season Calendar"}
             </h2>
             <div className="w-full rounded-lg border border-[#00598a] bg-[#052f4a] p-3 text-center text-sm leading-5 text-[#dff2fe]">
               {canManage ? (
@@ -61,7 +85,9 @@ export default async function MatchdaysPage({
                   <p>
                     {isBracket
                       ? "To draw the bracket you need to close applications."
-                      : "To generate season calendar you need to close applications."}
+                      : isFree
+                        ? "To create the fixtures you need to close applications."
+                        : "To generate season calendar you need to close applications."}
                   </p>
                   <p>
                     Unaccepted invites and applications will be automatically
@@ -70,7 +96,9 @@ export default async function MatchdaysPage({
                   <p>
                     {isBracket
                       ? "Confirmed teams will be drawn into the bracket at random, one matchday per round."
-                      : "Matchdays will be generated based on confirmed teams."}{" "}
+                      : isFree
+                        ? `Every pairing will be created at once with no date — you and the ${isIndividual ? "players" : "teams"} set each date as you agree it.`
+                        : "Matchdays will be generated based on confirmed teams."}{" "}
                     You won&rsquo;t be able to invite or accept new
                     participants.
                   </p>
@@ -79,6 +107,11 @@ export default async function MatchdaysPage({
                 <p>
                   The bracket hasn&rsquo;t been drawn yet. Rounds will appear
                   here once the organizer draws it.
+                </p>
+              ) : isFree ? (
+                <p>
+                  The fixtures haven&rsquo;t been created yet. Every pairing
+                  will appear here once the organizer generates them.
                 </p>
               ) : (
                 <p>
@@ -94,6 +127,8 @@ export default async function MatchdaysPage({
               status={header.status}
               format={header.format}
               type={header.type}
+              schedulingType={header.schedulingType}
+              gamesPerOpponent={header.gamesPerOpponent}
               approvedTeamCount={header.approvedTeamCount}
             />
           ) : null}
@@ -103,7 +138,9 @@ export default async function MatchdaysPage({
     return (
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          No matchdays have been generated yet.
+          {isFree
+            ? "No fixtures have been created yet."
+            : "No matchdays have been generated yet."}
         </p>
         {canManage ? (
           <GenerateMatchdaysButton competitionId={header.id} />

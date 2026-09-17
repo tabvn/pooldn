@@ -74,7 +74,12 @@ export default async function EditCompetitionPage({
           schedulingType:
             c.schedulingType === "FIXED_MATCHDAYS"
               ? "FIXED_MATCHDAYS"
-              : "WEEKLY_ROUNDS",
+              : // Round-92 — Free Schedule is a real mode, not a legacy value:
+                // without this line every edit-and-save would quietly flip the
+                // competition back to Weekly Rounds.
+                c.schedulingType === "FREE_SCHEDULE"
+                ? "FREE_SCHEDULE"
+                : "WEEKLY_ROUNDS",
           weekdaySchedule: c.weekdaySchedule ?? [],
           fixedMatchDates: c.fixedMatchDates ?? [],
           blocks: c.blocks.map((b) => ({

@@ -47,7 +47,13 @@ export default async function CompetitionLayout({
   // Players tab (which shows exactly that) is dropped. The player league table
   // lives on Overview instead.
   const secondaryTabs = [
-    { href: `/competitions/${slug}/matchdays`, label: "Matchdays" },
+    {
+      href: `/competitions/${slug}/matchdays`,
+      // Round-92 — a Free Schedule competition has no matchdays; the same tab
+      // renders one flat fixture list, so the label follows the format.
+      label:
+        c.schedulingType === "FREE_SCHEDULE" ? "Matches" : "Matchdays",
+    },
     ...(c.type === "INDIVIDUAL"
       ? []
       : [{ href: `/competitions/${slug}/players`, label: "Players" }]),

@@ -34,6 +34,7 @@ const VENUE_MODE_LABEL: Record<string, string> = {
 const SCHED_LABEL: Record<string, string> = {
   WEEKLY_ROUNDS: "Weekly Rounds",
   FIXED_MATCHDAYS: "Fixed Matchdays",
+  FREE_SCHEDULE: "Free Schedule",
   FLEXIBLE: "Flexible",
 };
 const WEEKDAYS = [
@@ -182,9 +183,13 @@ export default async function AboutPage({
           value={SCHED_LABEL[c.schedulingType] ?? c.schedulingType}
         />
         <Row
-          label="Matchdays"
+          label={c.schedulingType === "FREE_SCHEDULE" ? "Match Dates" : "Matchdays"}
           value={
-            weekdaySlots.length > 0 ? (
+            // Round-92 — Free Schedule has no fixed dates by design; "TBD"
+            // would read as missing configuration.
+            c.schedulingType === "FREE_SCHEDULE" ? (
+              "Set per match, as players agree them"
+            ) : weekdaySlots.length > 0 ? (
               <div className="space-y-0.5">
                 {weekdaySlots.map((s, i) => (
                   <div key={`${s.weekday}-${i}`}>

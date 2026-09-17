@@ -42,7 +42,7 @@ export const ProfileByUsernameQuery = graphql(/* GraphQL */ `
           awayScore
           matchday {
             number
-            competition { id slug name type }
+            competition { id slug name type schedulingType }
           }
           venue { id name }
           homeTeam { id name slug logoUrl }
@@ -64,7 +64,7 @@ export const ProfileByUsernameQuery = graphql(/* GraphQL */ `
           awayScore
           matchday {
             number
-            competition { id slug name type }
+            competition { id slug name type schedulingType }
           }
           homeTeam { id name slug logoUrl }
           awayTeam { id name slug logoUrl }

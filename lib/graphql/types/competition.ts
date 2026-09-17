@@ -276,6 +276,22 @@ builder.prismaObject("Competition", {
       },
     }),
     playerStats: t.relation("playerStats"),
+    // Round-92 — every match in the competition as one flat list, for the
+    // Free Schedule view. Deliberately NOT the `matchdays` relation: that mode
+    // creates one matchday per match, so going through matchdays would ship a
+    // few hundred single-match wrappers. Undated fixtures sort last (Postgres
+    // puts NULLs last on ASC), then by creation order via matchday number.
+    matches: t.prismaField({
+      type: ["Match"],
+      description:
+        "Every match in this competition, flat. Undated fixtures come last.",
+      resolve: (query, c, _args, ctx) =>
+        ctx.prisma.match.findMany({
+          ...query,
+          where: { matchday: { competitionId: c.id } },
+          orderBy: [{ scheduledAt: "asc" }, { matchday: { number: "asc" } }],
+        }),
+    }),
     // Round-67 — single-elimination bracket, ordered by round then slot so the
     // client can lay out the tree column-by-column.
     bracketMatches: t.prismaField({

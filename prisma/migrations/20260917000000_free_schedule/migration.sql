@@ -1,0 +1,12 @@
+-- Round-92 — "Free Schedule": a competition with fixtures but no calendar.
+--
+-- Weekly Rounds and Fixed Match Day(s) both produce a season calendar: matches
+-- grouped into numbered matchdays, each with a date. Some leagues only have the
+-- fixture list — everyone plays everyone, and each pair agrees their own date.
+-- This value marks those competitions; generation creates every pairing with
+-- scheduledAt NULL and the Matchdays tab renders one flat list instead.
+--
+-- Enum-only change: no column is added, and Match.matchdayId stays required
+-- (free-schedule matches get one matchday each, which keeps the appearance-%
+-- denominator in the MVP calculation meaningful).
+ALTER TYPE "SchedulingType" ADD VALUE IF NOT EXISTS 'FREE_SCHEDULE';

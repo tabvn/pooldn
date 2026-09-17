@@ -43,11 +43,17 @@ export function SeasonCalendarCta({
   status,
   format,
   type,
+  schedulingType,
+  gamesPerOpponent,
   approvedTeamCount,
 }: {
   competitionId: string;
   status: CompetitionStatus;
   format?: string | null;
+  /** Round-92 — FREE_SCHEDULE has no calendar to preview. */
+  schedulingType?: string | null;
+  /** 1 = single round robin, 2 = home & away. Drives the fixture count. */
+  gamesPerOpponent?: number | null;
   /** Round-78 — INDIVIDUAL hides the venue cap; see below. */
   type?: string | null;
   approvedTeamCount?: number;
@@ -72,7 +78,13 @@ export function SeasonCalendarCta({
   // Round-67 — a knockout has no round-robin schedule to preview; the first
   // round is a random draw decided at generation time.
   const isBracket = format === "SINGLE_ELIMINATION";
+  // Round-92 — Free Schedule creates every pairing with no dates, so there is
+  // no calendar to dry-run. previewMatchdays would invent dates (planMatchdays
+  // always does) and clamp at 52 rows, showing something we would never build.
+  const isFree = schedulingType === "FREE_SCHEDULE" && !isBracket;
   const teams = approvedTeamCount ?? 0;
+  const fixtureCount =
+    teams >= 2 ? (teams * (teams - 1)) / 2 * Math.max(1, gamesPerOpponent ?? 1) : 0;
   const bracketSize = teams >= 2 ? 1 << Math.ceil(Math.log2(teams)) : 0;
   const bracketRounds = bracketSize > 0 ? Math.log2(bracketSize) : 0;
   const bracketByes = bracketSize > 0 ? bracketSize - teams : 0;
@@ -82,13 +94,17 @@ export function SeasonCalendarCta({
     ? appsOpen
       ? "Close Applications and Generate Bracket"
       : "Generate Bracket"
-    : appsOpen
-      ? "Close Applications and Generate Calendar"
-      : "Generate Calendar";
+    : isFree
+      ? appsOpen
+        ? "Close Applications and Generate Fixtures"
+        : "Generate Fixtures"
+      : appsOpen
+        ? "Close Applications and Generate Calendar"
+        : "Generate Calendar";
 
   const preview = useQuery(PreviewMatchdaysQuery, {
     variables: { id: competitionId, maxGamesPerVenuePerMatchday: cap },
-    skip: !open || isBracket,
+    skip: !open || isBracket || isFree,
     fetchPolicy: "cache-and-network",
   });
   const [closeApps, closeState] = useMutation(CloseApplicationsMutation);
@@ -215,7 +231,19 @@ export function SeasonCalendarCta({
 
           {/* Dry-run matchday list */}
           <div className="space-y-3" data-testid="season-preview-list">
-            {preview.loading && !preview.data ? (
+            {isFree ? (
+              <div className="rounded-md border border-info/40 bg-info/10 p-3 text-sm text-info">
+                <div className="font-semibold">
+                  {fixtureCount} fixture{fixtureCount === 1 ? "" : "s"} from{" "}
+                  {teams} {entrantWord}
+                </div>
+                <p className="mt-0.5 text-xs">
+                  Every pairing is created at once with no date. You and the{" "}
+                  {entrantWord} set each date on the Matches tab as they are
+                  agreed — there is no calendar to preview.
+                </p>
+              </div>
+            ) : preview.loading && !preview.data ? (
               <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="size-3.5 animate-spin" /> Building preview…
               </p>
@@ -309,10 +337,16 @@ export function SeasonCalendarCta({
           <Button
             onClick={onConfirm}
             loading={finalizing}
-            disabled={days.length === 0}
+            disabled={isFree || isBracket ? teams < 2 : days.length === 0}
             data-testid="season-preview-confirm"
           >
-            {appsOpen ? "Close applications & finalize" : "Finalize calendar"}
+            {isFree
+              ? appsOpen
+                ? "Close applications & generate fixtures"
+                : "Generate fixtures"
+              : appsOpen
+                ? "Close applications & finalize"
+                : "Finalize calendar"}
           </Button>
         </SheetFooter>
         </>

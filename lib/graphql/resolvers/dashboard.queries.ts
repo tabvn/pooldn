@@ -12,6 +12,11 @@ builder.queryFields((t) => ({
         ...query,
         where: {
           status: { in: ["SCHEDULED", "IN_PROGRESS"] },
+          // Round-92 — a Free Schedule competition starts with every fixture
+          // undated. Postgres sorts NULLs last on ASC, so without this the
+          // "next match" card would pick an arbitrary undated fixture and
+          // render with no date at all.
+          scheduledAt: { not: null },
           ...ACTIVE_COMPETITION,
           OR: viewerMatchOR(ctx.viewer.id),
         },

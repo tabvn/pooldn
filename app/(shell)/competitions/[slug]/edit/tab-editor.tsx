@@ -87,7 +87,7 @@ type CompetitionInitial = {
   matchVenueMode: "TEAM_VENUES" | "CENTRAL_VENUE";
   centralVenueId: string | null;
   gamesPerOpponent: number;
-  schedulingType: string | null;
+  schedulingType: "WEEKLY_ROUNDS" | "FIXED_MATCHDAYS" | "FREE_SCHEDULE" | null;
   weekdaySchedule: WeekdaySlot[];
   fixedMatchDates: string[];
   blocks: Array<{
@@ -643,7 +643,10 @@ function ScheduleTab({
   saving: boolean;
 }) {
   const schedulingType = data.schedulingType ?? "WEEKLY_ROUNDS";
+  // Round-92 — three modes now, so "not weekly" no longer implies fixed dates.
   const isWeekly = schedulingType === "WEEKLY_ROUNDS";
+  const isFixed = schedulingType === "FIXED_MATCHDAYS";
+  const isFree = schedulingType === "FREE_SCHEDULE";
   const isCentral = data.matchVenueMode === "CENTRAL_VENUE";
   // Round-76 — Singles has no teams, so no "home venue" to default to. The
   // same TEAM_VENUES value means "not pinned to one venue", which for a
@@ -759,7 +762,9 @@ function ScheduleTab({
     : data.gamesPerOpponent >= 2
       ? "Each team plays twice (home & away) against every other team"
       : "Each team plays each opponent once";
-  const scheduleSentence = isWeekly
+  const scheduleSentence = isFree
+    ? "No calendar — every fixture is created at once with no date, and each match is dated when the two sides agree it"
+    : isWeekly
     ? data.weekdaySchedule.length > 0
       ? `Games will happen ${data.weekdaySchedule
           .map((s) => `every ${WEEKDAYS[s.weekday] ?? "?"} at ${s.time}`)
@@ -890,11 +895,41 @@ function ScheduleTab({
           value={schedulingType}
           options={[
             { value: "WEEKLY_ROUNDS", label: "Weekly Rounds" },
-            { value: "FIXED_MATCHDAYS", label: "Fixed Match Day(s)" },
+            { value: "FIXED_MATCHDAYS", label: "Fixed Dates" },
+            // Round-92 — round-robin only: an elimination competition's order
+            // comes from its bracket, so "no calendar" has nothing to mean.
+            ...(data.format === "ROUND_ROBIN"
+              ? [{ value: "FREE_SCHEDULE", label: "Free Schedule" }]
+              : []),
           ]}
-          onChange={(v) => onChange("schedulingType", v)}
+          onChange={(v) =>
+            onChange(
+              "schedulingType",
+              v as "WEEKLY_ROUNDS" | "FIXED_MATCHDAYS" | "FREE_SCHEDULE",
+            )
+          }
           testIdPrefix="schedule-type"
         />
+        {isFree ? (
+          <div
+            className="mt-3 flex items-start gap-3 rounded-md border border-info/40 bg-info/10 p-3 text-sm text-info"
+            data-testid="schedule-free-note"
+          >
+            <Info className="mt-0.5 size-4 shrink-0" />
+            <div>
+              <div className="font-semibold">
+                No calendar — just the fixture list
+              </div>
+              <p className="mt-0.5 text-xs">
+                Every pairing is created at once with no date.{" "}
+                {isIndividual ? "Players" : "Teams"} arrange their own matches,
+                and you (or an admin) set each date on the Matches tab as they
+                are agreed. There are no matchdays, so the competition reads as
+                one long list — played matches on top, the rest below.
+              </p>
+            </div>
+          </div>
+        ) : null}
         {isWeekly ? (
           <div className="mt-3 space-y-2 rounded-md border border-border bg-background p-3">
             {data.weekdaySchedule.length === 0 ? (
@@ -956,7 +991,7 @@ function ScheduleTab({
               Add Weekday
             </button>
           </div>
-        ) : (
+        ) : isFixed ? (
           /* Round-58 — Fixed Match Day(s): explicit per-date rows. */
           <div className="mt-3 space-y-2 rounded-md border border-border bg-background p-3">
             {data.fixedMatchDates.length === 0 ? (
@@ -999,7 +1034,7 @@ function ScheduleTab({
               Add Match Day
             </button>
           </div>
-        )}
+        ) : null}
       </Field>
       )}
 
@@ -1435,6 +1470,7 @@ function ReviewTab({
   const breaks = data.blocks.filter((b) => b.breakAfterMin).length;
 
   const isWeekly = (data.schedulingType ?? "WEEKLY_ROUNDS") === "WEEKLY_ROUNDS";
+  const isFree = data.schedulingType === "FREE_SCHEDULE";
   const isIndividual = data.type === "INDIVIDUAL";
   // Round-74 — elimination has no weekday/fixed-date scheduling; its single
   // matchday is the start date+time, so that's what publish requires instead.
@@ -1469,9 +1505,12 @@ function ReviewTab({
       : !!data.maxPlayersPerTeam && singles + doubles > 0) &&
     (isElimination
       ? !!data.startDate
-      : isWeekly
-        ? data.weekdaySchedule.length > 0
-        : data.fixedMatchDates.length > 0) &&
+      : isFree
+        ? // Round-92 — nothing to configure: the fixtures carry no dates.
+          true
+        : isWeekly
+          ? data.weekdaySchedule.length > 0
+          : data.fixedMatchDates.length > 0) &&
     // Round-58 — central-venue comps must actually have a venue picked.
     (data.matchVenueMode !== "CENTRAL_VENUE" || !!data.centralVenueId);
 
@@ -1553,13 +1592,20 @@ function ReviewTab({
                 ],
                 [
                   "Scheduling Type",
-                  (data.schedulingType ?? "WEEKLY_ROUNDS") === "WEEKLY_ROUNDS"
-                    ? "Weekly Rounds"
-                    : "Fixed Match Days",
+                  isFree
+                    ? "Free Schedule"
+                    : isWeekly
+                      ? "Weekly Rounds"
+                      : "Fixed Match Days",
                 ],
                 [
                   "Match days",
-                  isWeekly
+                  // Free Schedule has none by design — say so, rather than the
+                  // "—" that reads as missing config on the screen that gates
+                  // publishing.
+                  isFree
+                    ? "Set per match"
+                    : isWeekly
                     ? data.weekdaySchedule.length
                       ? data.weekdaySchedule
                           .map((s) => `${WEEKDAYS[s.weekday] ?? "?"} ${s.time}`)

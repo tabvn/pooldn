@@ -114,6 +114,9 @@ export const CompetitionHeaderQuery = graphql(/* GraphQL */ `
       matchVenueMode
       applicationMode
       viewerCanApply
+      # Round-92 — the tab reads "Matches" for Free Schedule competitions, and
+      # the tab's page branches on this too.
+      schedulingType
       pendingReviewCount
       approvedTeamCount
       # Round-88 — placeholder players in this competition, and the claims on
@@ -662,6 +665,60 @@ export const ViewerQuery = graphql(/* GraphQL */ `
         country {
           id
           name
+        }
+      }
+    }
+  }
+`);
+
+// Round-92 — Free Schedule: one flat list instead of a matchday calendar.
+export const CompetitionMatchesQuery = graphql(/* GraphQL */ `
+  query CompetitionMatches($slug: String!) {
+    competition(slug: $slug) {
+      id
+      name
+      type
+      schedulingType
+      matches {
+        id
+        status
+        scheduledAt
+        completedAt
+        homeScore
+        awayScore
+        matchday {
+          id
+          number
+        }
+        venue {
+          id
+          name
+        }
+        homeTeam {
+          id
+          name
+          slug
+          logoUrl
+        }
+        awayTeam {
+          id
+          name
+          slug
+          logoUrl
+        }
+        homePlayer {
+          id
+          name
+          username
+          avatarUrl
+          isShell
+        }
+        awayPlayer {
+          id
+          name
+          username
+          avatarUrl
+          isShell
         }
       }
     }

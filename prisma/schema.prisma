@@ -88,6 +88,11 @@ enum SchedulingType {
   // compatibility and add WEEKLY_ROUNDS + FIXED_MATCHDAYS for new comps.
   WEEKLY_ROUNDS
   FIXED_MATCHDAYS
+  // Round-92 — no rhythm at all. Every pairing is created up front with NO
+  // date; each match is dated individually as the two sides agree it. There
+  // are no rounds to group by, so the competition reads as one long list
+  // (see components/competition/competition-matches-list.tsx).
+  FREE_SCHEDULE
 }
 
 enum ApplicationMode {

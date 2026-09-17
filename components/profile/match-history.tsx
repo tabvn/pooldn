@@ -42,7 +42,13 @@ export type PlayerMatchItem = {
     awayScore?: number | null;
     matchday: {
       number: number;
-      competition: { id: string; slug: string; name: string; type: string };
+      competition: {
+        id: string;
+        slug: string;
+        name: string;
+        type: string;
+        schedulingType?: string | null;
+      };
     };
     venue?: { id: string; name: string } | null;
     homeTeam: MatchTeam;
@@ -139,8 +145,15 @@ function MatchRow({ item }: { item: PlayerMatchItem }) {
           >
             {m.matchday.competition.name}
           </Link>
-          {" · "}
-          Matchday {m.matchday.number}
+          {/* Round-92 — a Free Schedule competition has no matchdays: it
+              creates one per match purely to satisfy the schema, so "Matchday
+              37" would be noise. */}
+          {m.matchday.competition.schedulingType === "FREE_SCHEDULE" ? null : (
+            <>
+              {" · "}
+              Matchday {m.matchday.number}
+            </>
+          )}
           {m.scheduledAt ? (
             <>
               {" · "}

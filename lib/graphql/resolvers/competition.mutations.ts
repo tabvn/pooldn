@@ -8,7 +8,11 @@ import {
   WeekdaySlotInput,
 } from "../types/competition";
 import { MatchFormatBlockInput } from "../types/structure";
-import { ApplicationModeEnum, MatchVenueModeEnum } from "../types/enums";
+import {
+  ApplicationModeEnum,
+  MatchVenueModeEnum,
+  SchedulingTypeEnum,
+} from "../types/enums";
 import { ensure, requireUser } from "@/lib/casl/guard";
 import type { CompetitionStatus } from "@/lib/generated/prisma/enums";
 import { NotificationService } from "@/lib/services/notification.service";
@@ -121,7 +125,9 @@ const UpdateCompetitionInput = builder.inputType("UpdateCompetitionInput", {
     endDate: t.field({ type: "DateTime" }),
     prizePool: t.string(),
     bannerUrl: t.string(),
-    schedulingType: t.string(),
+    // Round-92 — enum-typed like the create input, so a bad value fails at
+    // the GraphQL boundary rather than as an opaque Prisma error.
+    schedulingType: t.field({ type: SchedulingTypeEnum }),
     breakAndRunRule: t.boolean(),
     requiresHomeVenue: t.boolean(),
     applicationMode: t.field({ type: ApplicationModeEnum }),
@@ -1092,6 +1098,131 @@ builder.mutationFields((t) => ({
           { extensions: { code: "ALREADY_GENERATED" } },
         );
       }
+      // Round-92 — Free Schedule: fixtures without a calendar.
+      //
+      // Every pairing is created now with NO date; the two sides agree a date
+      // later and an organizer records it (updateMatchSchedule). There are no
+      // rounds to group by, so the Matchdays tab renders one flat list.
+      //
+      // Guarded on format as well as scheduling type: a competition saved as
+      // Free Schedule and later flipped to an elimination format must still
+      // take the bracket path below.
+      if (
+        competition.schedulingType === "FREE_SCHEDULE" &&
+        competition.format === "ROUND_ROBIN"
+      ) {
+        const isIndividual = competition.type === "INDIVIDUAL";
+        const entrantIds = (
+          isIndividual
+            ? competition.applications.map((a) => a.applicantUserId)
+            : competition.applications.map((a) => a.teamId)
+        ).filter((id): id is string => Boolean(id));
+        if (entrantIds.length < 2) {
+          throw new GraphQLError(
+            `Need at least 2 approved ${isIndividual ? "players" : "teams"} to generate the fixtures.`,
+            { extensions: { code: "BAD_USER_INPUT" } },
+          );
+        }
+        const { bergerPairings } = await import(
+          "@/lib/services/scheduling.service"
+        );
+        const { expandRounds } = await import(
+          "@/lib/services/season-schedule.service"
+        );
+        const { recomputeStandings } = await import(
+          "@/lib/services/standings.service"
+        );
+        // Flattened in ROUND order rather than per-opponent, so each entrant's
+        // fixtures interleave — an undated list then reads sensibly top to
+        // bottom instead of clustering all of one player's games together.
+        // expandRounds is shared with the calendar generator so both modes
+        // agree on the home/away flip for Home & Away competitions.
+        const pairs = expandRounds(
+          bergerPairings(entrantIds),
+          competition.gamesPerOpponent,
+        ).flat();
+        const venueId =
+          competition.matchVenueMode === "CENTRAL_VENUE"
+            ? competition.centralVenueId
+            : null;
+
+        return ctx.prisma.$transaction(
+          async (tx) => {
+            // ONE MATCHDAY PER MATCH. Match.matchdayId is required, and every
+            // matchday-keyed query keeps working this way — in particular the
+            // MVP appearance denominator (teamMatchdays), which would collapse
+            // to 1 for everyone if the whole competition shared one matchday.
+            // label stays null: there is no "Matchday 7" to name here.
+            //
+            // createManyAndReturn, not N creates: a 20-entrant home-and-away
+            // season is 380 rows, and sequential creates exceed the default
+            // interactive-transaction timeout.
+            const matchdays = await tx.matchday.createManyAndReturn({
+              data: pairs.map((_, i) => ({
+                competitionId: competition.id,
+                number: i + 1,
+                label: null,
+                scheduledDate: null,
+                isGenerated: true,
+              })),
+              select: { id: true, number: true },
+            });
+            const matchdayIdByNumber = new Map(
+              matchdays.map((m) => [m.number, m.id]),
+            );
+            await tx.match.createMany({
+              data: pairs.map(([home, away], i) => ({
+                matchdayId: matchdayIdByNumber.get(i + 1)!,
+                ...(isIndividual
+                  ? { homePlayerId: home, awayPlayerId: away }
+                  : { homeTeamId: home, awayTeamId: away }),
+                venueId,
+                scheduledAt: null,
+                status: "SCHEDULED" as const,
+              })),
+            });
+            // Teams get a standings table seeded at zero; Singles computes its
+            // player table live (Competition.playerStandings).
+            if (!isIndividual) {
+              await recomputeStandings(tx as never, competition.id);
+            }
+            const recipients = isIndividual
+              ? entrantIds
+              : (
+                  await tx.competitionRoster.findMany({
+                    where: { competitionId: competition.id },
+                    select: { userId: true },
+                  })
+                ).map((r) => r.userId);
+            await new NotificationService(tx).create({
+              type: "MATCH_SCHEDULED",
+              title: `Fixtures generated for ${competition.name}`,
+              message: `${pairs.length} ${pairs.length === 1 ? "fixture" : "fixtures"} — ${entrantIds.length} ${isIndividual ? "players" : "teams"}. Each match is dated when the two sides agree it.`,
+              recipients: Array.from(
+                new Set([competition.organizerId, ...recipients]),
+              ),
+              entity: {
+                type: "COMPETITION",
+                id: competition.id,
+                slug: competition.slug,
+              },
+              groupKey: `gen-md-${competition.id}`,
+            });
+            const activate =
+              competition.status === "OPEN_FOR_APPLICATIONS" ||
+              competition.status === "APPLICATIONS_CLOSED";
+            return tx.competition.update({
+              ...query,
+              where: { id: competition.id },
+              data: { status: activate ? "ONGOING" : competition.status },
+            });
+          },
+          // Headroom for a large season: the row counts are bulk inserts, but
+          // recomputeStandings and the notification fan-out run in here too.
+          { timeout: 30_000 },
+        );
+      }
+
       // Round-68 — INDIVIDUAL (Singles) generates player-vs-player matches
       // (round-robin or a knockout bracket over the approved applicants).
       if (competition.type === "INDIVIDUAL") {

@@ -61,13 +61,19 @@ export function parseWeekdaySchedule(
     .map((s) => ({ weekday: s.weekday, time: s.time }));
 }
 
-export function computeSeasonSchedule(
-  input: SeasonScheduleInput,
-): PlannedMatchday[] {
-  const baseRounds = bergerPairings(input.teamIds);
-  // Games per opponent: 1 = single round robin; 2 = home & away. Tile the
-  // Berger pairings N times and FLIP home/away on alternate cycles.
-  const cycles = Math.max(1, Math.min(4, Number(input.gamesPerOpponent ?? 1)));
+/**
+ * Games per opponent: 1 = single round robin; 2 = home & away. Tile the Berger
+ * pairings N times and FLIP home/away on alternate cycles.
+ *
+ * Round-92 — extracted so the Free Schedule generator produces exactly the same
+ * fixture set as the calendar one. Two copies of this loop would drift on the
+ * flip rule, and the two modes would disagree about who is at home.
+ */
+export function expandRounds(
+  baseRounds: Array<Array<[string, string]>>,
+  gamesPerOpponent: number | null | undefined,
+): Array<Array<[string, string]>> {
+  const cycles = Math.max(1, Math.min(4, Number(gamesPerOpponent ?? 1)));
   const rounds: Array<Array<[string, string]>> = [];
   for (let c = 0; c < cycles; c++) {
     for (const round of baseRounds) {
@@ -78,6 +84,16 @@ export function computeSeasonSchedule(
       );
     }
   }
+  return rounds;
+}
+
+export function computeSeasonSchedule(
+  input: SeasonScheduleInput,
+): PlannedMatchday[] {
+  const rounds = expandRounds(
+    bergerPairings(input.teamIds),
+    input.gamesPerOpponent,
+  );
 
   const planned = planMatchdays({
     startDate: input.startDate,
