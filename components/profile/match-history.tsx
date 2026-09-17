@@ -1,5 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
-import { CalendarDays, Trophy } from "lucide-react";
+import { CalendarDays, ChevronDown, Trophy } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -182,6 +185,61 @@ function MatchRow({ item }: { item: PlayerMatchItem }) {
   );
 }
 
+/**
+ * Round-91 — show a preview, keep the rest one click away.
+ *
+ * The profile used to REQUEST only 5 upcoming and 10 past matches, which made
+ * a shared fixture appear on one player's profile and not the other's: the same
+ * match sits at a different rank in each player's own list, so it fell inside
+ * one window and outside the other. The query now fetches the whole list and
+ * the trimming happens here, where "show all" can undo it.
+ */
+const PREVIEW = 5;
+
+function MatchSection({
+  testId,
+  title,
+  icon,
+  items,
+}: {
+  testId: string;
+  title: string;
+  icon: React.ReactNode;
+  items: PlayerMatchItem[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? items : items.slice(0, PREVIEW);
+  const hidden = items.length - shown.length;
+
+  return (
+    <section className="space-y-2" data-testid={testId}>
+      <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {icon}
+        {title}
+        <span className="font-normal normal-case tracking-normal">
+          · {items.length}
+        </span>
+      </h3>
+      {shown.map((item) => (
+        <MatchRow key={item.match.id} item={item} />
+      ))}
+      {hidden > 0 || expanded ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          data-testid={`${testId}-toggle`}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+        >
+          <ChevronDown
+            className={cn("size-3.5 transition-transform", expanded && "rotate-180")}
+          />
+          {expanded ? "Show fewer" : `Show all ${items.length}`}
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
 export function MatchHistory({
   upcoming,
   past,
@@ -223,27 +281,21 @@ export function MatchHistory({
         ) : null}
 
         {upcoming.length > 0 ? (
-          <section className="space-y-2" data-testid="profile-matches-upcoming">
-            <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <CalendarDays className="size-3.5" />
-              Scheduled
-            </h3>
-            {upcoming.map((item) => (
-              <MatchRow key={item.match.id} item={item} />
-            ))}
-          </section>
+          <MatchSection
+            testId="profile-matches-upcoming"
+            title="Scheduled"
+            icon={<CalendarDays className="size-3.5" />}
+            items={upcoming}
+          />
         ) : null}
 
         {past.length > 0 ? (
-          <section className="space-y-2" data-testid="profile-matches-past">
-            <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <Trophy className="size-3.5" />
-              Results
-            </h3>
-            {past.map((item) => (
-              <MatchRow key={item.match.id} item={item} />
-            ))}
-          </section>
+          <MatchSection
+            testId="profile-matches-past"
+            title="Results"
+            icon={<Trophy className="size-3.5" />}
+            items={past}
+          />
         ) : null}
       </CardContent>
     </Card>

@@ -31,7 +31,7 @@ export const ProfileByUsernameQuery = graphql(/* GraphQL */ `
       # Round-90 — match history, past + scheduled. Placeholders have these
       # too; after a claim they follow the merged account.
       playedMatchCount
-      upcomingMatches(first: 5) {
+      upcomingMatches(first: 200) {
         side
         played
         match {
@@ -51,7 +51,7 @@ export const ProfileByUsernameQuery = graphql(/* GraphQL */ `
           awayPlayer { id name username avatarUrl isShell }
         }
       }
-      pastMatches(first: 10) {
+      pastMatches(first: 200) {
         side
         played
         framesPlayed

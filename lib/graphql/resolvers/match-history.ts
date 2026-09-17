@@ -58,7 +58,7 @@ builder.prismaObjectFields("User", (t) => ({
           const bv = b.scheduledAt?.getTime() ?? Number.MAX_SAFE_INTEGER;
           return av - bv;
         })
-        .slice(0, Math.min(Math.max(args.first ?? 5, 1), 50));
+        .slice(0, Math.min(Math.max(args.first ?? 5, 1), 500));
     },
   }),
   pastMatches: t.field({
@@ -70,7 +70,7 @@ builder.prismaObjectFields("User", (t) => ({
       const rows = await playerMatches(ctx.prisma, u.id);
       return rows
         .filter(isPast)
-        .slice(0, Math.min(Math.max(args.first ?? 10, 1), 50));
+        .slice(0, Math.min(Math.max(args.first ?? 10, 1), 500));
     },
   }),
   playedMatchCount: t.int({

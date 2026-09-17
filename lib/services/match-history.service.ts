@@ -91,7 +91,10 @@ export async function playerMatches(
       awayPlayerId: true,
     },
     orderBy: [{ scheduledAt: "desc" }, { createdAt: "desc" }],
-    take: opts.take ?? 200,
+    // A full league season is hundreds of fixtures per competition and a player
+    // can be in several. This cap drops the OLDEST rows, so set it high enough
+    // that a real career doesn't lose its early history.
+    take: opts.take ?? 1000,
   });
   const rosterTeamIds = new Set(rosters.map((r) => r.teamId));
   for (const m of matches) {
