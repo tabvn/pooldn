@@ -313,3 +313,16 @@ export const DecideRosterChangeRequestMutation = graphql(/* GraphQL */ `
     }
   }
 `);
+
+// Round-93 — destructive counterpart to WithdrawApplicationMutation: removes
+// the participant AND every match they were in, then recalculates points.
+export const RemoveParticipantMutation = graphql(/* GraphQL */ `
+  mutation RemoveParticipant($applicationId: ID!) {
+    removeParticipant(applicationId: $applicationId) {
+      participantName
+      matchesDeleted
+      playedMatchesDeleted
+      matchdaysRemoved
+    }
+  }
+`);

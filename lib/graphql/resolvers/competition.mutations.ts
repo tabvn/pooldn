@@ -153,6 +153,25 @@ const UpdateMvpConfigInput = builder.inputType("UpdateMvpConfigInput", {
   }),
 });
 
+type RemoveParticipantShape = {
+  participantName: string;
+  matchesDeleted: number;
+  playedMatchesDeleted: number;
+  matchdaysRemoved: number;
+};
+
+/** Round-93 — what removing a participant actually destroyed. */
+const RemoveParticipantResult = builder
+  .objectRef<RemoveParticipantShape>("RemoveParticipantResult")
+  .implement({
+    fields: (t) => ({
+      participantName: t.exposeString("participantName"),
+      matchesDeleted: t.exposeInt("matchesDeleted"),
+      playedMatchesDeleted: t.exposeInt("playedMatchesDeleted"),
+      matchdaysRemoved: t.exposeInt("matchdaysRemoved"),
+    }),
+  });
+
 builder.mutationFields((t) => ({
   createCompetition: t.prismaField({
     type: "Competition",
@@ -2918,6 +2937,189 @@ builder.mutationFields((t) => ({
         ...query,
         where: { id: { in: results.map((r) => r.id) } },
       });
+    },
+  }),
+
+  removeParticipant: t.field({
+    type: RemoveParticipantResult,
+    description:
+      "Round-93 — organizer/admin removes a participant from a competition AND deletes every match they were in, then recomputes standings and MVP. Destructive: results already recorded against that participant are gone, and everyone else's points change accordingly. withdrawApplication is the non-destructive version (entry cancelled, matches untouched).",
+    args: { applicationId: t.arg.id({ required: true }) },
+    resolve: async (_root, args, ctx) => {
+      requireUser(ctx.viewer);
+      const app = await ctx.prisma.competitionApplication.findUniqueOrThrow({
+        where: { id: String(args.applicationId) },
+        include: {
+          team: {
+            select: {
+              id: true,
+              name: true,
+              captainId: true,
+              members: { select: { userId: true } },
+            },
+          },
+          competition: {
+            select: { id: true, name: true, slug: true, organizerId: true },
+          },
+        },
+      });
+      const isAdmin = ctx.viewer.role === "SUPER_ADMIN";
+      const isOrganizer = app.competition.organizerId === ctx.viewer.id;
+      if (!isAdmin && !isOrganizer) {
+        // Deliberately narrower than withdrawApplication: deleting other
+        // people's recorded results is not a self-service action.
+        throw new GraphQLError(
+          "Only the competition organizer or an admin can remove a participant.",
+          { extensions: { code: "FORBIDDEN" } },
+        );
+      }
+
+      const competitionId = app.competitionId;
+      const teamId = app.teamId;
+      const playerId = app.applicantUserId;
+      if (!teamId && !playerId) {
+        throw new GraphQLError("That entry has no participant to remove.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const participantName =
+        app.team?.name ?? (await getApplicantName(ctx, playerId));
+      // Every match in THIS competition that the participant is a side of.
+      const matchWhere = {
+        matchday: { competitionId },
+        ...(teamId
+          ? { OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }] }
+          : { OR: [{ homePlayerId: playerId }, { awayPlayerId: playerId }] }),
+      };
+
+      const summary = await ctx.prisma.$transaction(
+        async (tx) => {
+          const doomed = await tx.match.findMany({
+            where: matchWhere,
+            select: { id: true, status: true, matchdayId: true },
+          });
+          const playedCount = doomed.filter(
+            (m) => m.status === "COMPLETED",
+          ).length;
+          // Frames, participants, score submissions, block lineups and
+          // reschedule requests all cascade from Match, so this one delete
+          // takes the whole result with it.
+          await tx.match.deleteMany({
+            where: { id: { in: doomed.map((m) => m.id) } },
+          });
+          // Matchdays left holding nothing are noise — and in a Free Schedule
+          // competition every match has its own matchday, so removing one
+          // participant would otherwise strand dozens of empty ones.
+          const touchedMatchdayIds = Array.from(
+            new Set(doomed.map((m) => m.matchdayId)),
+          );
+          let emptyMatchdays = 0;
+          if (touchedMatchdayIds.length > 0) {
+            const remaining = await tx.match.groupBy({
+              by: ["matchdayId"],
+              where: { matchdayId: { in: touchedMatchdayIds } },
+              _count: { _all: true },
+            });
+            const stillUsed = new Set(remaining.map((r) => r.matchdayId));
+            const empty = touchedMatchdayIds.filter((id) => !stillUsed.has(id));
+            if (empty.length > 0) {
+              const del = await tx.matchday.deleteMany({
+                where: { id: { in: empty } },
+              });
+              emptyMatchdays = del.count;
+            }
+          }
+
+          // Release the entry itself, the same way withdrawApplication does.
+          // Read the roster BEFORE deleting it: it — not Team.members — says
+          // who actually represented this entrant here. A player can sit on a
+          // club's member list while playing this competition for someone
+          // else, and deleting their stats would wipe a season they still have.
+          const rosterUserIds = (
+            await tx.competitionRoster.findMany({
+              where: {
+                competitionId,
+                ...(teamId ? { teamId } : { userId: playerId! }),
+              },
+              select: { userId: true },
+            })
+          ).map((r) => r.userId);
+          if (teamId) {
+            await tx.competitionRoster.deleteMany({
+              where: { competitionId, teamId },
+            });
+          } else if (playerId) {
+            await tx.competitionRoster.deleteMany({
+              where: { competitionId, userId: playerId },
+            });
+          }
+          await tx.applicationPlayer.deleteMany({
+            where: { applicationId: app.id },
+          });
+          // Per-player stats for the people leaving. recomputeMvp only upserts
+          // — it never drops a row — so without this the removed side keeps its
+          // frames-won totals on the competition's player table forever. The
+          // recompute that follows re-creates a row for anyone who still has
+          // frames here (i.e. who also played for another entrant).
+          const leavingUserIds = Array.from(
+            new Set([...rosterUserIds, ...(playerId ? [playerId] : [])]),
+          );
+          if (leavingUserIds.length > 0) {
+            await tx.playerCompStat.deleteMany({
+              where: { competitionId, userId: { in: leavingUserIds } },
+            });
+          }
+          await tx.competitionApplication.update({
+            where: { id: app.id },
+            data: { status: "CANCELLED", reviewedAt: new Date() },
+          });
+
+          return {
+            matchesDeleted: doomed.length,
+            playedMatchesDeleted: playedCount,
+            matchdaysRemoved: emptyMatchdays,
+            participantName,
+          };
+        },
+        { timeout: 30_000 },
+      );
+
+      // Recompute OUTSIDE the transaction above: standings/MVP read the rows
+      // we just changed, and recomputeStandings already drops stale rows for
+      // teams whose application is no longer APPROVED.
+      const { recomputeStandings, recomputeMvp } = await import(
+        "@/lib/services/standings.service"
+      );
+      await recomputeStandings(ctx.prisma as never, competitionId);
+      await recomputeMvp(ctx.prisma as never, competitionId);
+
+      const recipients = app.team
+        ? Array.from(
+            new Set([
+              app.team.captainId,
+              ...app.team.members.map((m) => m.userId),
+            ]),
+          )
+        : playerId
+          ? [playerId]
+          : [];
+      if (recipients.length > 0) {
+        await new NotificationService(ctx.prisma).create({
+          type: "APPLICATION_REJECTED",
+          title: `Removed from ${app.competition.name}`,
+          message:
+            summary.matchesDeleted > 0
+              ? `The organizer removed you from ${app.competition.name}. ${summary.matchesDeleted} match${summary.matchesDeleted === 1 ? "" : "es"} involving you were deleted and the standings were recalculated.`
+              : `The organizer removed you from ${app.competition.name}.`,
+          recipients,
+          entity: {
+            type: "COMPETITION",
+            id: app.competition.id,
+            slug: app.competition.slug,
+          },
+        });
+      }
+      return summary;
     },
   }),
 

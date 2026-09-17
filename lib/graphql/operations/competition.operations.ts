@@ -476,6 +476,9 @@ export const CompetitionApplicationsQuery = graphql(/* GraphQL */ `
         unreadMessageCount
         submittedAt
         reviewedAt
+        # Round-93 — how much history a removal would destroy.
+        matchCount
+        playedMatchCount
         team {
           id
           name

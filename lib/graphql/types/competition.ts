@@ -1,3 +1,22 @@
+
+/** Round-93 — the matches a competition entry's participant is a side of. */
+function participantMatchWhere(a: {
+  competitionId: string;
+  teamId: string | null;
+  applicantUserId: string | null;
+}) {
+  return {
+    matchday: { competitionId: a.competitionId },
+    ...(a.teamId
+      ? { OR: [{ homeTeamId: a.teamId }, { awayTeamId: a.teamId }] }
+      : {
+          OR: [
+            { homePlayerId: a.applicantUserId },
+            { awayPlayerId: a.applicantUserId },
+          ],
+        }),
+  };
+}
 import { builder } from "../builder";
 import {
   ApplicationModeEnum,
@@ -502,6 +521,21 @@ async function viewerOwnsApplicationThread(
 
 builder.prismaObject("CompetitionApplication", {
   fields: (t) => ({
+      // Round-93 — how much history removing this participant would destroy.
+      // Drives the warning in the remove dialog; counted per competition, so a
+      // team's matches elsewhere are untouched.
+      matchCount: t.int({
+        description: "Matches in this competition involving this participant.",
+        resolve: (a, _args, ctx) =>
+          ctx.prisma.match.count({ where: participantMatchWhere(a) }),
+      }),
+      playedMatchCount: t.int({
+        description: "How many of those are already completed.",
+        resolve: (a, _args, ctx) =>
+          ctx.prisma.match.count({
+            where: { ...participantMatchWhere(a), status: "COMPLETED" },
+          }),
+      }),
     id: t.exposeID("id"),
     competition: t.relation("competition"),
     team: t.relation("team", { nullable: true }),

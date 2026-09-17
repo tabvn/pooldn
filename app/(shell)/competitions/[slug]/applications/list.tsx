@@ -39,6 +39,7 @@ import {
 import {
   InvitePlayersToCompetitionMutation,
   InviteTeamsToCompetitionMutation,
+  RemoveParticipantMutation,
   ReviewApplicationMutation,
   WithdrawApplicationMutation,
 } from "@/lib/graphql/operations/competition-mutations.operations";
@@ -95,6 +96,11 @@ export function ApplicationsList({
   const [withdraw, { loading: withdrawing }] = useMutation(
     WithdrawApplicationMutation,
   );
+  // Round-93 — the destructive sibling of withdraw (see removeParticipantWithMatches).
+  const [removeParticipant, { loading: removingParticipant }] = useMutation(
+    RemoveParticipantMutation,
+  );
+
 
   const competition = data?.competition;
   // Round-76 — a Singles (INDIVIDUAL) competition has no teams: entrants are
@@ -248,6 +254,57 @@ export function ApplicationsList({
       success: "Application withdrawn",
     },
   } as const;
+
+  /**
+   * Round-93 — removing a participant who has already played.
+   *
+   * withdrawApplication cancels the entry but leaves every match alone, which
+   * is right for an invite or a pre-season withdrawal and wrong once results
+   * exist: the removed side's wins keep counting in everyone else's record.
+   * So a confirmed entrant with fixtures goes through removeParticipant
+   * instead, which deletes those matches and recomputes standings and MVP —
+   * and the confirm dialog says exactly how many, because it is not undoable.
+   */
+  async function removeParticipantWithMatches(
+    app: { id: string; matchCount?: number; playedMatchCount?: number },
+    entrantName: string,
+  ) {
+    const total = app.matchCount ?? 0;
+    const played = app.playedMatchCount ?? 0;
+    const noun = isIndividual ? "player" : "team";
+    const ok = await confirm({
+      title: `Remove ${entrantName} and delete ${total} match${total === 1 ? "" : "es"}?`,
+      description:
+        `Every match involving this ${noun} in ${competitionName} is deleted` +
+        (played > 0
+          ? `, including ${played} already played — those results and frames are gone for good.`
+          : ".") +
+        // Singles has no MVP award (Round-82) — its table is the standings.
+        (isIndividual
+          ? " The standings are recalculated for everyone afterwards, so other players' points will change."
+          : " Standings and MVP points are recalculated for everyone afterwards, so other teams' totals will change.") +
+        " This can't be undone.",
+      confirmLabel: `Delete matches and remove`,
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      const res = await removeParticipant({
+        variables: { applicationId: app.id },
+      });
+      const r = res.data?.removeParticipant;
+      toast.success(
+        isIndividual ? "Player removed" : "Team removed",
+        r
+          ? `${r.matchesDeleted} match${r.matchesDeleted === 1 ? "" : "es"} deleted, standings recalculated.`
+          : undefined,
+      );
+      await refetch();
+      router.refresh();
+    } catch (e) {
+      toast.error("Couldn't remove that entrant", errorText(e, "Try again."));
+    }
+  }
 
   async function removeEntry(
     applicationId: string,
@@ -449,8 +506,15 @@ export function ApplicationsList({
                   <Button
                     size="sm"
                     variant="ghost"
-                    loading={withdrawing}
-                    onClick={() => removeEntry(app.id, entrantName, "confirmed")}
+                    loading={withdrawing || removingParticipant}
+                    onClick={() =>
+                      // With fixtures on the books, removing the entrant has to
+                      // take their matches with it; with none, the plain
+                      // withdrawal is enough.
+                      (app.matchCount ?? 0) > 0
+                        ? removeParticipantWithMatches(app, entrantName)
+                        : removeEntry(app.id, entrantName, "confirmed")
+                    }
                     data-testid={`remove-team-${app.id}`}
                   >
                     Remove
@@ -616,6 +680,9 @@ type AnyApp = {
   id: string;
   status: string;
   submittedAt: string;
+  /** Round-93 — matches in this competition involving the entrant. */
+  matchCount?: number;
+  playedMatchCount?: number;
   team?: {
     id: string;
     name: string;
