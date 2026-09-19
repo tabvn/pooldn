@@ -81,70 +81,148 @@ function sides(m: PlayerMatchItem["match"]) {
   return { home, away, isTeamMatch: !!m.homeTeam || !!m.awayTeam };
 }
 
+/** Round-94 — one side of the scoreboard. `end` mirrors it for the away team. */
+function SideCell({
+  side,
+  align,
+  isTeamMatch,
+  mine,
+  won,
+}: {
+  side: { name: string; logo?: string | null; ghost: boolean };
+  align: "start" | "end";
+  isTeamMatch: boolean;
+  mine: boolean;
+  won: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-2",
+        // Reversing the row puts the avatar on the outside edge, so the two
+        // sides mirror each other around the score.
+        align === "end" && "flex-row-reverse",
+      )}
+    >
+      <Avatar
+        size="sm"
+        src={side.logo ?? undefined}
+        fallback={side.name}
+        shape={isTeamMatch ? "team" : "user"}
+        ghost={side.ghost}
+        // On a phone the avatar costs about four characters of the name
+        // beside it, and for a real player it only repeats what the name
+        // already says. A placeholder's ghost ring doesn't — that one is the
+        // only mark saying this isn't a real account, so it stays at every
+        // width.
+        className={cn(!side.ghost && "hidden sm:inline-flex")}
+      />
+      <span
+        className={cn(
+          // A phone gives each side about nine characters once the avatar,
+          // badge and score have taken their share, which cuts "Gen Filling
+          // Station" to "Gen Fi…". Wrapping to two lines keeps the name
+          // readable there; from sm up there is room for one clean line.
+          "line-clamp-2 text-sm leading-tight sm:truncate sm:leading-normal",
+          align === "end" && "text-right sm:text-left",
+          // Colour says whose side this is, the badge says who won — two
+          // separate questions, so they don't share the same signal.
+          mine ? "font-semibold text-foreground" : "text-muted-foreground",
+        )}
+      >
+        {side.name}
+      </span>
+      {won ? (
+        <Badge
+          variant="success"
+          size="sm"
+          // Icon-only under sm: at 390px every pixel spent here comes
+          // straight out of the name beside it.
+          className="shrink-0 px-1 sm:px-1.5"
+          title="Winner"
+        >
+          <Trophy className="size-3" />
+          <span className="hidden sm:inline">Won</span>
+        </Badge>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Round-94 — a scoreboard row: the two sides on the outside, the result in
+ * the middle, the winner badged.
+ *
+ * The score reads home–away here rather than from the profile owner's
+ * perspective. Once the names sit beside it, a viewer-relative "3–1" next to
+ * the losing side's name is simply wrong, and the owner's own side is already
+ * legible from its colour.
+ */
 function MatchRow({ item }: { item: PlayerMatchItem }) {
   const m = item.match;
   const { home, away, isTeamMatch } = sides(m);
   const mine = item.side;
-  const us = mine === "AWAY" ? m.awayScore : m.homeScore;
-  const them = mine === "AWAY" ? m.homeScore : m.awayScore;
   // Status wins over stale numbers: a match that was reopened or postponed can
   // still carry the old score, and showing "3–1 Won" on something labelled
   // Scheduled reads as a bug.
   const decided =
-    us != null &&
-    them != null &&
+    m.homeScore != null &&
+    m.awayScore != null &&
     m.status !== "SCHEDULED" &&
     m.status !== "POSTPONED";
-  const won = decided ? us > them : null;
-  const drew = decided ? us === them : false;
+  const homeWon = decided && (m.homeScore ?? 0) > (m.awayScore ?? 0);
+  const awayWon = decided && (m.awayScore ?? 0) > (m.homeScore ?? 0);
+  const drew = decided && m.homeScore === m.awayScore;
 
   return (
     <Link
       href={`/matches/${m.id}`}
       data-testid={`profile-match-${m.id}`}
-      className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 transition-colors hover:border-primary/40"
+      className="block rounded-lg border border-border bg-background px-3 py-2.5 transition-colors hover:border-primary/40"
     >
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <Avatar
-            size="xs"
-            src={home.logo ?? undefined}
-            fallback={home.name}
-            shape={isTeamMatch ? "team" : "user"}
-            ghost={home.ghost}
-          />
-          <span
-            className={cn(
-              "truncate text-sm",
-              mine === "HOME" ? "font-semibold" : "text-muted-foreground",
-            )}
-          >
-            {home.name}
-          </span>
-          <span className="shrink-0 text-xs text-muted-foreground">vs</span>
-          <Avatar
-            size="xs"
-            src={away.logo ?? undefined}
-            fallback={away.name}
-            shape={isTeamMatch ? "team" : "user"}
-            ghost={away.ghost}
-          />
-          <span
-            className={cn(
-              "truncate text-sm",
-              mine === "AWAY" ? "font-semibold" : "text-muted-foreground",
-            )}
-          >
-            {away.name}
-          </span>
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5 sm:gap-3">
+        <SideCell
+          side={home}
+          align="start"
+          isTeamMatch={isTeamMatch}
+          mine={mine === "HOME"}
+          won={homeWon}
+        />
+        <div className="flex min-w-10 flex-col items-center gap-0.5 sm:min-w-14">
+          {decided ? (
+            <span
+              className="font-mono text-base font-bold tabular-nums"
+              data-testid={`profile-match-score-${m.id}`}
+            >
+              {m.homeScore}–{m.awayScore}
+            </span>
+          ) : m.status === "IN_PROGRESS" ? (
+            <Badge variant="primary" size="sm">
+              Live
+            </Badge>
+          ) : (
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              vs
+            </span>
+          )}
+          {drew ? (
+            <Badge variant="neutral" size="sm">
+              Draw
+            </Badge>
+          ) : null}
         </div>
-        <div className="truncate text-xs text-muted-foreground">
-          <Link
-            href={`/competitions/${m.matchday.competition.slug}`}
-            className="hover:underline"
-          >
-            {m.matchday.competition.name}
-          </Link>
+        <SideCell
+          side={away}
+          align="end"
+          isTeamMatch={isTeamMatch}
+          mine={mine === "AWAY"}
+          won={awayWon}
+        />
+      </div>
+
+      <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span className="truncate">
+          {m.matchday.competition.name}
           {/* Round-92 — a Free Schedule competition has no matchdays: it
               creates one per match purely to satisfy the schema, so "Matchday
               37" would be noise. */}
@@ -161,52 +239,35 @@ function MatchRow({ item }: { item: PlayerMatchItem }) {
             </>
           ) : null}
           {m.venue ? ` · ${m.venue.name}` : ""}
-        </div>
-      </div>
-
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        {decided ? (
-          <span className="font-mono text-sm font-bold tabular-nums">
-            {us}–{them}
-          </span>
-        ) : (
-          <Badge variant="neutral" size="sm">
-            {m.status === "IN_PROGRESS" ? "Live" : "Scheduled"}
-          </Badge>
-        )}
-        {decided && item.played ? (
-          <Badge
-            variant={won ? "success" : drew ? "neutral" : "danger"}
-            size="sm"
-          >
-            {won ? "Won" : drew ? "Draw" : "Lost"}
-          </Badge>
-        ) : decided ? (
-          // Their team played it, they weren't in the lineup — show the
-          // fixture, but don't credit them with the result.
-          <Badge variant="outline" size="sm">
-            Did not play
-          </Badge>
-        ) : null}
-        {item.played && (item.framesPlayed ?? 0) > 0 ? (
-          <span className="text-[11px] text-muted-foreground tabular-nums">
-            {item.framesWon}/{item.framesPlayed} frames
-          </span>
-        ) : null}
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          {item.played && (item.framesPlayed ?? 0) > 0 ? (
+            <span className="tabular-nums">
+              {item.framesWon}/{item.framesPlayed} frames
+            </span>
+          ) : null}
+          {decided && !item.played ? (
+            // Their team played it, they weren't in the lineup — show the
+            // fixture, but don't credit them with the result.
+            <Badge variant="outline" size="sm">
+              Did not play
+            </Badge>
+          ) : null}
+          {m.status === "CANCELLED" ? (
+            <Badge variant="danger" size="sm">
+              Cancelled
+            </Badge>
+          ) : m.status === "POSTPONED" ? (
+            <Badge variant="warning" size="sm">
+              Postponed
+            </Badge>
+          ) : null}
+        </span>
       </div>
     </Link>
   );
 }
 
-/**
- * Round-91 — show a preview, keep the rest one click away.
- *
- * The profile used to REQUEST only 5 upcoming and 10 past matches, which made
- * a shared fixture appear on one player's profile and not the other's: the same
- * match sits at a different rank in each player's own list, so it fell inside
- * one window and outside the other. The query now fetches the whole list and
- * the trimming happens here, where "show all" can undo it.
- */
 const PREVIEW = 5;
 
 function MatchSection({
